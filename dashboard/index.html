@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; script-src 'self'" />
+<title>Claude RPC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header>
+  <h1>Claude RPC</h1>
+  <span id="daemonBadge" class="daemon-badge">checking</span>
+</header>
+
+<main>
+  <div id="frames"></div>
+  <button class="add" id="addFrameBtn">+ Add a card</button>
+
+  <div class="divider"></div>
+
+  <div class="timing">
+    <div class="row" data-key="updateIntervalMs"      data-mul="1000"><span class="label">Updates</span>      <input type="number" min="1" step="1" /><span class="unit">sec</span></div>
+    <div class="row" data-key="rotationIntervalMs"    data-mul="1000"><span class="label">Rotation</span>     <input type="number" min="5" step="1" /><span class="unit">sec</span></div>
+    <div class="row" data-key="idleThresholdSec"      data-mul="1"   ><span class="label">Idle after</span>   <input type="number" min="10" step="5" /><span class="unit">sec</span></div>
+    <div class="row" data-key="staleSessionMin"       data-mul="60"  ><span class="label">Stale after</span>  <input type="number" min="1" step="1" /><span class="unit">hr</span></div>
+    <div class="row" data-key="notificationWindowSec" data-mul="1"   ><span class="label">Notification</span> <input type="number" min="2" step="1" /><span class="unit">sec</span></div>
+  </div>
+</main>
+
+<footer>
+  <span id="saveStatus"></span>
+  <button class="primary" id="saveBtn">Save</button>
+</footer>
+
+<script src="renderer.js"></script>
+</body>
+</html>

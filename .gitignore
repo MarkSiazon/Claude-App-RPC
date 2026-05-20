@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dashboard/dist/
+*.exe
+
+# Personal config (copy config.example.json → config.json and edit)
+config.json
+
+# Runtime state and logs
+*.log
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Editor cruft
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local environment overrides
+.env
+.env.local
+config.local.json

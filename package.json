@@ -1,0 +1,44 @@
+{
+  "name": "claude-rpc",
+  "version": "0.1.0",
+  "description": "Discord Rich Presence for Claude Code — live model, project, tokens, and lifetime stats driven by Claude Code's hook system.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Archer Simmons",
+  "bin": {
+    "claude-rpc": "./bin/claude-rpc.js"
+  },
+  "scripts": {
+    "start": "node ./src/daemon.js",
+    "setup": "node ./src/cli.js setup",
+    "status": "node ./src/cli.js status",
+    "stop": "node ./src/cli.js stop",
+    "hook": "node ./src/hook.js",
+    "serve": "node ./src/cli.js serve",
+    "scan": "node ./src/cli.js scan",
+    "dashboard": "npm --prefix dashboard start",
+    "dashboard:build": "npm --prefix dashboard run build"
+  },
+  "dependencies": {
+    "@xhayper/discord-rpc": "^1.2.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "discord",
+    "discord-rpc",
+    "rich-presence",
+    "anthropic",
+    "cli"
+  ],
+  "files": [
+    "bin",
+    "src",
+    "config.example.json",
+    "LICENSE",
+    "README.md"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "clientId": "YOUR_DISCORD_CLIENT_ID",
+  "updateIntervalMs": 4000,
+  "rotationIntervalMs": 12000,
+  "rescanIntervalSec": 300,
+  "idleThresholdSec": 60,
+  "staleSessionMin": 720,
+  "notificationWindowSec": 8,
+  "showElapsed": true,
+  "activityType": 0,
+  "statusAssets": {
+    "working":      "working",
+    "thinking":     "thinking",
+    "idle":         "idle",
+    "stale":        "idle",
+    "notification": "notification"
+  },
+  "presence": {
+    "largeImageKey": "claude",
+    "largeImageText": "{modelPretty} · {allHours} on Claude · {daysSinceFirstLabel}",
+    "smallImageKey": "{statusIcon}",
+    "smallImageText": "{statusVerbose}",
+    "rotation": [
+      { "details": "{statusVerbose} in {project}",          "state": "{modelPretty}" },
+      { "details": "{currentToolPretty} · {currentFilePretty}", "state": "{modelPretty} · {tokensFmt} tokens",      "requires": ["currentFile"] },
+      { "details": "{statusVerbose} in {project}",          "state": "{messagesLabel} · {toolsLabel}",              "requires": ["messages"] },
+      { "details": "{projectSessionLabel} in {project}",    "state": "{projectHours} · {projectPromptsLabel}",      "requires": ["projectActiveMs"] },
+      { "details": "Editing in {project}",                  "state": "{filesEditedLabel} · {tokensFmt} tokens",     "requires": ["filesEdited"] },
+      { "details": "{concurrentLabel}",                     "state": "{concurrentListPretty}",                      "requires": ["concurrentOther"] },
+      { "details": "Today · {todayHours}",                  "state": "{todayPromptsLabel} · {todayTokensFmt} tokens", "requires": ["todayActiveMs"] },
+      { "details": "This week · {weekHours}",               "state": "{weekPromptsLabel} · {weekTokensFmt} tokens", "requires": ["weekActiveMs"] },
+      { "details": "{streakLabel}",                         "state": "{daysSinceFirstLabel} · {allSessionsLabel}",  "requires": ["streakIsMilestone"] },
+      { "details": "{daysSinceFirstLabel} on Claude",       "state": "{streakLabel} · {allSessionsLabel}",          "requires": ["daysSinceFirst"] },
+      { "details": "Most active at {peakHour}",             "state": "{peakHourActiveLabel}",                       "requires": ["peakHourHours"] },
+      { "details": "Hotspot · {topEditedFile}",             "state": "{topEditedCountLabel} all-time",              "requires": ["topEditedCount"] },
+      { "details": "{allHours} on Claude all-time",         "state": "{allSessionsLabel} · {allMessagesFmt} prompts", "requires": ["allSessions"] },
+      { "details": "Lifetime · {allTokensFmt} tokens",      "state": "{allToolsFmt} tool calls · {allFilesFmt} files", "requires": ["allTools"] }
+    ],
+    "buttons": [
+      { "label": "Claude Code", "url": "https://claude.com/claude-code" }
+    ]
+  },
+  "statusIcons": {
+    "working":      "working",
+    "thinking":     "thinking",
+    "idle":         "idle",
+    "notification": "",
+    "stale":        ""
+  }
+}
