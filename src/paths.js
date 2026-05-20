@@ -4,8 +4,28 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Detect packaged mode (pkg / @yao-pkg/pkg sets process.pkg).
+export const IS_PACKAGED = typeof process.pkg !== 'undefined';
+
 export const ROOT = resolve(__dirname, '..');
-export const CONFIG_PATH = join(ROOT, 'config.json');
+
+// In packaged mode, persist user config in %APPDATA%\claude-rpc\.
+// In dev mode, keep config.json next to the source tree for easy iteration.
+const APPDATA = process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
+export const USER_CONFIG_DIR = join(APPDATA, 'claude-rpc');
+export const CONFIG_PATH = IS_PACKAGED
+  ? join(USER_CONFIG_DIR, 'config.json')
+  : join(ROOT, 'config.json');
+
+// Template seeded into USER_CONFIG_DIR on first install.
+export const BUNDLED_CONFIG_EXAMPLE = join(ROOT, 'config.example.json');
+
+// In packaged mode the "scripts" are sub-commands of the exe itself; in dev
+// they're the source .js files.
+export const HOOK_SCRIPT = IS_PACKAGED ? process.execPath : join(ROOT, 'src', 'hook.js');
+export const DAEMON_SCRIPT = IS_PACKAGED ? process.execPath : join(ROOT, 'src', 'daemon.js');
+export const EXE_PATH = IS_PACKAGED ? process.execPath : null;
+
 export const STATE_DIR = join(tmpdir(), 'claude-rpc');
 export const STATE_PATH = join(STATE_DIR, 'state.json');
 export const PID_PATH = join(STATE_DIR, 'daemon.pid');
@@ -16,5 +36,3 @@ export const SCAN_CACHE_PATH = join(DATA_DIR, 'scan-cache.json');
 export const CLAUDE_HOME = join(homedir(), '.claude');
 export const CLAUDE_PROJECTS = join(CLAUDE_HOME, 'projects');
 export const CLAUDE_SETTINGS = join(CLAUDE_HOME, 'settings.json');
-export const HOOK_SCRIPT = join(ROOT, 'src', 'hook.js');
-export const DAEMON_SCRIPT = join(ROOT, 'src', 'daemon.js');

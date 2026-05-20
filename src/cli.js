@@ -3,10 +3,12 @@ import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, watchFile } from 'node:fs';
 import { dirname } from 'node:path';
 import process from 'node:process';
-import { CLAUDE_SETTINGS, HOOK_SCRIPT, DAEMON_SCRIPT, PID_PATH, STATE_PATH, LOG_PATH, AGGREGATE_PATH, CONFIG_PATH } from './paths.js';
+import { CLAUDE_SETTINGS, HOOK_SCRIPT, DAEMON_SCRIPT, PID_PATH, STATE_PATH, LOG_PATH, AGGREGATE_PATH, CONFIG_PATH, IS_PACKAGED, EXE_PATH } from './paths.js';
 import { readState } from './state.js';
 import { buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses } from './format.js';
 import { scan, readAggregate, findLiveSessions, dayKey, weekKey } from './scanner.js';
+import { runHookCli } from './hook.js';
+import { install as runInstall, uninstall as runUninstall, isInstalled } from './install.js';
 import { basename } from 'node:path';
 
 const cmd = process.argv[2];
@@ -93,7 +95,10 @@ function startDaemon({ quiet = false } = {}) {
     if (!quiet) console.log(`${c.yellow}!${c.reset} Daemon already running (pid ${pid}). Run 'stop' first to restart.`);
     return false;
   }
-  const child = spawn(process.execPath, [DAEMON_SCRIPT], { detached: true, stdio: 'ignore' });
+  // In packaged mode the "daemon script" is the exe itself with a subcommand;
+  // in dev mode it's the src/daemon.js path passed to node.
+  const args = IS_PACKAGED ? ['daemon'] : [DAEMON_SCRIPT];
+  const child = spawn(process.execPath, args, { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
   if (!quiet) console.log(`${c.green}✓${c.reset} Daemon launched (pid ${c.cyan}${child.pid}${c.reset})  ${c.dim}logs: ${LOG_PATH}${c.reset}`);
   return true;
@@ -602,22 +607,44 @@ function help() {
   console.log('');
 }
 
-switch (cmd) {
-  case 'setup':     installHooks(); break;
-  case 'uninstall': uninstallHooks(); break;
-  case 'start':     startDaemon(); break;
-  case 'stop':      stopDaemon(); break;
-  case 'restart':   restartDaemon(); break;
-  case 'status':    showStatus(); break;
-  case 'today':     showToday(); break;
-  case 'week':      showWeek(); break;
-  case 'serve':     await import('./server.js'); break;
-  case 'preview':   showPreview(); break;
-  case 'scan':      doScan(false); break;
-  case 'rescan':    doScan(true); break;
-  case 'tail':
-  case 'logs':
-  case 'log':       tailLog(); break;
-  case 'daemon':    await import('./daemon.js'); break;
-  default:          help();
-}
+// Packaged exe: `claude-rpc.exe` with no args → first-run install + start.
+// `claude-rpc.exe hook PreToolUse` → handle hook.
+// Dev mode keeps the original `help` fallback so behavior is unchanged.
+const packagedDefault = IS_PACKAGED && !cmd;
+
+// Wrapped in an async IIFE so the same source compiles cleanly under both
+// ESM (dev) and CommonJS (esbuild → pkg) — CJS doesn't allow top-level await.
+(async () => {
+  switch (cmd) {
+    case 'setup':     await runInstall({ exePath: EXE_PATH || process.execPath, withStartup: false }); break;
+    case 'install':   await runInstall({ exePath: EXE_PATH || process.execPath }); break;
+    case 'uninstall': await runUninstall(); break;
+    case 'start':     startDaemon(); break;
+    case 'stop':      stopDaemon(); break;
+    case 'restart':   restartDaemon(); break;
+    case 'status':    showStatus(); break;
+    case 'today':     showToday(); break;
+    case 'week':      showWeek(); break;
+    case 'serve':     await import('./server.js'); break;
+    case 'preview':   showPreview(); break;
+    case 'scan':      doScan(false); break;
+    case 'rescan':    doScan(true); break;
+    case 'tail':
+    case 'logs':
+    case 'log':       tailLog(); break;
+    case 'hook':      runHookCli(process.argv[3] || 'unknown'); break;
+    case 'daemon':    await import('./daemon.js'); break;
+    default: {
+      if (packagedDefault) {
+        if (!isInstalled()) {
+          await runInstall({ exePath: EXE_PATH || process.execPath });
+        } else {
+          console.log('Claude RPC is installed. Starting daemon…');
+        }
+        startDaemon();
+      } else {
+        help();
+      }
+    }
+  }
+})();
