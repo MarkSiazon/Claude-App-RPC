@@ -1,5 +1,5 @@
 {
-  "clientId": "YOUR_DISCORD_CLIENT_ID",
+  "clientId": "1506443909406920948",
   "updateIntervalMs": 4000,
   "rotationIntervalMs": 12000,
   "rescanIntervalSec": 300,
@@ -9,14 +9,14 @@
   "showElapsed": true,
   "activityType": 0,
   "statusAssets": {
-    "working":      "working",
-    "thinking":     "thinking",
-    "idle":         "idle",
-    "stale":        "idle",
-    "notification": "notification"
+    "working":      "https://cdn.qualit.ly/clawd-working-building.gif",
+    "thinking":     "https://cdn.qualit.ly/clawd-working-typing.gif",
+    "idle":         "https://cdn.qualit.ly/clawd-sleeping.gif",
+    "stale":        "https://cdn.qualit.ly/clawd-sleeping.gif",
+    "notification": "https://cdn.qualit.ly/clawd-notification.gif"
   },
   "presence": {
-    "largeImageKey": "claude",
+    "largeImageKey": "https://cdn.qualit.ly/clawd-sleeping.gif",
     "largeImageText": "{modelPretty} · {allHours} on Claude · {daysSinceFirstLabel}",
     "smallImageKey": "{statusIcon}",
     "smallImageText": "{statusVerbose}",
