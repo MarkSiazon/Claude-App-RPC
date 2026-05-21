@@ -1,6 +1,6 @@
 {
   "name": "claude-rpc",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Discord Rich Presence for Claude Code — live model, project, tokens, and lifetime stats driven by Claude Code's hook system.",
   "type": "module",
   "license": "MIT",
@@ -18,24 +18,17 @@
     "scan": "node ./src/cli.js scan",
     "dashboard": "npm --prefix dashboard start",
     "dashboard:build": "npm --prefix dashboard run build",
-    "build:bundle": "esbuild bin/claude-rpc.js --bundle --platform=node --target=node22 --format=cjs --outfile=dist/bundle.cjs --banner:js=\"const __filename_url=require('url').pathToFileURL(__filename).toString();\" --define:import.meta.url=__filename_url",
-    "build:exe": "npm run build:bundle && pkg dist/bundle.cjs --targets node22-win-x64 --output dist/claude-rpc.exe --config package.json"
+    "build:exe": "node ./scripts/build-exe.js"
   },
   "dependencies": {
     "@xhayper/discord-rpc": "^1.2.1"
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.6.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "postject": "^1.0.0-alpha.6"
   },
   "engines": {
     "node": ">=18"
-  },
-  "pkg": {
-    "assets": [
-      "config.example.json"
-    ],
-    "outputPath": "dist"
   },
   "keywords": [
     "claude",

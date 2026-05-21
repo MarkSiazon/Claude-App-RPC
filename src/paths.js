@@ -4,8 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Detect packaged mode (pkg / @yao-pkg/pkg sets process.pkg).
-export const IS_PACKAGED = typeof process.pkg !== 'undefined';
+// Detect packaged mode. Covers both pkg (process.pkg) and Node SEA (where
+// process.execPath is the renamed exe rather than node/node.exe).
+export const IS_PACKAGED = typeof process.pkg !== 'undefined'
+  || !/[\\/]node(\.exe)?$/i.test(process.execPath || '');
 
 export const ROOT = resolve(__dirname, '..');
 

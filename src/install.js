@@ -2,13 +2,14 @@
 // Seeds %APPDATA%\claude-rpc\config.json, points Claude Code's hooks at the
 // exe, and registers a Windows startup entry so the daemon comes up on login.
 
-import { existsSync, mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 import {
-  CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR, BUNDLED_CONFIG_EXAMPLE,
+  CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR,
   HOOK_SCRIPT, IS_PACKAGED,
 } from './paths.js';
+import { DEFAULT_CONFIG } from './default-config.js';
 
 const STARTUP_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const STARTUP_VALUE = 'ClaudeRPC';
@@ -110,13 +111,8 @@ export function seedConfig() {
     return false;
   }
   mkdirSync(USER_CONFIG_DIR, { recursive: true });
-  if (existsSync(BUNDLED_CONFIG_EXAMPLE)) {
-    copyFileSync(BUNDLED_CONFIG_EXAMPLE, CONFIG_PATH);
-    console.log(`  config seeded → ${CONFIG_PATH}`);
-    return true;
-  }
-  writeFileSync(CONFIG_PATH, JSON.stringify({ clientId: 'YOUR_DISCORD_CLIENT_ID' }, null, 2));
-  console.log(`  empty config → ${CONFIG_PATH}`);
+  writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2));
+  console.log(`  config seeded → ${CONFIG_PATH}`);
   return true;
 }
 
