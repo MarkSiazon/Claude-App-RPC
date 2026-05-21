@@ -19,19 +19,9 @@ Your model, project, current tool, tokens, and lifetime stats — live in your D
 
 ---
 
-```
- ┌───────────────────────────────────────────────────────────┐
- │                                                           │
- │   ┌────────┐   Playing Claude Code                        │
- │   │        │   Working in claude-rpc                      │
- │   │  🖼️   │   Opus 4.7 · 2.3k tokens                      │
- │   │        │   00:23 elapsed                              │
- │   └────────┘                                              │
- │                                                           │
- │   [ Claude Code ]   [ View on GitHub ]                    │
- │                                                           │
- └───────────────────────────────────────────────────────────┘
-```
+<div align="center">
+  <img src="docs/demo.svg" width="560" alt="Discord Rich Presence card: Claude Code, working in claude-rpc on Opus 4.7" />
+</div>
 
 Driven entirely by Claude Code's hook system. Zero polling, zero overhead between sessions.
 

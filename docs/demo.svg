@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 280" width="560" height="280" role="img" aria-label="Discord Rich Presence card: Claude Code, working in claude-rpc on Opus 4.7, 00:23 elapsed">
+  <defs>
+    <linearGradient id="art" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d97757"/>
+      <stop offset="100%" stop-color="#6e2f15"/>
+    </linearGradient>
+    <linearGradient id="cardEdge" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#33363c"/>
+      <stop offset="100%" stop-color="#26282d"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <style>
+      .label { font: 700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; letter-spacing: 1.2px; fill: #b5bac1; }
+      .name  { font: 600 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; fill: #f2f3f5; }
+      .text  { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; fill: #dbdee1; }
+      .muted { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; fill: #b5bac1; }
+      .btn   { font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; fill: #f2f3f5; }
+    </style>
+  </defs>
+
+  <rect width="560" height="280" rx="10" fill="url(#cardEdge)" filter="url(#shadow)"/>
+  <rect x="1" y="1" width="558" height="278" rx="9" fill="#2b2d31"/>
+
+  <text x="22" y="34" class="label">PLAYING A GAME</text>
+
+  <g transform="translate(22 52)">
+    <rect width="76" height="76" rx="10" fill="url(#art)"/>
+    <g transform="translate(38 38)" fill="#f2efe7">
+      <path d="M0 -22 C 3 -8 8 -3 22 0 C 8 3 3 8 0 22 C -3 8 -8 3 -22 0 C -8 -3 -3 -8 0 -22 Z"/>
+      <path d="M0 -15 C 2 -5 5 -2 15 0 C 5 2 2 5 0 15 C -2 5 -5 2 -15 0 C -5 -2 -2 -5 0 -15 Z" transform="rotate(45)" opacity="0.55"/>
+    </g>
+    <circle cx="74" cy="74" r="11" fill="#2b2d31"/>
+    <circle cx="74" cy="74" r="7" fill="#23a55a"/>
+  </g>
+
+  <text x="114" y="70" class="name">Claude Code</text>
+  <text x="114" y="92" class="text">Working in claude-rpc</text>
+  <text x="114" y="112" class="muted">Opus 4.7 · 2.3k tokens</text>
+  <text x="114" y="132" class="muted">00:23 elapsed</text>
+
+  <rect x="22" y="160" width="516" height="38" rx="4" fill="#4e5058"/>
+  <text x="280" y="184" class="btn" text-anchor="middle">Claude Code</text>
+
+  <rect x="22" y="208" width="516" height="38" rx="4" fill="#4e5058"/>
+  <text x="280" y="232" class="btn" text-anchor="middle">View on GitHub</text>
+</svg>
