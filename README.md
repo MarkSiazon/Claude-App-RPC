@@ -25,32 +25,70 @@ Your model, project, current tool, tokens, and lifetime stats — live in your D
 
 Driven entirely by Claude Code's hook system. Zero polling, zero overhead between sessions.
 
+<div align="center">
+
+<sub>Sample badges (your numbers, your README):</sub>
+
+<img src="https://img.shields.io/badge/claude%20%C2%B7%207d-12.4h-4c1" alt="hours" />&nbsp;<img src="https://img.shields.io/badge/streak-23%20days-fe7d37" alt="streak" />&nbsp;<img src="https://img.shields.io/badge/claude%20cost%20%C2%B7%2030d-$48.20-3a7" alt="cost" />&nbsp;<img src="https://img.shields.io/badge/lines%20%C2%B7%20all--time-24.1k-08c" alt="lines" />&nbsp;<img src="https://img.shields.io/badge/prompts%20%C2%B7%2030d-1.2k-5865F2" alt="prompts" />
+
+</div>
+
+> **What's new in v0.2.0** — Cost estimation, code churn, languages, MCP/built-in split, bash + web + subagent leaderboards, redesigned web dashboard with SSE push, six-tab Electron settings GUI, new `insights` and `badge` subcommands. [Full release notes →](https://github.com/rar-file/claude-rpc/releases/tag/v0.2.0)
+
 ## Features
+
+**In Discord**
 
 | | |
 | :--- | :--- |
-| 🔴 **Live status** | Discord shows model, project, current tool/file, and token counts as you work |
+| 🔴 **Live status** | Model, project, current tool/file, and token counts update as you work |
 | 🎞️ **Status art** | Large image swaps between *working*, *thinking*, *idle*, *stale*, *notification* |
 | 🔁 **Rotation frames** | Cycle through today's stats, streak, top file, lifetime totals, anything you template |
 | 🐙 **Auto GitHub button** | When your cwd is a git repo with a github origin, a *View on GitHub* button appears |
-| 📊 **All-time aggregates** | Incremental scanner over `~/.claude/projects/*.jsonl` for hours, prompts, tokens, streaks, hotspots, **lines changed, languages, cost, bash usage, web domains, subagent runs** |
+
+**Beyond Discord**
+
+| | |
+| :--- | :--- |
+| 📊 **All-time aggregates** | Hours, prompts, tokens, streaks, hotspots, **lines changed, languages, cost, bash usage, web domains, subagent runs** — incremental scanner over `~/.claude/projects/*.jsonl` |
 | 💰 **Cost estimate** | Per-model spend (Opus/Sonnet/Haiku) using public list prices — editable in `src/pricing.js` |
-| 🧠 **Insights** | `claude-rpc insights` (and the web dashboard) generate 3–5 contextual lines: weekly trend, peak weekday, hotspot file, cost pace, streak progress |
-| 🖥️ **CLI dashboard** | `claude-rpc status` prints heatmap, hour histogram, top tools / files / projects / languages / bash commands / cost |
-| 🌐 **Web dashboard** | `claude-rpc serve` — range selector (7d / 30d / 90d / 1y / All), live SSE updates, project drilldown drawer, day-detail modal, achievements, theme toggle, keyboard shortcuts |
+| 🧠 **Insights** | `claude-rpc insights` generates 3–5 contextual lines: weekly trend, peak weekday, hotspot file, cost pace, streak progress |
+| 🖥️ **CLI dashboard** | `claude-rpc status` — heatmap, hour histogram, top tools / files / projects / languages / bash commands / cost |
+| 🌐 **Web dashboard** | `claude-rpc serve` — range selector (7d / 30d / 90d / 1y / All), live SSE updates, project drilldown, day-detail modal, achievements, theme toggle |
 | 🪪 **README badges** | `claude-rpc badge --metric hours --range 7d --out h.svg` (or live at `/api/badge.svg?metric=…`) |
-| ⚙️ **Config GUI** | Electron app in `dashboard/` — full settings cockpit across tabs: Presence (drag-reorder, variable autocomplete, presets), Discord (clientId, app name, buttons, activity type), Assets (image preview), Timing, Daemon (start/stop/restart, tail log), Stats (embedded web dashboard) |
+| ⚙️ **Config GUI** | Electron app with six tabs: Presence (drag-reorder, variable autocomplete, presets), Discord, Assets, Timing, Daemon (start/stop/restart, tail log), Stats |
+
+## Screens
+
+<table>
+<tr>
+<td align="center" width="50%"><b>Web dashboard</b><br/><sub><code>claude-rpc serve</code></sub><br/><br/><img src="docs/dashboard.png" alt="Web dashboard with range selector, activity chart, heatmap, cost panel, languages stack, and leaderboards" /></td>
+<td align="center" width="50%"><b>Settings GUI</b><br/><sub><code>npm run dashboard</code></sub><br/><br/><img src="docs/electron.png" alt="Electron config editor with Presence / Discord / Assets / Timing / Daemon / Stats tabs" /></td>
+</tr>
+</table>
 
 ## Install
+
+**Windows (no Node required)** — grab the latest portable exe:
+
+```sh
+# From https://github.com/rar-file/claude-rpc/releases/latest
+# Download claude-rpc.exe, drop it anywhere on PATH.
+claude-rpc setup
+claude-rpc start
+```
+
+**Any OS (from source)** — Node 18+:
 
 ```sh
 git clone https://github.com/rar-file/claude-rpc.git
 cd claude-rpc
 npm install
 cp config.example.json config.json
+npm link            # optional, makes `claude-rpc` global
 ```
 
-Requires Node 18+, the Discord **desktop** client (RPC IPC is unavailable in the browser client), and Claude Code with hook support.
+Requires the Discord **desktop** client (RPC IPC is unavailable in the browser client) and Claude Code with hook support.
 
 ## Quick start
 
