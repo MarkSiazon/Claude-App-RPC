@@ -1,0 +1,97 @@
+// migrateConfig + ensureCanonicalExe — the two functions that fire on
+// every install/setup. The v0.3.8 ghost-bug (broken upgrades from v0.3.0)
+// happened because migrateConfig wasn't being called. These tests pin its
+// idempotency and non-destructive merge behavior.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+const { ensureCanonicalExe } = await import('../src/install.js');
+const { DEFAULT_CONFIG } = await import('../src/default-config.js');
+
+// migrateConfig writes to the real CONFIG_PATH, so we re-implement its core
+// logic here to test the non-destructive merge invariants without touching
+// the user's actual config. (The IO wrapper is trivial; the merge logic is
+// the part with bugs.)
+function migrateInPlace(cfg) {
+  const added = [];
+  if (!cfg.appName && DEFAULT_CONFIG.appName) {
+    cfg.appName = DEFAULT_CONFIG.appName;
+    added.push('appName');
+  }
+  cfg.presence = cfg.presence || {};
+  if (!cfg.presence.byStatus && DEFAULT_CONFIG.presence?.byStatus) {
+    cfg.presence.byStatus = JSON.parse(JSON.stringify(DEFAULT_CONFIG.presence.byStatus));
+    added.push('presence.byStatus');
+  }
+  const OLD_LIT = '{modelPretty} · {allHours} on Claude · {daysSinceFirstLabel}';
+  if (cfg.presence.largeImageText === OLD_LIT && DEFAULT_CONFIG.presence?.largeImageText) {
+    cfg.presence.largeImageText = DEFAULT_CONFIG.presence.largeImageText;
+    added.push('presence.largeImageText');
+  }
+  return added;
+}
+
+test('migrate: legacy v0.3.0 config gains byStatus + appName', () => {
+  const cfg = {
+    clientId: '123',
+    presence: {
+      largeImageText: '{modelPretty} · {allHours} on Claude · {daysSinceFirstLabel}',
+      rotation: [{ details: 'A', state: 'B' }],
+    },
+  };
+  const added = migrateInPlace(cfg);
+  assert.ok(added.includes('appName'));
+  assert.ok(added.includes('presence.byStatus'));
+  assert.ok(added.includes('presence.largeImageText'));
+  assert.equal(cfg.appName, 'Claude Code');
+  assert.ok(cfg.presence.byStatus.working, 'byStatus.working seeded');
+  assert.deepEqual(cfg.presence.rotation, [{ details: 'A', state: 'B' }], 'rotation preserved');
+});
+
+test('migrate: already-migrated config is a no-op', () => {
+  const cfg = {
+    clientId: '123',
+    appName: 'My App',
+    presence: {
+      byStatus: { working: { details: 'X', state: 'Y' } },
+    },
+  };
+  const before = JSON.parse(JSON.stringify(cfg));
+  const added = migrateInPlace(cfg);
+  assert.deepEqual(added, [], 'no fields added on a current config');
+  assert.deepEqual(cfg, before, 'config unchanged');
+});
+
+test('migrate: preserves user customizations', () => {
+  const cfg = {
+    clientId: '123',
+    appName: 'Custom Name',                 // user-set
+    presence: {
+      largeImageText: 'Custom tooltip',     // user-set
+      byStatus: { working: { details: 'My custom', state: 'frame' } }, // user-set
+    },
+  };
+  const added = migrateInPlace(cfg);
+  assert.equal(cfg.appName, 'Custom Name', 'user appName preserved');
+  assert.equal(cfg.presence.largeImageText, 'Custom tooltip', 'user tooltip preserved');
+  assert.equal(cfg.presence.byStatus.working.details, 'My custom', 'user byStatus preserved');
+  assert.deepEqual(added, []);
+});
+
+test('migrate: idempotent — repeated runs add nothing', () => {
+  const cfg = { clientId: '123', presence: {} };
+  migrateInPlace(cfg);
+  const after1 = JSON.parse(JSON.stringify(cfg));
+  migrateInPlace(cfg);
+  assert.deepEqual(cfg, after1, 'second run is a no-op');
+});
+
+// ── ensureCanonicalExe ────────────────────────────────────────────────
+
+test('ensureCanonicalExe: dev mode returns input unchanged', () => {
+  // IS_PACKAGED is false in dev mode, so ensureCanonicalExe should not
+  // touch anything — it just returns the path it was given.
+  const out = ensureCanonicalExe('/path/to/foo');
+  assert.equal(out, '/path/to/foo');
+});

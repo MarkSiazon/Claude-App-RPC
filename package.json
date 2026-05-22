@@ -30,7 +30,8 @@
     "build:exe": "node ./scripts/build-exe.js",
     "prep:dashboard": "node ./scripts/prep-dashboard.js",
     "dist:mac": "npm run build:exe && npm run prep:dashboard && npm --prefix dashboard run dist:mac",
-    "dist:win": "npm run build:exe && npm run prep:dashboard && npm --prefix dashboard run dist:win"
+    "dist:win": "npm run build:exe && npm run prep:dashboard && npm --prefix dashboard run dist:win",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@xhayper/discord-rpc": "^1.2.1"
