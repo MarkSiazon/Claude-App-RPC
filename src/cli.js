@@ -20,6 +20,7 @@ import { startTui } from './tui.js';
 import { generateInsights } from './insights.js';
 import { badgeSvg } from './badge.js';
 import { fmtCost } from './pricing.js';
+import { addPrivateCwd, removePrivateCwd, listPrivateCwds, resolveVisibility } from './privacy.js';
 import { basename } from 'node:path';
 
 const cmd = process.argv[2];
@@ -697,6 +698,58 @@ async function doCard(argv) {
   }
 }
 
+// ── Privacy commands ─────────────────────────────────────────────────────
+//
+// `claude-rpc private`        → add current cwd to ~/.claude-rpc/private-list.json
+// `claude-rpc public`         → remove current cwd
+// `claude-rpc privacy`        → show resolved visibility for current cwd + listed paths
+//
+// Per-project overrides live in <project>/.claude-rpc.json and take priority
+// over the runtime list. See src/privacy.js for the full resolution chain.
+
+function loadConfigSafe() {
+  try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
+}
+
+function doPrivate() {
+  const cwd = process.cwd();
+  const list = addPrivateCwd(cwd);
+  console.log(`${c.green}✓${c.reset} ${c.cyan}${cwd}${c.reset} marked private`);
+  console.log(`${c.dim}  ${list.length} ${list.length === 1 ? 'path' : 'paths'} in the private list. Daemon picks it up within ~5 min (cache TTL) or restart.${c.reset}`);
+}
+
+function doPublic() {
+  const cwd = process.cwd();
+  const before = listPrivateCwds().length;
+  const list = removePrivateCwd(cwd);
+  if (list.length === before) {
+    console.log(`${c.yellow}!${c.reset} ${c.cyan}${cwd}${c.reset} wasn't in the private list`);
+  } else {
+    console.log(`${c.green}✓${c.reset} ${c.cyan}${cwd}${c.reset} removed from the private list`);
+  }
+}
+
+function doPrivacy() {
+  const cwd = process.cwd();
+  const cfg = loadConfigSafe();
+  const { visibility, projectName, reason } = resolveVisibility(cwd, cfg);
+  const color = visibility === 'hidden' ? c.red : visibility === 'name-only' ? c.yellow : c.green;
+  console.log('');
+  console.log(`  ${c.bold}privacy${c.reset}  ${c.dim}for${c.reset} ${c.cyan}${cwd}${c.reset}`);
+  console.log(`    ${c.dim}visibility:${c.reset} ${color}${visibility}${c.reset}   ${c.dim}(${reason})${c.reset}`);
+  if (projectName) console.log(`    ${c.dim}alias:    ${c.reset} ${projectName}`);
+  const list = listPrivateCwds();
+  if (list.length) {
+    console.log('');
+    console.log(`  ${c.bold}private-list${c.reset}  ${c.dim}(${list.length} ${list.length === 1 ? 'path' : 'paths'})${c.reset}`);
+    for (const p of list) console.log(`    ${p === cwd ? c.cyan + '●' + c.reset : ' '} ${p}`);
+  }
+  console.log('');
+  console.log(`  ${c.dim}toggle:   claude-rpc private  /  claude-rpc public${c.reset}`);
+  console.log(`  ${c.dim}per-proj: drop a {"private": true} into .claude-rpc.json at the repo root${c.reset}`);
+  console.log('');
+}
+
 function tailLog() {
   if (!existsSync(LOG_PATH)) {
     console.log(`${c.yellow}No log yet at ${LOG_PATH}${c.reset}`);
@@ -740,6 +793,9 @@ function help() {
     ['insights',  'Auto-generated insights from your history'],
     ['badge',     'Render a Shields-style SVG (--metric --range --out)'],
     ['card',      'Render a poster-style SVG summary (--range year|month|week|all)'],
+    ['private',   'Mark the current directory as private (hide from Discord)'],
+    ['public',    'Un-mark the current directory'],
+    ['privacy',   'Show resolved visibility for the current directory'],
     ['doctor',    'Run a diagnostic checklist — common-failure triage'],
     ['tail',      'Tail the daemon log file'],
     ['daemon',    'Run daemon in foreground (debug)'],
@@ -795,6 +851,9 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'insights':  showInsights(); break;
     case 'badge':     doBadge(process.argv.slice(3)); break;
     case 'card':      await doCard(process.argv.slice(3)); break;
+    case 'private':   doPrivate(); break;
+    case 'public':    doPublic(); break;
+    case 'privacy':   doPrivacy(); break;
     case 'doctor': {
       const { runDoctor } = await import('./doctor.js');
       process.exit(runDoctor());

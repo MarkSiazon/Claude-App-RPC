@@ -5,6 +5,7 @@ import { readState } from './state.js';
 import { buildVars, fillTemplate, framePasses, applyIdle } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
+import { applyPrivacy } from './privacy.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH } from './paths.js';
 
 if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
@@ -99,6 +100,12 @@ function buildActivity(opts = {}) {
     }
   }
 
+  // Apply privacy AFTER token resolution but BEFORE buildVars — so the
+  // template inputs ({project}, {currentFile}, etc.) already reflect the
+  // visibility decision. Sets state._privacy so we can short-circuit to
+  // clearActivity when visibility=hidden.
+  state = applyPrivacy(state, config);
+
   const vars = buildVars(state, config, opts.aggregate || aggregate);
   const p = config.presence || {};
 
@@ -172,9 +179,12 @@ function buildActivity(opts = {}) {
   if (typeof config.activityType === 'number') activity.type = config.activityType;
 
   // Buttons: static configured set, optionally augmented with a per-project
-  // GitHub button when the current cwd has a github origin.
+  // GitHub button when the current cwd has a github origin. Privacy mode
+  // suppresses the GitHub button entirely (else clicking it leaks the
+  // project name we're trying to hide).
+  const isPrivacyConstrained = state._privacy && state._privacy.visibility !== 'public';
   const buttons = Array.isArray(p.buttons) ? p.buttons.slice() : [];
-  const gh = state.status !== 'stale' ? detectGithubUrl(state.cwd) : null;
+  const gh = (!isPrivacyConstrained && state.status !== 'stale') ? detectGithubUrl(state.cwd) : null;
   if (gh && !buttons.some((b) => /github\.com/i.test(b.url || ''))) {
     buttons.unshift({ label: 'View on GitHub →', url: gh });
   }
@@ -196,9 +206,14 @@ async function pushPresence() {
     let resolved = readState();
     resolved.liveSessions = liveSessions;
     resolved = applyIdle(resolved, config);
+    // Privacy can convert any state into a "hidden" verdict — give it the
+    // same treatment as hideWhenStale: a single clearActivity, deduped via
+    // lastPayloadHash so we don't spam the IPC.
+    resolved = applyPrivacy(resolved, config);
 
     const hideWhenStale = config.hideWhenStale !== false;
-    if (resolved.status === 'stale' && hideWhenStale) {
+    const privacyHidden = resolved._privacy?.visibility === 'hidden';
+    if ((resolved.status === 'stale' && hideWhenStale) || privacyHidden) {
       const stamp = 'cleared';
       if (lastPayloadHash === stamp) return;
       lastPayloadHash = stamp;
@@ -206,7 +221,8 @@ async function pushPresence() {
       // elapsed timer rather than counting from a previous session.
       effectiveSessionStart = null;
       await client.user.clearActivity();
-      log('Presence cleared (stale — Claude Code not running)');
+      const reason = privacyHidden ? 'privacy=hidden in this project' : 'stale — Claude Code not running';
+      log(`Presence cleared (${reason})`);
       return;
     }
 

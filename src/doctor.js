@@ -15,6 +15,7 @@ import {
   CLAUDE_HOME, CLAUDE_PROJECTS, CLAUDE_SETTINGS,
 } from './paths.js';
 import { findLiveSessions } from './scanner.js';
+import { resolveVisibility, listPrivateCwds } from './privacy.js';
 
 const TTY = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = {
@@ -300,6 +301,28 @@ function checkAggregate() {
   }
 }
 
+function checkPrivacy(cfg) {
+  try {
+    const cwd = process.cwd();
+    const { visibility, projectName, reason } = resolveVisibility(cwd, cfg || {});
+    const listed = listPrivateCwds();
+    const detail = projectName
+      ? `${visibility}  ·  alias=${projectName}  ·  ${reason}`
+      : `${visibility}  ·  ${reason}`;
+    const status = visibility === 'hidden' ? 'warn'
+                 : visibility === 'name-only' ? 'warn'
+                 : 'pass';
+    check('current directory visibility', status, detail);
+    if (listed.length) {
+      check('private-list entries', 'pass', `${listed.length} ${listed.length === 1 ? 'path' : 'paths'} marked private`);
+    } else {
+      check('private-list entries', 'pass', 'none');
+    }
+  } catch (e) {
+    check('privacy check', 'warn', `lookup failed: ${e.message}`);
+  }
+}
+
 function checkLiveSessions() {
   try {
     const live = findLiveSessions({ thresholdMs: 90_000 });
@@ -352,6 +375,9 @@ export function runDoctor() {
   section('Data');
   checkAggregate();
   checkLiveSessions();
+
+  section('Privacy');
+  checkPrivacy(cfg);
 
   // Summary
   const { pass, fail, warn } = counters;
