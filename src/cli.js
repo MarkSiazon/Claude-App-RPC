@@ -786,7 +786,7 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'dump':      showStatus(); break;
     case 'today':     showToday(); break;
     case 'week':      showWeek(); break;
-    case 'serve':     await import('./server.js'); break;
+    case 'serve':     await import('./server/index.js'); break;
     case 'preview':   showPreview(); break;
     case 'vars':      dumpVars(); break;
     case 'scan':      doScan(false); break;

@@ -1,268 +1,17 @@
-#!/usr/bin/env node
-// Local web dashboard for Claude RPC.
-// Zero deps, single-file HTML, vanilla JS, SVG charts.
+// All browser-side assets for the local web dashboard, packaged as JS
+// string constants so the bundler picks them up cleanly. Three blocks:
 //
-// Phase 3 overhaul:
-//   - Multiple API routes (windowed aggregate, project drilldown, day detail, insights, badge)
-//   - SSE /events for push updates (replaces 2s polling)
-//   - Range selector wired through every panel
-//   - New panels: live rail, cost, languages, code churn, bash, web domains, insights
-//   - Hash-routed drawer/modal for project/day drilldowns
-//   - Theme toggle, keyboard shortcuts
-import { createServer } from 'node:http';
-import { readFileSync, watch } from 'node:fs';
-import { exec } from 'node:child_process';
-import { basename, dirname } from 'node:path';
-import { readState } from './state.js';
-import { buildVars, fillTemplate, applyIdle, framePasses, humanProject } from './format.js';
-import { readAggregate, findLiveSessions, dayKey } from './scanner.js';
-import { CONFIG_PATH, STATE_PATH, AGGREGATE_PATH } from './paths.js';
-import { generateInsights } from './insights.js';
-import { badgeSvg } from './badge.js';
-import { renderCard } from './card.js';
-
-const PORT = Number(process.env.CLAUDE_RPC_PORT) || 47474;
-
-function loadConfig() {
-  try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')); } catch { return {}; }
-}
-
-// ── Data helpers ─────────────────────────────────────────────────────────────
-
-function rangeToDays(range) {
-  if (range === 'all') return Infinity;
-  if (range === '1y') return 365;
-  const n = parseInt(range, 10);
-  return Number.isFinite(n) && n > 0 ? n : 90;
-}
-
-// Filter byDay to a windowed slice; also recompute roll-ups (top files etc.)
-// scoped to that window. Returns a shape similar to the aggregate but trimmed.
-function windowedAggregate(agg, range) {
-  if (!agg) return null;
-  const days = rangeToDays(range);
-  if (!Number.isFinite(days)) return agg; // 'all' → pass through
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const keepKeys = new Set();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(today); d.setDate(d.getDate() - i);
-    keepKeys.add(dayKey(d.getTime()));
-  }
-
-  const byDay = {};
-  let activeMs = 0, prompts = 0, toolCalls = 0, lines = 0, linesRem = 0, cost = 0, sessions = 0;
-  let inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0;
-  for (const [k, day] of Object.entries(agg.byDay || {})) {
-    if (!keepKeys.has(k)) continue;
-    byDay[k] = day;
-    activeMs += day.activeMs || 0;
-    prompts += day.userMessages || 0;
-    toolCalls += day.toolCalls || 0;
-    lines += day.linesAdded || 0;
-    linesRem += day.linesRemoved || 0;
-    cost += day.cost || 0;
-    sessions += day.sessions || 0;
-    inputTokens += day.inputTokens || 0;
-    outputTokens += day.outputTokens || 0;
-    cacheReadTokens += day.cacheReadTokens || 0;
-    cacheWriteTokens += day.cacheWriteTokens || 0;
-  }
-
-  return {
-    range,
-    byDay,
-    activeMs,
-    userMessages: prompts,
-    toolCalls,
-    linesAdded: lines,
-    linesRemoved: linesRem,
-    linesNet: lines - linesRem,
-    estimatedCost: cost,
-    sessions,
-    inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens,
-    grandTokens: inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
-    // Pass-through global keys for context.
-    streak: agg.streak,
-    longestStreak: agg.longestStreak,
-    daysSinceFirst: agg.daysSinceFirst,
-    peakHour: agg.peakHour,
-    bestDay: agg.bestDay,
-    projects: agg.projects || {},
-    toolBreakdown: agg.toolBreakdown || {},
-    topEditedFiles: agg.topEditedFiles || [],
-    languages: agg.languages || {},
-    bashCommands: agg.bashCommands || {},
-    webDomains: agg.webDomains || {},
-    subagents: agg.subagents || {},
-    costByModel: agg.costByModel || {},
-    modelsUsed: agg.modelsUsed || {},
-    mcpToolCalls: agg.mcpToolCalls || 0,
-    builtinToolCalls: agg.builtinToolCalls || 0,
-    byHour: agg.byHour || {},
-    byWeekday: agg.byWeekday || {},
-    notifications: agg.notifications || 0,
-  };
-}
-
-function snapshot() {
-  const config = loadConfig();
-  const live = findLiveSessions({ thresholdMs: 90_000 });
-  let state = readState();
-  state.liveSessions = live;
-  state = applyIdle(state, config);
-  const aggregate = readAggregate() || {};
-  const vars = buildVars(state, config, aggregate);
-  const p = config.presence || {};
-  const frames = (p.rotation || []).map((f) => ({
-    details: fillTemplate(f.details || '', vars),
-    state: fillTemplate(f.state || '', vars),
-    passes: framePasses(f, vars),
-    requires: f.requires || null,
-  }));
-  return {
-    now: Date.now(),
-    state,
-    aggregate: {
-      sessions: aggregate.sessions,
-      subagentRuns: aggregate.subagentRuns,
-      userMessages: aggregate.userMessages,
-      toolCalls: aggregate.toolCalls,
-      uniqueFiles: aggregate.uniqueFiles,
-      activeMs: aggregate.activeMs,
-      wallMs: aggregate.wallMs,
-      inputTokens: aggregate.inputTokens,
-      outputTokens: aggregate.outputTokens,
-      cacheReadTokens: aggregate.cacheReadTokens,
-      cacheWriteTokens: aggregate.cacheWriteTokens,
-      byDay: aggregate.byDay || {},
-      byHour: aggregate.byHour || {},
-      byWeekday: aggregate.byWeekday || {},
-      projects: aggregate.projects || {},
-      toolBreakdown: aggregate.toolBreakdown || {},
-      topEditedFiles: (aggregate.topEditedFiles || []).slice(0, 12).map((e) => ({ file: basename(e.path), path: e.path, count: e.count })),
-      streak: aggregate.streak,
-      longestStreak: aggregate.longestStreak,
-      daysSinceFirst: aggregate.daysSinceFirst,
-      bestDay: aggregate.bestDay,
-      peakHour: aggregate.peakHour,
-      // Phase 1 enrichments
-      linesAdded: aggregate.linesAdded || 0,
-      linesRemoved: aggregate.linesRemoved || 0,
-      linesNet: aggregate.linesNet || 0,
-      languages: aggregate.languages || {},
-      bashCommands: aggregate.bashCommands || {},
-      webDomains: aggregate.webDomains || {},
-      subagents: aggregate.subagents || {},
-      mcpToolCalls: aggregate.mcpToolCalls || 0,
-      builtinToolCalls: aggregate.builtinToolCalls || 0,
-      estimatedCost: aggregate.estimatedCost || 0,
-      costByModel: aggregate.costByModel || {},
-      modelsUsed: aggregate.modelsUsed || {},
-      notifications: aggregate.notifications || 0,
-    },
-    vars,
-    frames,
-  };
-}
-
-function projectDrilldown(name) {
-  const agg = readAggregate() || {};
-  const projects = agg.projects || {};
-  const project = projects[name];
-  if (!project) return null;
-  // Sum a per-day series for the project's edits from agg.byDay isn't directly
-  // available without re-scanning. We approximate by treating the global byDay
-  // as the project's view scaled by share-of-activity — but it's more useful
-  // to just return per-project totals + global byDay so the client can show
-  // the global timeline plus the project's stats.
-  return {
-    name,
-    ...project,
-    files: (agg.topEditedFiles || []).filter((f) => true).slice(0, 25), // global hotspots; future: per-project
-    tools: agg.toolBreakdown || {},
-  };
-}
-
-function dayDetail(dayKeyStr) {
-  const agg = readAggregate() || {};
-  const day = (agg.byDay || {})[dayKeyStr];
-  if (!day) return null;
-  return { day: dayKeyStr, ...day };
-}
-
-// ── Routes ───────────────────────────────────────────────────────────────────
-
-const ROUTES = new Map();
-ROUTES.set('GET /api/state', (req, res) => {
-  res.writeHead(200, JSON_HEADERS);
-  res.end(JSON.stringify(snapshot()));
-});
-ROUTES.set('GET /api/aggregate', (req, res, { query }) => {
-  const range = query.range || '90d';
-  const agg = readAggregate();
-  res.writeHead(200, JSON_HEADERS);
-  res.end(JSON.stringify(windowedAggregate(agg, range)));
-});
-ROUTES.set('GET /api/insights', (req, res, { query }) => {
-  const agg = readAggregate();
-  const lines = generateInsights(agg, { limit: parseInt(query.limit, 10) || 5 });
-  res.writeHead(200, JSON_HEADERS);
-  res.end(JSON.stringify({ insights: lines }));
-});
-ROUTES.set('GET /api/badge.svg', (req, res, { query }) => {
-  const agg = readAggregate();
-  const svg = badgeSvg({
-    aggregate: agg,
-    metric: query.metric || 'hours',
-    range: query.range || '7d',
-    label: query.label,
-  });
-  res.writeHead(200, {
-    'content-type': 'image/svg+xml; charset=utf-8',
-    'cache-control': 'max-age=60, public',
-  });
-  res.end(svg);
-});
-// Poster-style card. `?range=year|month|week|all` (default year).
-ROUTES.set('GET /api/card.svg', (req, res, { query }) => {
-  const agg = readAggregate();
-  const svg = renderCard(agg, { range: query.range || 'year' });
-  res.writeHead(200, {
-    'content-type': 'image/svg+xml; charset=utf-8',
-    'cache-control': 'max-age=60, public',
-  });
-  res.end(svg);
-});
-
-const JSON_HEADERS = { 'content-type': 'application/json', 'cache-control': 'no-store' };
-
-// SSE: emits {type:'state'|'aggregate'} when underlying files change.
-const sseClients = new Set();
-function broadcast(payload) {
-  const line = `data: ${JSON.stringify(payload)}\n\n`;
-  for (const res of sseClients) {
-    try { res.write(line); } catch { sseClients.delete(res); }
-  }
-}
-
-function watchSources() {
-  let stTimer = null, agTimer = null;
-  try {
-    watch(STATE_PATH, () => {
-      clearTimeout(stTimer);
-      stTimer = setTimeout(() => broadcast({ type: 'state' }), 200);
-    });
-  } catch {}
-  try {
-    watch(AGGREGATE_PATH, () => {
-      clearTimeout(agTimer);
-      agTimer = setTimeout(() => broadcast({ type: 'aggregate' }), 200);
-    });
-  } catch {}
-}
-
-// ── HTML ─────────────────────────────────────────────────────────────────────
+//   CSS                     — full stylesheet, dark + light themes
+//   LANG_PALETTE            — per-language color JSON consumed by the
+//                             client-side language stack chart
+//   HTML                    — the full HTML scaffold, interpolating
+//                             both of the above plus the browser-side
+//                             JS produced by HTML_SCRIPT_PLACEHOLDER()
+//   HTML_SCRIPT_PLACEHOLDER — the client-side runtime (SSE wiring,
+//                             range selector, drilldowns, theme toggle,
+//                             charts, keyboard shortcuts)
+//
+// Only HTML is exported. Edit the three blocks below in isolation.
 
 const CSS = `
 :root {
@@ -661,7 +410,9 @@ const LANG_PALETTE = `{
   'Config': '#888', 'Git': '#f1502f',
 }`;
 
-const HTML = String.raw`<!doctype html>
+function buildHtml({ port }) {
+  const PORT = port;
+  return String.raw`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -933,6 +684,7 @@ ${HTML_SCRIPT_PLACEHOLDER()}
 </script>
 </body>
 </html>`;
+}
 
 function HTML_SCRIPT_PLACEHOLDER() {
   return `(() => {
@@ -1522,74 +1274,4 @@ function HTML_SCRIPT_PLACEHOLDER() {
 })();`;
 }
 
-// ── Server ───────────────────────────────────────────────────────────────────
-
-function parseUrl(rawUrl) {
-  const url = new URL(rawUrl, 'http://x');
-  return { path: url.pathname, query: Object.fromEntries(url.searchParams) };
-}
-
-const server = createServer((req, res) => {
-  const { path, query } = parseUrl(req.url);
-  const key = `${req.method} ${path}`;
-
-  // SSE endpoint.
-  if (req.method === 'GET' && path === '/events') {
-    res.writeHead(200, {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-store',
-      'connection': 'keep-alive',
-    });
-    res.write(': hello\n\n');
-    sseClients.add(res);
-    req.on('close', () => sseClients.delete(res));
-    return;
-  }
-
-  // Project drilldown.
-  if (req.method === 'GET' && path.startsWith('/api/project/')) {
-    const name = decodeURIComponent(path.slice('/api/project/'.length));
-    const result = projectDrilldown(name);
-    res.writeHead(result ? 200 : 404, JSON_HEADERS);
-    res.end(JSON.stringify(result || { error: 'not found' }));
-    return;
-  }
-
-  // Day detail.
-  if (req.method === 'GET' && path.startsWith('/api/day/')) {
-    const day = decodeURIComponent(path.slice('/api/day/'.length));
-    const result = dayDetail(day);
-    res.writeHead(result ? 200 : 404, JSON_HEADERS);
-    res.end(JSON.stringify(result || { error: 'not found' }));
-    return;
-  }
-
-  // Generic API routes.
-  const handler = ROUTES.get(key);
-  if (handler) return handler(req, res, { query });
-
-  if (req.method === 'GET' && (path === '/' || path === '/index.html')) {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end(HTML);
-    return;
-  }
-
-  res.writeHead(404).end('not found');
-});
-
-watchSources();
-
-server.listen(PORT, '127.0.0.1', () => {
-  const url = `http://127.0.0.1:${PORT}`;
-  console.log(`◆ Claude RPC dashboard: ${url}`);
-  console.log('  Ctrl-C to stop.');
-  if (!process.env.CLAUDE_RPC_NO_OPEN) {
-    const opener = process.platform === 'win32' ? `start "" "${url}"`
-      : process.platform === 'darwin' ? `open "${url}"`
-      : `xdg-open "${url}"`;
-    exec(opener, () => {});
-  }
-});
-
-process.on('SIGINT', () => process.exit(0));
-process.on('SIGTERM', () => process.exit(0));
+export { buildHtml };
