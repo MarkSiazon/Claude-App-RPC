@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>claude-rpc · card examples</title>
+<style>
+  :root {
+    --paper:    #f4ede0;
+    --paper-2:  #ebe2d2;
+    --paper-3:  #e1d6c0;
+    --ink:      #1a1611;
+    --ink-mute: #5c5147;
+    --rust:     #c2491e;
+    --tape:     #f2d76e;
+    --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    --font-disp: "Space Grotesk", "Inter", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-disp);
+    background-image: radial-gradient(circle at 1px 1px, rgba(26,22,17,0.07) 1px, transparent 0);
+    background-size: 22px 22px;
+    min-height: 100vh;
+  }
+  a { color: var(--rust); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 40px 28px 80px; }
+  nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 18px; margin-bottom: 36px;
+    border-bottom: 1.5px solid var(--ink);
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  nav .back { text-decoration: none; padding: 4px 9px; border: 1.5px solid var(--ink); background: var(--paper); box-shadow: 1.5px 1.5px 0 var(--ink); transition: transform 0.08s; }
+  nav .back:hover { transform: translate(-1px, -1px); box-shadow: 2.5px 2.5px 0 var(--ink); }
+  h1 {
+    font-size: clamp(2rem, 4vw, 2.8rem);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    margin: 0 0 8px;
+  }
+  .lead { color: var(--ink-mute); max-width: 620px; margin: 0 0 28px; line-height: 1.65; font-family: -apple-system, Inter, system-ui, sans-serif; }
+  .sticker {
+    display: inline-block;
+    background: var(--tape);
+    border: 1.5px solid var(--ink);
+    padding: 4px 11px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    box-shadow: 2px 2px 0 var(--ink);
+    transform: rotate(-1deg);
+    margin-bottom: 18px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-top: 28px;
+  }
+  .card {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: 3px 3px 0 var(--ink), 0 12px 20px -8px rgba(26,22,17,0.2);
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card:hover {
+    transform: translate(-2px, -3px) rotate(-0.3deg);
+    box-shadow: 5px 5px 0 var(--ink), 0 18px 28px -10px rgba(26,22,17,0.3);
+  }
+  .card-head {
+    padding: 12px 18px;
+    background: var(--paper-2);
+    border-bottom: 1.5px solid var(--ink);
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .card-head .name { font-weight: 700; }
+  .card-head .raw { color: var(--ink-mute); }
+  .card-head .raw:hover { color: var(--ink); }
+  .card-body {
+    padding: 16px 14px;
+    background:
+      repeating-linear-gradient(45deg, transparent 0 8px, rgba(26,22,17,0.03) 8px 9px);
+    border-bottom: 1.5px solid var(--ink);
+  }
+  .card-body img {
+    display: block; width: 100%; height: auto;
+    background: var(--paper);
+  }
+  .card-foot {
+    padding: 10px 18px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-mute);
+    background: var(--paper-3);
+  }
+  .endpoint {
+    margin-top: 56px;
+    padding: 22px 24px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+  .endpoint h2 { color: var(--paper); margin: 0 0 10px; font-size: 1.2rem; }
+  .endpoint p { margin: 0 0 14px; color: rgba(244,237,224,0.78); font-family: -apple-system, Inter, system-ui, sans-serif; line-height: 1.6; }
+  .endpoint code {
+    background: rgba(244,237,224,0.12);
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+  }
+  .endpoint pre {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(244,237,224,0.18);
+    padding: 12px 14px;
+    margin: 8px 0 0;
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--paper);
+    border-radius: 0;
+  }
+
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <a class="back" href="../">← back to claude-rpc</a>
+  <span>card · examples</span>
+</nav>
+
+<span class="sticker">poster preview</span>
+<h1>year / month / week on claude</h1>
+<p class="lead">
+  Live-rendered SVG posters from a real <code>claude-rpc</code> aggregate.
+  Each card is ~880×540, monospace-heavy, designed to be screenshotted and
+  shared. Modern Discord and GitHub render the SVG inline — no PNG step
+  needed. Below: four ranges, all from the same lifetime dataset.
+</p>
+
+<div class="grid">
+
+  <div class="card">
+    <div class="card-head">
+      <span class="name">year on claude</span>
+      <a class="raw" href="year-on-claude.svg" target="_blank">raw svg ↗</a>
+    </div>
+    <div class="card-body">
+      <img src="year-on-claude.svg" alt="year-on-claude SVG card" />
+    </div>
+    <div class="card-foot">claude-rpc card --range year --out year.svg</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="name">month on claude</span>
+      <a class="raw" href="month-on-claude.svg" target="_blank">raw svg ↗</a>
+    </div>
+    <div class="card-body">
+      <img src="month-on-claude.svg" alt="month-on-claude SVG card" />
+    </div>
+    <div class="card-foot">claude-rpc card --range month --out month.svg</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="name">week on claude</span>
+      <a class="raw" href="week-on-claude.svg" target="_blank">raw svg ↗</a>
+    </div>
+    <div class="card-body">
+      <img src="week-on-claude.svg" alt="week-on-claude SVG card" />
+    </div>
+    <div class="card-foot">claude-rpc card --range week --out week.svg</div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="name">all-time on claude</span>
+      <a class="raw" href="all-on-claude.svg" target="_blank">raw svg ↗</a>
+    </div>
+    <div class="card-body">
+      <img src="all-on-claude.svg" alt="all-time-on-claude SVG card" />
+    </div>
+    <div class="card-foot">claude-rpc card --range all --out all-time.svg</div>
+  </div>
+
+</div>
+
+<div class="endpoint">
+  <h2>also live on the running daemon</h2>
+  <p>
+    When <code>claude-rpc serve</code> is up, the same SVGs are served by
+    the local dashboard — re-rendered every request so they're always
+    current. Drop the URL into a README or a Discord message.
+  </p>
+  <pre>http://127.0.0.1:47474/api/card.svg?range=year
+http://127.0.0.1:47474/api/card.svg?range=month
+http://127.0.0.1:47474/api/card.svg?range=week
+http://127.0.0.1:47474/api/card.svg?range=all</pre>
+</div>
+
+</div>
+</body>
+</html>
