@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync, watch, appendFileS
 import { Client } from '@xhayper/discord-rpc';
 import { readState } from './state.js';
 import { buildVars, fillTemplate, framePasses, applyIdle } from './format.js';
-import { scan, readAggregate, findLiveSessions } from './scanner.js';
+import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH } from './paths.js';
 
@@ -82,6 +82,23 @@ function buildActivity(opts = {}) {
   // see ongoing transcript activity, not just this daemon's hook state.
   state.liveSessions = opts.liveSessions || liveSessions;
   state = applyIdle(state, config);
+
+  // Pull live session tokens from the transcript file. Claude Code's hook
+  // payloads don't include usage data, so state.tokens from PostToolUse
+  // events is always {0,0,0,0}. The transcript is the only running source
+  // of truth — readSessionTokens is mtime-cached, so this is cheap unless
+  // the session is actively writing.
+  if (state.cwd && state.status !== 'stale') {
+    const cwdLower = state.cwd.toLowerCase();
+    const match = (state.liveSessions || []).find(s =>
+      (s.cwd || '').toLowerCase() === cwdLower
+    );
+    if (match) {
+      const t = readSessionTokens(match.path);
+      if (t) state.tokens = t;
+    }
+  }
+
   const vars = buildVars(state, config, opts.aggregate || aggregate);
   const p = config.presence || {};
 

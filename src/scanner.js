@@ -350,6 +350,47 @@ function readTranscriptCwd(path, mtimeMs) {
   return cwd;
 }
 
+// Per-transcript token cache. Reading a multi-MB .jsonl on every push tick
+// (4s) would be wasteful, so we only re-parse when the file's mtime has
+// advanced since the last read.
+const sessionTokenCache = new Map();  // path → { mtime, tokens }
+
+// Sum input/output/cache tokens from a single transcript JSONL.
+//
+// We need this because Claude Code's hook payloads don't carry usage data —
+// tokens are an assistant-message field, not a tool-call field, so PostToolUse
+// hooks fire with no `usage` block to capture. The live transcript is the
+// only source of truth for the current session's running token count.
+//
+// Returns null when the file can't be read; { input, output, cacheRead,
+// cacheWrite } otherwise. Cached by mtime — repeat calls with no file
+// activity are O(1).
+export function readSessionTokens(path) {
+  let st;
+  try { st = statSync(path); } catch { return null; }
+  const cached = sessionTokenCache.get(path);
+  if (cached && cached.mtime === st.mtimeMs) return cached.tokens;
+
+  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  try {
+    const raw = readFileSync(path, 'utf8');
+    for (const line of raw.split('\n')) {
+      if (!line) continue;
+      const r = safeJson(line);
+      if (!r || r.type !== 'assistant') continue;
+      const u = r.message?.usage;
+      if (!u) continue;
+      tokens.input      += u.input_tokens || 0;
+      tokens.output     += u.output_tokens || 0;
+      tokens.cacheRead  += u.cache_read_input_tokens || 0;
+      tokens.cacheWrite += u.cache_creation_input_tokens || 0;
+    }
+  } catch { return null; }
+
+  sessionTokenCache.set(path, { mtime: st.mtimeMs, tokens });
+  return tokens;
+}
+
 // Detect live sessions by transcript mtime. Returns array of { path, project, cwd, mtime, ageSec }.
 // A session is "live" if its .jsonl was modified within thresholdMs.
 export function findLiveSessions({ projectsDir = CLAUDE_PROJECTS, thresholdMs = 90_000 } = {}) {
