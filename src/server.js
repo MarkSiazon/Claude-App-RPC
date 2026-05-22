@@ -19,6 +19,7 @@ import { readAggregate, findLiveSessions, dayKey } from './scanner.js';
 import { CONFIG_PATH, STATE_PATH, AGGREGATE_PATH } from './paths.js';
 import { generateInsights } from './insights.js';
 import { badgeSvg } from './badge.js';
+import { renderCard } from './card.js';
 
 const PORT = Number(process.env.CLAUDE_RPC_PORT) || 47474;
 
@@ -217,6 +218,16 @@ ROUTES.set('GET /api/badge.svg', (req, res, { query }) => {
     range: query.range || '7d',
     label: query.label,
   });
+  res.writeHead(200, {
+    'content-type': 'image/svg+xml; charset=utf-8',
+    'cache-control': 'max-age=60, public',
+  });
+  res.end(svg);
+});
+// Poster-style card. `?range=year|month|week|all` (default year).
+ROUTES.set('GET /api/card.svg', (req, res, { query }) => {
+  const agg = readAggregate();
+  const svg = renderCard(agg, { range: query.range || 'year' });
   res.writeHead(200, {
     'content-type': 'image/svg+xml; charset=utf-8',
     'cache-control': 'max-age=60, public',

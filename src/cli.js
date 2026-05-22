@@ -666,6 +666,37 @@ function doBadge(argv) {
   }
 }
 
+// Poster-style SVG card. Bigger sibling of `badge` — shareable summary
+// for a range (year / month / week / all-time). Output is SVG only;
+// screenshot or convert to PNG offline if needed.
+function parseCardArgs(argv) {
+  const out = { range: 'year', out: '' };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--range' || a === '-r') out.range = argv[++i];
+    else if (a === '--out' || a === '-o') out.out = argv[++i];
+  }
+  return out;
+}
+
+async function doCard(argv) {
+  const opts = parseCardArgs(argv);
+  const aggregate = readAggregate();
+  if (!aggregate) {
+    console.error(`${c.yellow}No aggregate yet. Run ${c.cyan}claude-rpc scan${c.reset} first.`);
+    process.exit(1);
+  }
+  const { renderCard } = await import('./card.js');
+  const svg = renderCard(aggregate, { range: opts.range });
+  if (opts.out) {
+    writeFileSync(opts.out, svg);
+    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
+    console.log(`${c.dim}Tip: open in a browser, right-click → Save as PNG. Or drop straight into a Discord message — it'll render inline.${c.reset}`);
+  } else {
+    process.stdout.write(svg);
+  }
+}
+
 function tailLog() {
   if (!existsSync(LOG_PATH)) {
     console.log(`${c.yellow}No log yet at ${LOG_PATH}${c.reset}`);
@@ -708,6 +739,7 @@ function help() {
     ['backfill',  'Import transcripts from any folder (e.g. a backup)'],
     ['insights',  'Auto-generated insights from your history'],
     ['badge',     'Render a Shields-style SVG (--metric --range --out)'],
+    ['card',      'Render a poster-style SVG summary (--range year|month|week|all)'],
     ['doctor',    'Run a diagnostic checklist — common-failure triage'],
     ['tail',      'Tail the daemon log file'],
     ['daemon',    'Run daemon in foreground (debug)'],
@@ -762,6 +794,7 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'backfill':  doBackfill(process.argv.slice(3)); break;
     case 'insights':  showInsights(); break;
     case 'badge':     doBadge(process.argv.slice(3)); break;
+    case 'card':      await doCard(process.argv.slice(3)); break;
     case 'doctor': {
       const { runDoctor } = await import('./doctor.js');
       process.exit(runDoctor());

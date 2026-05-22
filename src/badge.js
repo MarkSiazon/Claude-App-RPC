@@ -14,11 +14,26 @@ const COLORS = {
   files:  { left: '#555', right: '#aa6' },     // olive
 };
 
+// Resolve a range token to a count of days back from today.
+//   'all'                → entire history
+//   'year' / 'y'         → 365 days
+//   'month' / 'mo' / 'm' → 30 days
+//   'week' / 'w'         → 7 days
+//   numeric ('30d', '7') → that many days
+function rangeToDays(range) {
+  if (!range || range === 'all') return null;             // null = unbounded
+  if (/^(year|1y|y|365d?)$/i.test(range)) return 365;
+  if (/^(month|1mo|mo|m|30d?)$/i.test(range)) return 30;
+  if (/^(week|1w|w|7d?)$/i.test(range)) return 7;
+  if (/^(day|1d|d|24h|today)$/i.test(range)) return 1;
+  const n = parseInt(range, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 function pickWindow(byDay, range) {
   if (!byDay) return [];
-  if (range === 'all') return Object.entries(byDay);
-  const days = parseInt(range, 10);
-  if (!Number.isFinite(days) || days <= 0) return Object.entries(byDay);
+  const days = rangeToDays(range);
+  if (days === null) return Object.entries(byDay);          // 'all'
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const out = [];
   for (let i = 0; i < days; i++) {
@@ -28,6 +43,20 @@ function pickWindow(byDay, range) {
   }
   return out;
 }
+
+// Pretty label for a range — used as badge subtitle.
+//   'year' → 'year'   '30' → '30d'   'all' → 'all-time'
+function rangeLabel(range) {
+  if (!range || range === 'all') return 'all-time';
+  if (/^(year|1y|y|365d?)$/i.test(range)) return 'year';
+  if (/^(month|1mo|mo|m|30d?)$/i.test(range)) return 'month';
+  if (/^(week|1w|w|7d?)$/i.test(range)) return 'week';
+  if (/^(day|1d|d|24h|today)$/i.test(range)) return 'today';
+  const n = parseInt(range, 10);
+  return Number.isFinite(n) && n > 0 ? `${n}d` : range;
+}
+
+export { rangeToDays, rangeLabel, pickWindow };
 
 function fmtHoursLabel(ms) {
   if (!ms) return '0h';
@@ -49,34 +78,33 @@ function fmtNum(n) {
 function valueFor(aggregate, metric, range) {
   const a = aggregate || {};
   const window = pickWindow(a.byDay, range);
-
-  const rangeLabel = range === 'all' ? 'all-time' : range;
+  const rl = rangeLabel(range);
 
   switch (metric) {
     case 'hours': {
       const ms = window.reduce((s, [, d]) => s + (d.activeMs || 0), 0);
-      return { label: `claude · ${rangeLabel}`, value: fmtHoursLabel(ms) };
+      return { label: `claude · ${rl}`, value: fmtHoursLabel(ms) };
     }
     case 'streak': {
       return { label: 'streak', value: `${a.streak || 0} days` };
     }
     case 'cost': {
       const cost = window.reduce((s, [, d]) => s + (d.cost || 0), 0);
-      return { label: `claude cost · ${rangeLabel}`, value: fmtCost(cost) };
+      return { label: `claude cost · ${rl}`, value: fmtCost(cost) };
     }
     case 'lines': {
       const lines = window.reduce((s, [, d]) => s + (d.linesAdded || 0), 0);
-      return { label: `lines · ${rangeLabel}`, value: fmtNum(lines) };
+      return { label: `lines · ${rl}`, value: fmtNum(lines) };
     }
     case 'prompts': {
       const p = window.reduce((s, [, d]) => s + (d.userMessages || 0), 0);
-      return { label: `prompts · ${rangeLabel}`, value: fmtNum(p) };
+      return { label: `prompts · ${rl}`, value: fmtNum(p) };
     }
     case 'tokens': {
       const t = window.reduce((s, [, d]) =>
         s + (d.inputTokens || 0) + (d.outputTokens || 0)
         + (d.cacheReadTokens || 0) + (d.cacheWriteTokens || 0), 0);
-      return { label: `tokens · ${rangeLabel}`, value: fmtNum(t) };
+      return { label: `tokens · ${rl}`, value: fmtNum(t) };
     }
     case 'files': {
       return { label: 'files touched', value: fmtNum(a.uniqueFiles || 0) };
