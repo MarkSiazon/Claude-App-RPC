@@ -10,8 +10,8 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import {
-  CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR,
-  HOOK_SCRIPT, IS_PACKAGED,
+  CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR, ROOT,
+  HOOK_SCRIPT, IS_PACKAGED, IS_NPM_INSTALL,
   CANONICAL_EXE, CANONICAL_INSTALL_DIR, CANONICAL_EXE_NAME,
 } from './paths.js';
 import { DEFAULT_CONFIG } from './default-config.js';
@@ -42,10 +42,16 @@ function isOurHookCommand(cmd) {
 export function installHooks(exePath) {
   const settings = readJson(CLAUDE_SETTINGS, {});
   settings.hooks = settings.hooks || {};
-  // Packaged: `"<exe>" hook <event>`. Dev: `node "<src/hook.js>" <event>`.
+  // Three modes, three shapes:
+  //   packaged → `"<exe>" hook <event>`         (canonical exe, no node)
+  //   npm     → `claude-rpc hook <event>`       (bin shim resolves through PATH;
+  //              survives `npm update` and nvm version switches)
+  //   dev     → `node "<src/hook.js>" <event>`  (cloned-source iteration)
   const cmdFor = IS_PACKAGED
     ? (event) => `"${exePath}" hook ${event}`
-    : (event) => `node "${HOOK_SCRIPT.replace(/\\/g, '/')}" ${event}`;
+    : IS_NPM_INSTALL
+      ? (event) => `claude-rpc hook ${event}`
+      : (event) => `node "${HOOK_SCRIPT.replace(/\\/g, '/')}" ${event}`;
 
   for (const event of EVENTS) {
     const bucket = settings.hooks[event] = settings.hooks[event] || [];
@@ -181,6 +187,25 @@ export function ensureCanonicalExe(currentExe) {
 }
 
 export function seedConfig() {
+  // npm-install upgrade path: prior v0.3.8 (and earlier) seeded config inside
+  // node_modules/claude-rpc/config.json. New shape puts it under USER_CONFIG_DIR.
+  // If the legacy file exists and the new one doesn't, copy first so the user
+  // doesn't lose their clientId.
+  if (IS_NPM_INSTALL) {
+    const legacyPath = join(ROOT, 'config.json');
+    try {
+      if (!existsSync(CONFIG_PATH) && existsSync(legacyPath)) {
+        mkdirSync(USER_CONFIG_DIR, { recursive: true });
+        copyFileSync(legacyPath, CONFIG_PATH);
+        console.log(`  config migrated → ${CONFIG_PATH}`);
+        console.log(`    (was: ${legacyPath} — safe to delete on next 'npm update')`);
+        return false;
+      }
+    } catch (e) {
+      console.warn(`  ! legacy-config migration skipped: ${e.message}`);
+    }
+  }
+
   if (existsSync(CONFIG_PATH)) {
     console.log(`  config exists → ${CONFIG_PATH}`);
     return false;
@@ -264,8 +289,18 @@ export async function install({ exePath, withStartup = true } = {}) {
     catch (e) { console.warn(`  startup entry failed: ${e.message}`); }
   }
   console.log('\nDone.');
-  console.log(`Edit ${CONFIG_PATH} to set your Discord clientId, then either reboot or run:`);
-  console.log(`  "${target}" daemon`);
+  console.log(`Edit ${CONFIG_PATH} to set your Discord clientId, then run:`);
+  // Per-mode "start" instructions — packaged exe takes a daemon subcommand,
+  // the npm bin shim handles `start` as a subcommand of itself, and dev
+  // mode runs the daemon script directly through node.
+  if (IS_PACKAGED) {
+    console.log(`  "${target}" daemon`);
+  } else if (IS_NPM_INSTALL) {
+    console.log(`  claude-rpc start`);
+  } else {
+    console.log(`  node "${join(ROOT, 'src', 'daemon.js').replace(/\\/g, '/')}"`);
+    console.log(`  # or: claude-rpc start  (if you've run \`npm link\`)`);
+  }
 }
 
 export async function uninstall() {

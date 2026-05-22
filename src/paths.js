@@ -11,6 +11,15 @@ export const IS_PACKAGED = typeof process.pkg !== 'undefined'
 
 export const ROOT = resolve(__dirname, '..');
 
+// True when we're running from a node_modules tree — `npm install -g claude-rpc`
+// or a local project's `node_modules`. Distinct from packaged mode (single
+// SEA exe) and dev mode (cloned repo, no node_modules wrapper).
+export const IS_NPM_INSTALL = !IS_PACKAGED && /[\\/]node_modules[\\/]/i.test(ROOT);
+
+// "Installed" covers both real distribution paths — config and runtime
+// artifacts live outside the install tree so they survive package updates.
+export const IS_INSTALLED = IS_PACKAGED || IS_NPM_INSTALL;
+
 // In packaged mode, persist user config in the per-OS app-data directory.
 // In dev mode, keep config.json next to the source tree for easy iteration.
 //   Windows: %APPDATA%\claude-rpc\
@@ -28,7 +37,11 @@ function userConfigDir() {
   return join(xdg, 'claude-rpc');
 }
 export const USER_CONFIG_DIR = userConfigDir();
-export const CONFIG_PATH = IS_PACKAGED
+// Persist config under USER_CONFIG_DIR whenever we're "installed" — packaged
+// exe OR npm-installed. The dev path keeps config next to source for easy
+// iteration. Putting it in node_modules would mean every `npm update` blows
+// away the user's clientId.
+export const CONFIG_PATH = IS_INSTALLED
   ? join(USER_CONFIG_DIR, 'config.json')
   : join(ROOT, 'config.json');
 
