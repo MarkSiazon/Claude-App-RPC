@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — Discord Rich Presence for Claude Code</title>
-<meta name="description" content="Live model, project, current tool, tokens, and lifetime stats from Claude Code — straight to your Discord profile. Driven by Claude Code's hook system." />
+<title>claude-rpc — discord rich presence for claude code</title>
+<meta name="description" content="A tiny Node daemon that puts your live Claude Code session — model, project, current tool, tokens, lifetime stats — into your Discord profile. Built by one person on weekends." />
 
-<meta property="og:title" content="claude-rpc — Discord Rich Presence for Claude Code" />
-<meta property="og:description" content="Live model, project, tokens and lifetime stats from Claude Code, in your Discord profile." />
+<meta property="og:title" content="claude-rpc — your Claude Code sessions, live on Discord" />
+<meta property="og:description" content="Live model, project, tokens and lifetime stats from Claude Code, in your Discord profile. Built solo." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://github.com/rar-file/claude-rpc" />
 <meta property="og:image" content="https://cdn.qualit.ly/clawd-working-building.gif" />
@@ -16,264 +16,884 @@
 <link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
 
 <style>
+  /* ─── palette: warm paper + ink + terracotta ───────────────────── */
   :root {
-    --bg:        #0e0e10;
-    --bg-card:   #17171b;
-    --bg-card-2: #1d1d22;
-    --fg:        #ececf1;
-    --fg-dim:    #9aa0a6;
-    --fg-mute:   #6b7280;
-    --border:    #26262c;
-    --accent:    #d97757;
-    --accent-2:  #b9603f;
-    --discord:   #5865f2;
-    --green:     #43853d;
-    --radius:    14px;
-    --max:       1080px;
-    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --paper:     #f4ede0;
+    --paper-2:   #ebe2d2;
+    --paper-3:   #e1d6c0;
+    --ink:       #1a1611;
+    --ink-soft:  #2d2520;
+    --ink-mute:  #5c5147;
+    --ink-faint: #8a7c6d;
+
+    --rust:      #c2491e;
+    --rust-2:    #a13a16;
+    --rust-3:    #f08a4a;
+    --rust-pale: #f6dccb;
+
+    --blurple:   #5865f2;
+    --grass:     #4a9462;
+    --tape:      #f2d76e;
+    --tape-2:    #e9c854;
+
+    --shadow-sm: 0 1px 0 var(--ink), 0 2px 0 rgba(26,22,17,0.15);
+    --shadow:    0 2px 0 var(--ink), 0 6px 0 rgba(26,22,17,0.10);
+    --shadow-lg: 0 4px 0 var(--ink), 0 14px 24px -10px rgba(26,22,17,0.25);
+
+    --max:       1100px;
+
+    --font-disp: "Space Grotesk", "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", "Cascadia Mono", ui-monospace, Menlo, Consolas, monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
   }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    background: radial-gradient(ellipse at 50% -10%, #2a1a14 0%, var(--bg) 50%) no-repeat;
-    color: var(--fg);
-    font-family: var(--font);
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
     font-size: 16px;
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+    overflow-x: hidden;
   }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  code { font-family: var(--mono); font-size: 0.9em; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; color: var(--fg); }
 
-  .wrap { max-width: var(--max); margin: 0 auto; padding: 28px 24px 80px; }
+  /* paper grain + faint dot grid */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    opacity: 0.5;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(26,22,17,0.08) 1px, transparent 0);
+    background-size: 22px 22px;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    opacity: 0.07; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
 
-  /* ── Nav ──────────────────────────────────────────── */
-  nav { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 36px; }
+  a { color: var(--rust); text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+  a:hover { color: var(--rust-2); }
+
+  code, .mono { font-family: var(--font-mono); }
+  code {
+    font-size: 0.86em;
+    background: var(--paper-3);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--ink);
+    box-shadow: 1px 1px 0 var(--ink);
+    margin: 0 2px;
+  }
+
+  /* ─── layout ───────────────────────────────────────────────────── */
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 20px 28px 80px; position: relative; z-index: 1; }
+  section { padding: 80px 0; position: relative; }
+  section + section { border-top: 1.5px dashed var(--ink); }
+
+  /* ─── marquee ticker bar at very top ──────────────────────────── */
+  .ticker-bar {
+    background: var(--ink); color: var(--paper);
+    font-family: var(--font-mono);
+    font-size: 0.78rem; letter-spacing: 0.04em;
+    overflow: hidden; white-space: nowrap;
+    border-bottom: 2px solid var(--rust);
+    position: relative; z-index: 2;
+  }
+  .ticker-track {
+    display: inline-block; padding: 8px 0;
+    animation: ticker 38s linear infinite;
+    will-change: transform;
+  }
+  .ticker-track span { padding: 0 28px; }
+  .ticker-track span.h { color: var(--rust-3); }
+  .ticker-track span.g { color: var(--tape); }
+  .ticker-bar:hover .ticker-track { animation-play-state: paused; }
+  @keyframes ticker {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+  }
+
+  /* ─── nav ──────────────────────────────────────────────────────── */
+  nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 0 20px;
+    border-bottom: 1.5px solid var(--ink);
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+  }
   .brand { display: flex; align-items: center; gap: 12px; }
-  .brand img { width: 32px; height: 32px; border-radius: 6px; }
-  .brand .name { font-weight: 600; font-size: 1.05rem; letter-spacing: -0.01em; }
-  nav .links a { color: var(--fg-dim); margin-left: 22px; font-size: 0.93rem; }
-  nav .links a:hover { color: var(--fg); text-decoration: none; }
-
-  /* ── Hero ─────────────────────────────────────────── */
-  .hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: 56px; align-items: center; padding: 24px 0 56px; }
-  .hero h1 {
-    font-size: clamp(2.2rem, 4.5vw, 3.4rem);
-    line-height: 1.05;
-    letter-spacing: -0.025em;
-    margin: 0 0 18px;
-    font-weight: 700;
+  .brand-mark {
+    width: 38px; height: 38px;
+    background: var(--paper-2);
+    border: 1.5px solid var(--ink);
+    border-radius: 0;
+    transform: rotate(-3deg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
   }
-  .hero h1 .accent { color: var(--accent); }
-  .hero p.lead { color: var(--fg-dim); font-size: 1.13rem; margin: 0 0 28px; max-width: 540px; }
-  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 28px; }
-  .badge { font-size: 0.78rem; padding: 4px 10px; border-radius: 999px; background: var(--bg-card); color: var(--fg-dim); border: 1px solid var(--border); }
-  .badge strong { color: var(--fg); }
+  .brand-mark img { width: 100%; height: 100%; display: block; }
+  .brand .name {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+  }
+  .brand .vstamp {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    background: var(--ink); color: var(--paper);
+    padding: 2px 8px;
+    border-radius: 0;
+    transform: rotate(2deg);
+    margin-left: 4px;
+  }
+  .nav-links { display: flex; gap: 18px; align-items: center; }
+  .nav-links a { color: var(--ink); text-decoration: none; font-size: 0.86rem; padding: 4px 8px; }
+  .nav-links a:hover { background: var(--ink); color: var(--paper); text-decoration: none; }
+  .nav-tag {
+    font-size: 0.7rem; padding: 3px 8px;
+    background: var(--tape); color: var(--ink);
+    border: 1.5px solid var(--ink);
+    transform: rotate(-2deg);
+    text-decoration: none !important;
+    box-shadow: 1px 1px 0 var(--ink);
+  }
 
-  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  /* ─── shared bits ──────────────────────────────────────────────── */
+  .kicker {
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--ink-mute);
+    margin-bottom: 12px;
+    display: inline-block;
+  }
+  .kicker::before { content: "[ "; }
+  .kicker::after  { content: " ]"; }
+
+  h1, h2, h3 { font-family: var(--font-disp); font-weight: 800; color: var(--ink); letter-spacing: -0.025em; line-height: 1.05; }
+  h2 { font-size: clamp(1.9rem, 3.4vw, 2.6rem); margin: 0 0 14px; }
+  h3 { font-size: 1.1rem; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .lead {
+    color: var(--ink-soft);
+    max-width: 620px;
+    font-size: 1.04rem;
+    line-height: 1.7;
+    margin: 0 0 36px;
+  }
+
+  /* sticker label — used throughout for that "tape labels on a binder" feel */
+  .sticker {
+    display: inline-block;
+    background: var(--tape);
+    color: var(--ink);
+    padding: 4px 12px;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 1.5px solid var(--ink);
+    box-shadow: 2px 2px 0 var(--ink);
+    transform: rotate(-1.5deg);
+  }
+  .sticker.rust { background: var(--rust); color: var(--paper); }
+  .sticker.cream { background: var(--paper); color: var(--ink); }
+  .sticker.tilt-r { transform: rotate(1.5deg); }
+  .sticker.big { font-size: 0.92rem; padding: 6px 14px; }
+
+  /* ─── buttons (chunky, with offset shadow) ─────────────────────── */
   .btn {
     display: inline-flex; align-items: center; gap: 10px;
     padding: 12px 22px;
-    background: var(--accent); color: #fff;
-    border-radius: 10px; font-weight: 600; font-size: 0.98rem;
-    border: 1px solid var(--accent);
-    transition: transform 0.08s ease, background 0.2s ease;
+    background: var(--ink); color: var(--paper);
+    border: 2px solid var(--ink);
+    font-family: var(--font-disp);
+    font-weight: 700;
+    font-size: 0.98rem;
+    letter-spacing: -0.005em;
+    box-shadow: var(--shadow);
+    transition: transform 0.08s ease, box-shadow 0.12s ease;
+    text-decoration: none;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
   }
-  .btn:hover { background: var(--accent-2); border-color: var(--accent-2); text-decoration: none; transform: translateY(-1px); }
-  .btn.ghost { background: transparent; color: var(--fg); border-color: var(--border); }
-  .btn.ghost:hover { background: var(--bg-card); }
-  .btn .sub { font-size: 0.78rem; opacity: 0.75; font-weight: 500; }
+  .btn:hover { transform: translate(-1px, -1px); box-shadow: var(--shadow-lg); text-decoration: none; color: var(--paper); }
+  .btn:active { transform: translate(1px, 2px); box-shadow: var(--shadow-sm); }
+  .btn .sub { font-size: 0.78rem; opacity: 0.78; font-weight: 500; font-family: var(--font-mono); }
+  .btn.rust { background: var(--rust); color: var(--paper); }
+  .btn.rust:hover { background: var(--rust-2); }
+  .btn.cream { background: var(--paper); color: var(--ink); }
+  .btn.cream:hover { background: var(--paper-2); color: var(--ink); }
+  .btn .arrow { transition: transform 0.12s ease; }
+  .btn:hover .arrow { transform: translateX(3px); }
+  .btn.small { padding: 8px 16px; font-size: 0.88rem; }
 
-  .hero-art { position: relative; }
-  .hero-art img { width: 100%; border-radius: var(--radius); border: 1px solid var(--border); display: block; }
+  /* ─── hero ─────────────────────────────────────────────────────── */
+  .hero {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 56px;
+    align-items: center;
+    padding: 64px 0 80px;
+    position: relative;
+  }
+  .hero .sticker { margin-bottom: 22px; }
 
-  /* ── Section heads ───────────────────────────────── */
-  section { padding: 56px 0; border-top: 1px solid var(--border); }
-  h2 { font-size: 1.7rem; letter-spacing: -0.02em; margin: 0 0 6px; font-weight: 700; }
-  .kicker { color: var(--fg-mute); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px; }
-  .section-lead { color: var(--fg-dim); max-width: 620px; margin: 0 0 32px; font-size: 1rem; }
+  h1 {
+    font-family: var(--font-disp);
+    font-size: clamp(2.6rem, 6vw, 4.4rem);
+    font-weight: 900;
+    line-height: 0.98;
+    letter-spacing: -0.035em;
+    margin: 0 0 22px;
+    color: var(--ink);
+  }
+  h1 .ink-blot {
+    display: inline-block; position: relative;
+    color: var(--rust);
+    padding: 0 6px;
+  }
+  h1 .ink-blot::before {
+    content: ""; position: absolute; inset: 0;
+    background: var(--rust-pale);
+    z-index: -1;
+    transform: skew(-3deg) rotate(-1deg);
+    border-radius: 2px;
+  }
+  h1 .strike { text-decoration: line-through; text-decoration-color: var(--ink-faint); color: var(--ink-mute); font-size: 0.85em; }
+  h1 .wave { display: inline-block; animation: wave 4s ease-in-out infinite; transform-origin: 70% 70%; }
+  @keyframes wave { 0%,60%,100% { transform: rotate(0); } 10% { transform: rotate(14deg); } 20% { transform: rotate(-8deg); } 30% { transform: rotate(14deg); } 40% { transform: rotate(-4deg); } 50% { transform: rotate(10deg); } }
 
-  /* ── Download cards ──────────────────────────────── */
-  .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .hero p.lead { font-size: 1.15rem; max-width: 560px; }
+
+  .cta-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+  .scribble { color: var(--ink-faint); font-family: var(--font-mono); font-size: 0.84rem; }
+  .scribble::before { content: "↳ "; }
+
+  /* polaroid-frame for the hero GIF */
+  .polaroid {
+    background: var(--paper);
+    padding: 14px 14px 56px;
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow-lg);
+    transform: rotate(2.5deg);
+    transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+    position: relative;
+    max-width: 440px; margin-left: auto;
+  }
+  .polaroid:hover { transform: rotate(0); }
+  .polaroid img { width: 100%; display: block; border: 1px solid var(--ink); }
+  .polaroid .caption {
+    position: absolute; bottom: 14px; left: 0; right: 0; text-align: center;
+    font-family: var(--font-mono); font-size: 0.8rem; color: var(--ink-mute);
+  }
+  .polaroid .tape-strip {
+    position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+    width: 90px; height: 26px;
+    background: rgba(242, 215, 110, 0.7);
+    border: 1px solid var(--ink);
+    box-shadow: 1px 1px 0 rgba(26,22,17,0.2);
+  }
+  .polaroid .pin {
+    position: absolute; top: -8px; right: -8px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--rust);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow-sm), inset -3px -3px 0 rgba(0,0,0,0.18);
+    transform: rotate(-15deg);
+  }
+
+  .hero-meta {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    margin-top: 28px;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: var(--ink-mute);
+  }
+  .hero-meta .dot { color: var(--ink-faint); }
+  .hero-meta .ok { color: var(--grass); }
+
+  /* hero install copy box */
+  .copy-box {
+    margin-top: 24px;
+    background: var(--ink); color: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow);
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    display: flex; align-items: center; gap: 12px;
+    max-width: 540px;
+  }
+  .copy-box .ps1 { color: var(--rust-3); }
+  .copy-box .cmd { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .copy-box button {
+    background: var(--paper); color: var(--ink); border: 1.5px solid var(--paper);
+    padding: 4px 12px; font-family: var(--font-mono); font-size: 0.74rem; font-weight: 700;
+    cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .copy-box button:hover { background: var(--tape); border-color: var(--tape); }
+  .copy-box button.copied { background: var(--grass); color: var(--paper); border-color: var(--grass); }
+
+  /* ─── download ─────────────────────────────────────────────────── */
+  .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px; }
   .dl-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 22px 20px;
-    display: flex; flex-direction: column; gap: 8px;
-    transition: border-color 0.2s ease, transform 0.08s ease;
+    position: relative;
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow);
+    padding: 26px 22px 22px;
+    transform: rotate(-0.6deg);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
   }
-  .dl-card.active { border-color: var(--accent); background: linear-gradient(180deg, rgba(217,119,87,0.07) 0%, var(--bg-card) 60%); }
-  .dl-card .os { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 1.02rem; }
-  .dl-card .os .tag { font-size: 0.7rem; padding: 2px 8px; background: var(--accent); color: #fff; border-radius: 999px; letter-spacing: 0.04em; }
-  .dl-card .detail { color: var(--fg-dim); font-size: 0.9rem; margin-bottom: 8px; }
-  .dl-card a.btn { margin-top: auto; padding: 10px 16px; font-size: 0.92rem; }
-  .dl-card a.alt { color: var(--fg-dim); font-size: 0.85rem; }
-  .dl-card a.alt:hover { color: var(--fg); }
-  .dl-card.disabled .btn { background: transparent; color: var(--fg-dim); border-color: var(--border); }
-  .dl-card.disabled .btn:hover { background: var(--bg-card-2); }
-
-  /* ── Feature grid ────────────────────────────────── */
-  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-  .feature {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 22px 22px 20px;
+  .dl-card:nth-child(2) { transform: rotate(0.3deg); }
+  .dl-card:nth-child(3) { transform: rotate(-0.2deg); }
+  .dl-card:hover { transform: rotate(0) translate(-2px, -3px); box-shadow: var(--shadow-lg); }
+  .dl-card.active { background: var(--rust-pale); }
+  .dl-card.active::before {
+    content: "for you"; position: absolute;
+    top: -12px; right: 14px;
+    background: var(--rust); color: var(--paper);
+    font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+    padding: 4px 10px;
+    border: 1.5px solid var(--ink);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    transform: rotate(4deg);
+    box-shadow: var(--shadow-sm);
   }
-  .feature h3 { margin: 0 0 8px; font-size: 1.05rem; letter-spacing: -0.01em; font-weight: 600; }
-  .feature p { margin: 0; color: var(--fg-dim); font-size: 0.93rem; line-height: 1.55; }
+  .dl-os-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  .dl-os-icon {
+    width: 38px; height: 38px;
+    background: var(--ink); color: var(--paper);
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid var(--ink);
+  }
+  .dl-os-icon svg { width: 22px; height: 22px; }
+  .dl-os-name { font-family: var(--font-disp); font-weight: 800; font-size: 1.2rem; letter-spacing: -0.01em; }
+  .dl-detail { color: var(--ink-soft); font-size: 0.94rem; line-height: 1.55; margin-bottom: 14px; }
+  .dl-meta { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-mute); margin-bottom: 16px; }
+  .dl-meta .pipe { color: var(--ink-faint); margin: 0 6px; }
+  .dl-card .btn { width: 100%; justify-content: center; }
+  .dl-card .alt {
+    display: inline-block; margin-top: 12px;
+    font-family: var(--font-mono); font-size: 0.82rem;
+    color: var(--ink-mute); text-decoration-color: var(--ink-faint);
+  }
+  .dl-card .alt:hover { color: var(--ink); }
 
-  /* ── Discord card preview ────────────────────────── */
-  .preview-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; align-items: center; }
-  .dc-card {
+  /* ─── preview / discord card ───────────────────────────────────── */
+  .preview-wrap {
+    display: grid; grid-template-columns: 1.05fr 1fr; gap: 60px;
+    align-items: center;
+  }
+
+  .status-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 22px; }
+  .status-tab {
+    background: var(--paper); color: var(--ink);
+    padding: 7px 14px;
+    border: 1.5px solid var(--ink);
+    font-family: var(--font-mono); font-size: 0.82rem;
+    cursor: pointer; user-select: none;
+    transition: transform 0.08s ease, background 0.16s ease;
+    box-shadow: 2px 2px 0 var(--ink);
+    text-transform: lowercase;
+  }
+  .status-tab:hover { transform: translate(-1px, -1px); background: var(--paper-2); box-shadow: 3px 3px 0 var(--ink); }
+  .status-tab.active { background: var(--rust); color: var(--paper); }
+
+  .preview-note {
+    color: var(--ink-soft);
+    font-size: 0.96rem;
+    line-height: 1.65;
+    padding: 16px 0 0;
+    border-top: 1.5px dashed var(--ink);
+    transition: opacity 0.22s ease;
+  }
+  .preview-note .lbl {
+    font-family: var(--font-mono); font-size: 0.74rem;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--ink-mute);
+    margin-bottom: 6px; display: block;
+  }
+  .preview-note code { background: var(--paper-2); }
+
+  /* a faithful-but-skewed Discord activity card */
+  .dc-mount {
+    display: flex; justify-content: center;
+    position: relative;
+    padding: 24px;
+  }
+  .dc-mount::before {
+    content: "live preview"; position: absolute;
+    top: -2px; right: 16px;
+    background: var(--ink); color: var(--paper);
+    font-family: var(--font-mono); font-size: 0.7rem;
+    padding: 4px 10px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    transform: rotate(2deg);
+    z-index: 2;
+  }
+  .dc-shell {
     background: #2b2d31;
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 8px;
+    padding: 14px 16px 16px;
     color: #fff;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-    border: 1px solid #1f2024;
-    font-family: var(--font);
-    transition: opacity 0.3s ease;
+    box-shadow:
+      0 4px 0 var(--ink),
+      0 18px 28px -12px rgba(26,22,17,0.4);
+    border: 2px solid var(--ink);
+    font-family: var(--font-body);
+    width: 100%; max-width: 380px;
+    transform: rotate(-2deg);
+    transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .dc-header { color: #b5bac1; font-size: 0.7rem; letter-spacing: 0.1em; font-weight: 700; margin-bottom: 10px; text-transform: uppercase; }
-  .dc-row { display: flex; gap: 12px; align-items: flex-start; }
+  .dc-mount:hover .dc-shell { transform: rotate(0); }
+  .dc-header {
+    color: #b5bac1; font-size: 0.66rem;
+    letter-spacing: 0.14em; font-weight: 700;
+    margin-bottom: 12px; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dc-header::before {
+    content: ""; width: 4px; height: 4px; border-radius: 50%;
+    background: var(--grass); box-shadow: 0 0 6px var(--grass);
+  }
+  .dc-row { display: flex; gap: 14px; align-items: flex-start; }
   .dc-img-wrap { position: relative; flex: 0 0 60px; }
-  .dc-img-wrap .big { width: 60px; height: 60px; border-radius: 8px; background-size: cover; background-position: center; background-color: #1e1f22; }
+  .dc-img-wrap .big {
+    width: 60px; height: 60px; border-radius: 8px;
+    background-size: cover; background-position: center;
+    background-color: #1e1f22;
+    transition: background-image 0.28s ease;
+  }
   .dc-img-wrap .small {
     position: absolute; right: -4px; bottom: -4px;
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    background: var(--accent);
+    width: 22px; height: 22px; border-radius: 50%;
     border: 3px solid #2b2d31;
+    transition: background 0.28s ease;
   }
   .dc-text { flex: 1; min-width: 0; }
-  .dc-app { font-weight: 700; font-size: 0.95rem; margin-bottom: 2px; }
-  .dc-details, .dc-state, .dc-time { font-size: 0.85rem; line-height: 1.35; color: #dbdee1; }
+  .dc-app { font-weight: 700; font-size: 0.96rem; margin-bottom: 3px; }
+  .dc-details, .dc-state, .dc-time { font-size: 0.84rem; line-height: 1.4; color: #dbdee1; }
   .dc-details { font-weight: 500; }
   .dc-state { color: #b5bac1; }
-  .dc-time { color: #b5bac1; margin-top: 2px; }
-  .dc-buttons { display: flex; gap: 8px; margin-top: 12px; }
-  .dc-button { font-size: 0.78rem; padding: 6px 10px; background: #4e5058; color: #fff; border-radius: 4px; }
-
-  .status-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
-  .status-tab {
-    background: var(--bg-card); color: var(--fg-dim);
-    padding: 6px 14px; border-radius: 999px; font-size: 0.85rem;
-    border: 1px solid var(--border); cursor: pointer; user-select: none;
-    transition: all 0.15s ease;
+  .dc-time { color: #b5bac1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .dc-buttons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .dc-button {
+    font-size: 0.76rem; padding: 6px 10px;
+    background: #4e5058; color: #fff; border-radius: 4px;
+    font-weight: 500;
   }
-  .status-tab:hover { color: var(--fg); border-color: #3a3a42; }
-  .status-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .dc-fade { transition: opacity 0.22s ease; }
+  .dc-fade.swap { opacity: 0; }
 
-  /* ── Screenshots ─────────────────────────────────── */
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .shot { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-  .shot img { width: 100%; display: block; }
-  .shot .caption { padding: 14px 16px; }
-  .shot .caption .title { font-weight: 600; }
-  .shot .caption .sub { color: var(--fg-dim); font-size: 0.88rem; }
+  /* doodled arrow from explanation to card */
+  .arrow-doodle { display: none; }
+  @media (min-width: 920px) {
+    .arrow-doodle {
+      display: block; position: absolute;
+      pointer-events: none;
+      width: 140px; height: 80px;
+      top: 38%; left: 48%;
+      transform: rotate(-6deg);
+      opacity: 0.85;
+    }
+  }
 
-  /* ── How it works ────────────────────────────────── */
-  .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .step { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; }
-  .step .num { color: var(--accent); font-family: var(--mono); font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
-  .step h3 { margin: 0 0 8px; font-size: 1.02rem; font-weight: 600; }
-  .step p { color: var(--fg-dim); font-size: 0.92rem; margin: 0; }
+  /* ─── feature grid (asymmetric, sticker-tagged) ────────────────── */
+  .features {
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .feature {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow);
+    padding: 22px 22px 18px;
+    position: relative;
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+  }
+  .feature:hover { transform: translate(-2px, -3px); box-shadow: var(--shadow-lg); }
+  .feature.wide { grid-column: span 4; }
+  .feature.tall { grid-column: span 2; }
+  .feature.med { grid-column: span 3; }
+  .feature .num {
+    position: absolute; top: -10px; right: 14px;
+    font-family: var(--font-mono); font-size: 0.7rem;
+    background: var(--ink); color: var(--paper);
+    padding: 3px 9px;
+    transform: rotate(3deg);
+  }
+  .feature h3 { font-size: 1.15rem; margin-bottom: 8px; }
+  .feature p { margin: 0; color: var(--ink-soft); font-size: 0.94rem; line-height: 1.6; }
+  .feature .stub {
+    margin-top: 14px;
+    font-family: var(--font-mono); font-size: 0.78rem;
+    color: var(--ink-mute);
+    border-top: 1px dashed var(--ink-faint);
+    padding-top: 10px;
+  }
 
-  /* ── Footer ──────────────────────────────────────── */
-  footer { border-top: 1px solid var(--border); padding: 32px 0 16px; color: var(--fg-mute); font-size: 0.88rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
-  footer a { color: var(--fg-dim); }
+  /* feature with a little clawd portrait floating in the corner */
+  .feature.clawd { padding-right: 100px; }
+  .feature.clawd img {
+    position: absolute; right: 12px; bottom: 12px;
+    width: 80px; height: 80px;
+    border: 1.5px solid var(--ink);
+    background: var(--paper-2);
+  }
 
-  /* ── Responsive ──────────────────────────────────── */
-  @media (max-width: 820px) {
-    .hero { grid-template-columns: 1fr; gap: 32px; }
+  /* ─── terminal (handmade window chrome) ────────────────────────── */
+  .term-wrap { display: grid; grid-template-columns: 1.2fr 1fr; gap: 36px; align-items: center; }
+  .terminal {
+    background: #0e0c08;
+    color: #e6ddc7;
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow-lg);
+    font-family: var(--font-mono);
+    font-size: 0.86rem;
+    transform: rotate(-0.6deg);
+    transition: transform 0.3s ease;
+  }
+  .terminal:hover { transform: rotate(0); }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: #1a160d;
+    border-bottom: 1.5px solid var(--ink);
+  }
+  .term-dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); }
+  .term-dot.r { background: #d56858; }
+  .term-dot.y { background: var(--tape-2); }
+  .term-dot.g { background: var(--grass); }
+  .term-title { color: #a89677; margin-left: 8px; font-family: var(--font-body); font-size: 0.78rem; }
+  .term-body { padding: 18px 20px 22px; line-height: 1.7; }
+  .term-body .ln { display: block; white-space: pre-wrap; }
+  .term-ps { color: var(--rust-3); }
+  .term-dim { color: #897861; }
+  .term-ok { color: var(--grass); }
+  .term-warn { color: var(--tape); }
+  .term-info { color: #7e8efc; }
+
+  /* ─── how it works ─────────────────────────────────────────────── */
+  .how { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; position: relative; }
+  .step {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow);
+    padding: 24px 22px;
+    position: relative;
+  }
+  .step .num {
+    display: inline-block;
+    width: 40px; height: 40px;
+    background: var(--rust); color: var(--paper);
+    border: 1.5px solid var(--ink);
+    font-family: var(--font-mono); font-size: 0.92rem; font-weight: 700;
+    text-align: center; line-height: 38px;
+    margin-bottom: 14px;
+    transform: rotate(-3deg);
+    box-shadow: var(--shadow-sm);
+  }
+  .step:nth-child(2) .num { background: var(--blurple); transform: rotate(2deg); }
+  .step:nth-child(3) .num { background: var(--ink); color: var(--paper); transform: rotate(-2deg); }
+  .step h3 { font-size: 1.2rem; margin-bottom: 8px; }
+  .step p { color: var(--ink-soft); font-size: 0.93rem; margin: 0; line-height: 1.6; }
+  .step .path {
+    margin-top: 14px;
+    font-family: var(--font-mono); font-size: 0.76rem;
+    color: var(--ink-mute);
+    padding: 4px 8px;
+    background: var(--paper-2);
+    border: 1px dashed var(--ink-faint);
+    display: inline-block;
+  }
+  /* hand-drawn-ish arrows between steps */
+  .arrow-between {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 32px; color: var(--ink-mute);
+    pointer-events: none;
+  }
+  .arrow-between.a1 { left: calc(33.33% - 16px); }
+  .arrow-between.a2 { left: calc(66.66% - 16px); }
+
+  /* ─── screenshots ──────────────────────────────────────────────── */
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .shot {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transform: rotate(-0.4deg);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+  }
+  .shot:nth-child(2) { transform: rotate(0.5deg); }
+  .shot:hover { transform: rotate(0) translate(-2px, -3px); box-shadow: var(--shadow-lg); }
+  .shot-frame {
+    display: flex; align-items: center; gap: 6px;
+    padding: 9px 14px;
+    background: var(--paper-2); border-bottom: 1.5px solid var(--ink);
+  }
+  .shot-frame .term-dot { width: 10px; height: 10px; }
+  .shot-frame .url {
+    flex: 1; text-align: center;
+    font-family: var(--font-mono); font-size: 0.74rem; color: var(--ink-mute);
+    padding: 3px 10px; background: var(--paper);
+    border: 1px solid var(--ink-faint);
+    max-width: 260px; margin: 0 auto;
+  }
+  .shot img { width: 100%; display: block; border-bottom: 1.5px solid var(--ink); }
+  .shot-caption { padding: 14px 18px 16px; }
+  .shot-caption .title { font-family: var(--font-disp); font-weight: 800; font-size: 1.05rem; }
+  .shot-caption .sub { color: var(--ink-mute); font-size: 0.9rem; margin-top: 4px; }
+
+  /* ─── changelog tile ───────────────────────────────────────────── */
+  .changelog {
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow);
+    padding: 22px 24px;
+    font-family: var(--font-mono);
+    font-size: 0.88rem;
+    position: relative;
+  }
+  .changelog-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px; padding-bottom: 12px;
+    border-bottom: 1.5px dashed var(--ink);
+  }
+  .changelog-head .ttl { font-family: var(--font-disp); font-weight: 800; font-size: 1.15rem; }
+  .changelog-head .meta { font-size: 0.78rem; color: var(--ink-mute); }
+  .changelog ul { list-style: none; padding: 0; margin: 0; }
+  .changelog li { padding: 4px 0; color: var(--ink-soft); }
+  .changelog li .v {
+    display: inline-block; min-width: 56px;
+    color: var(--rust); font-weight: 700;
+  }
+  .changelog li .note { color: var(--ink); }
+
+  /* ─── final CTA (big poster) ───────────────────────────────────── */
+  .final-cta {
+    background: var(--ink); color: var(--paper);
+    border: 2.5px solid var(--ink);
+    box-shadow: var(--shadow-lg);
+    padding: 64px 32px 56px;
+    text-align: center;
+    position: relative; overflow: hidden;
+    transform: rotate(-0.3deg);
+  }
+  .final-cta::before {
+    content: "ship it →";
+    position: absolute; top: 16px; left: 18px;
+    background: var(--tape); color: var(--ink);
+    padding: 4px 10px;
+    border: 1.5px solid var(--ink);
+    font-family: var(--font-mono); font-size: 0.74rem; font-weight: 700;
+    transform: rotate(-6deg);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .final-cta::after {
+    content: "v0.3.8";
+    position: absolute; bottom: 18px; right: 22px;
+    font-family: var(--font-mono); font-size: 0.78rem;
+    color: var(--ink-faint);
+  }
+  .final-cta h2 { color: var(--paper); font-size: clamp(2rem, 4.2vw, 3rem); margin-bottom: 14px; }
+  .final-cta .lead { color: var(--paper); opacity: 0.82; margin: 0 auto 28px; max-width: 540px; }
+  .final-cta .cta-row { justify-content: center; }
+  .final-cta .btn.cream { color: var(--ink); }
+  .final-cta .btn.cream:hover { background: var(--tape); border-color: var(--tape); }
+
+  /* ─── footer ───────────────────────────────────────────────────── */
+  footer {
+    padding: 36px 0 12px;
+    color: var(--ink-mute);
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+    border-top: 1.5px dashed var(--ink);
+    margin-top: 16px;
+  }
+  footer .left .made { color: var(--ink-soft); }
+  footer .left .made .heart { color: var(--rust); }
+  footer .right { display: flex; gap: 22px; }
+  footer a { color: var(--ink-soft); text-decoration: none; }
+  footer a:hover { color: var(--ink); text-decoration: underline; text-decoration-style: wavy; }
+
+  /* ─── responsive ───────────────────────────────────────────────── */
+  @media (max-width: 920px) {
+    .hero { grid-template-columns: 1fr; gap: 40px; padding: 32px 0 60px; }
+    .polaroid { margin: 0 auto; }
     .downloads { grid-template-columns: 1fr; }
     .features { grid-template-columns: 1fr; }
-    .preview-wrap { grid-template-columns: 1fr; }
+    .features .feature.wide, .features .feature.tall, .features .feature.med { grid-column: span 1; }
+    .preview-wrap { grid-template-columns: 1fr; gap: 32px; }
+    .dc-mount::before { right: 50%; transform: translateX(50%) rotate(2deg); top: -12px; }
     .shots { grid-template-columns: 1fr; }
     .how { grid-template-columns: 1fr; }
-    nav .links { display: none; }
+    .arrow-between { display: none; }
+    .term-wrap { grid-template-columns: 1fr; }
+    .nav-links { display: none; }
+    section { padding: 56px 0; }
+  }
+
+  /* reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.55s ease, transform 0.55s ease; }
+  .reveal.shown { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    .reveal { opacity: 1; transform: none; }
   }
 </style>
 </head>
 
 <body>
+
+<!-- ─────────────────────────────────────────────────── TICKER -->
+<div class="ticker-bar">
+  <div class="ticker-track">
+    <span class="h">★</span><span>shipped v0.3.8 — self-healing hook paths</span>
+    <span class="h">★</span><span>presence.byStatus is the new default</span>
+    <span class="h">★</span><span>built solo by archer in weekends</span>
+    <span class="h">★</span><span>MIT licensed — fork it, ship it</span>
+    <span class="h">★</span><span>node SEA single-file binary — no install required</span>
+    <span class="g">★</span><span>discord rich presence for claude code</span>
+    <!-- duplicated for seamless loop -->
+    <span class="h">★</span><span>shipped v0.3.8 — self-healing hook paths</span>
+    <span class="h">★</span><span>presence.byStatus is the new default</span>
+    <span class="h">★</span><span>built solo by archer in weekends</span>
+    <span class="h">★</span><span>MIT licensed — fork it, ship it</span>
+    <span class="h">★</span><span>node SEA single-file binary — no install required</span>
+    <span class="g">★</span><span>discord rich presence for claude code</span>
+  </div>
+</div>
+
 <div class="wrap">
 
-<nav>
+<nav id="topnav">
   <div class="brand">
-    <img src="https://cdn.qualit.ly/clawd-working-building.gif" alt="" />
+    <span class="brand-mark"><img src="https://cdn.qualit.ly/clawd-working-building.gif" alt="clawd character" /></span>
     <span class="name">claude-rpc</span>
+    <span class="vstamp" id="nav-version">v0.3.8</span>
   </div>
-  <div class="links">
-    <a href="#download">Download</a>
-    <a href="#features">Features</a>
-    <a href="#how">How it works</a>
-    <a href="https://github.com/rar-file/claude-rpc">GitHub</a>
+  <div class="nav-links">
+    <a href="#download">download</a>
+    <a href="#preview">preview</a>
+    <a href="#features">features</a>
+    <a href="#how">how</a>
+    <a href="#log">changelog</a>
+    <a class="nav-tag" href="https://github.com/rar-file/claude-rpc">github &#8599;</a>
   </div>
 </nav>
 
 <!-- ─────────────────────────────────────────────────── HERO -->
 <header class="hero">
   <div>
-    <div class="badges">
-      <span class="badge"><strong id="latest-tag">v0.3.6</strong></span>
-      <span class="badge">MIT license</span>
-      <span class="badge">Node 18+</span>
-      <span class="badge">macOS &middot; Windows &middot; Linux</span>
-    </div>
-    <h1>Your <span class="accent">Claude Code</span> sessions, live on Discord.</h1>
+    <span class="sticker">a weekend project, shipped publicly</span>
+    <h1>
+      your <span class="strike">claude code</span><br/>
+      <span class="ink-blot">claude</span> sessions,<br/>
+      live <span class="wave">📡</span> on discord.
+    </h1>
     <p class="lead">
-      Live model, project, current tool, token count and lifetime stats
-      &mdash; in your Discord profile. Driven entirely by Claude Code's
-      hook system. Zero polling, zero overhead between sessions.
+      A small Node daemon that takes the lifecycle events <code>claude code</code>
+      already fires — and pipes them into the discord rich-presence card on your
+      profile. Your friends see what you're building, your future self gets
+      lifetime stats. Zero polling between sessions.
     </p>
     <div class="cta-row">
-      <a class="btn" id="primary-cta" href="https://github.com/rar-file/claude-rpc/releases/latest">
-        <span>Download for your OS</span>
+      <a class="btn rust" id="primary-cta" href="https://github.com/rar-file/claude-rpc/releases/latest">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span><span id="primary-cta-label">download for your os</span></span>
         <span class="sub" id="primary-cta-sub">detecting&hellip;</span>
       </a>
-      <a class="btn ghost" href="https://github.com/rar-file/claude-rpc">View on GitHub</a>
+      <a class="btn cream" href="https://github.com/rar-file/claude-rpc">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.4 3.6 1.1.1-.8.4-1.4.8-1.7-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.3-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.9 1.2 2 1.2 3.3 0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
+        source
+      </a>
+    </div>
+    <div class="copy-box" title="click to copy">
+      <span class="ps1">$</span>
+      <span class="cmd" id="install-cmd">claude-rpc setup &amp;&amp; claude-rpc start</span>
+      <button id="copy-btn" type="button">copy</button>
+    </div>
+    <div class="hero-meta">
+      <span><span class="ok">●</span> <span id="latest-tag">v0.3.8</span></span>
+      <span class="dot">·</span>
+      <span>MIT</span>
+      <span class="dot">·</span>
+      <span>node 18+</span>
+      <span class="dot">·</span>
+      <span>macos · windows · linux</span>
     </div>
   </div>
-  <div class="hero-art">
-    <img src="img/demo.gif" alt="Discord Rich Presence card showing Claude Code working in claude-rpc on Opus 4.7" />
+
+  <div class="hero-art-col">
+    <div class="polaroid">
+      <div class="tape-strip"></div>
+      <div class="pin"></div>
+      <img src="img/demo.gif" alt="Discord Rich Presence card showing Claude Code working in claude-rpc on Opus 4.7" />
+      <div class="caption">discord profile · last tuesday</div>
+    </div>
+    <div class="scribble" style="margin-top: 18px; text-align: right;">that's the whole pitch</div>
   </div>
 </header>
 
 <!-- ─────────────────────────────────────────────────── DOWNLOAD -->
 <section id="download">
-  <div class="kicker">Get it</div>
-  <h2>One file. Drop it anywhere on PATH.</h2>
-  <p class="section-lead">
-    The CLI binary is built with Node SEA &mdash; no Node install required.
-    The desktop app bundles the same CLI plus a config GUI with live
-    presence preview and one-click daemon controls.
+  <span class="kicker">grab the binary</span>
+  <h2>one file. drop it anywhere.</h2>
+  <p class="lead">
+    Built with Node SEA — the CLI is a single executable with Node baked in. No
+    runtime install, no <code>npm install</code>, no PATH gymnastics. The desktop
+    app bundles the same binary plus a config GUI.
   </p>
 
   <div class="downloads">
     <div class="dl-card" data-os="win" id="dl-win">
-      <div class="os">Windows<span class="tag" id="tag-win" hidden>Detected</span></div>
-      <div class="detail">x64 &middot; NSIS installer or portable .exe</div>
-      <a class="btn" id="dl-win-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">Installer (.exe)</a>
-      <a class="alt" id="dl-win-portable" href="https://github.com/rar-file/claude-rpc/releases/latest">or grab the portable build</a>
+      <div class="dl-os-row">
+        <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.5L9.7 2.2v9.5H0V3.5zm0 17l9.7 1.3v-9.4H0V20.5zM10.8 11.7H24V0L10.8 1.8v9.9zm0 1.2v9.6L24 24V12.9H10.8z"/></svg></span>
+        <span class="dl-os-name">windows</span>
+      </div>
+      <div class="dl-detail">NSIS installer with auto-update, or a portable <code>.exe</code> you can drop on a USB stick.</div>
+      <div class="dl-meta">x64 <span class="pipe">·</span> <span id="size-win">~45 MB</span></div>
+      <a class="btn rust" id="dl-win-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">
+        get .exe installer <span class="arrow">→</span>
+      </a>
+      <a class="alt" id="dl-win-portable" href="https://github.com/rar-file/claude-rpc/releases/latest">or the portable build</a>
     </div>
 
     <div class="dl-card" data-os="mac" id="dl-mac">
-      <div class="os">macOS<span class="tag" id="tag-mac" hidden>Detected</span></div>
-      <div class="detail">Apple Silicon &middot; .dmg drag-to-Applications</div>
-      <a class="btn" id="dl-mac-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">Download (.dmg)</a>
-      <a class="alt" href="https://github.com/rar-file/claude-rpc/releases/latest">Intel/x86_64? build from source &rarr;</a>
+      <div class="dl-os-row">
+        <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.7 17.6c-.3.7-.6 1.3-1.1 1.9-.6.8-1.1 1.4-1.5 1.7-.7.6-1.4.9-2.2.9-.6 0-1.3-.2-2.1-.5-.8-.3-1.6-.5-2.2-.5-.7 0-1.5.2-2.3.5-.8.3-1.5.5-2 .5-.8 0-1.5-.3-2.3-.9-.4-.3-1-.9-1.6-1.7-.7-.9-1.3-1.9-1.8-3.1-.5-1.3-.7-2.5-.7-3.7 0-1.4.3-2.6.9-3.6.5-.8 1.1-1.4 2-1.9.8-.5 1.7-.7 2.7-.7.7 0 1.5.2 2.5.6.9.4 1.6.6 1.9.6.2 0 1-.2 2.2-.7 1.2-.4 2.2-.6 3-.5 2.3.2 4 1.1 5.1 2.7-2 1.2-3 2.9-3 5.1 0 1.7.6 3.1 1.9 4.3.6.5 1.2.9 2 1.2-.2.5-.4.9-.5 1.3zM14.7 0c0 1-.4 2-1.1 2.9-.9 1.1-2 1.7-3.2 1.6 0-1 .4-2 1.1-2.9.4-.4.8-.8 1.4-1.1.6-.3 1.1-.5 1.6-.5.1 0 .1 0 .2 0z"/></svg></span>
+        <span class="dl-os-name">macos</span>
+      </div>
+      <div class="dl-detail">Apple Silicon <code>.dmg</code>. Drag, drop, done. Auto-updates from GitHub releases.</div>
+      <div class="dl-meta">arm64 <span class="pipe">·</span> <span id="size-mac">~95 MB</span></div>
+      <a class="btn rust" id="dl-mac-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">
+        get .dmg <span class="arrow">→</span>
+      </a>
+      <a class="alt" href="https://github.com/rar-file/claude-rpc#install">intel? build from source</a>
     </div>
 
     <div class="dl-card" data-os="src" id="dl-src">
-      <div class="os">From source<span class="tag" id="tag-src" hidden>Detected</span></div>
-      <div class="detail">Any OS, Node 18+ &middot; <code>git clone</code> &amp; go</div>
-      <a class="btn" href="https://github.com/rar-file/claude-rpc#install">Read the install guide</a>
+      <div class="dl-os-row">
+        <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+        <span class="dl-os-name">from source</span>
+      </div>
+      <div class="dl-detail">Any OS with Node 18+. <code>git clone</code>, <code>npm install</code>, <code>npm link</code>. Linux / *BSD / WSL.</div>
+      <div class="dl-meta">node 18+ <span class="pipe">·</span> any arch</div>
+      <a class="btn" href="https://github.com/rar-file/claude-rpc#install">
+        install guide <span class="arrow">→</span>
+      </a>
       <a class="alt" href="https://github.com/rar-file/claude-rpc">github.com/rar-file/claude-rpc</a>
     </div>
   </div>
@@ -281,44 +901,49 @@
 
 <!-- ─────────────────────────────────────────────────── PREVIEW -->
 <section id="preview">
-  <div class="kicker">What it looks like</div>
-  <h2>A different card for every state Claude is in.</h2>
-  <p class="section-lead">
-    v0.3.6 introduced <code>presence.byStatus</code> &mdash; the card text follows
-    whatever Claude is doing right now. Lifetime stats cycle while you're idle.
+  <span class="kicker">the card</span>
+  <h2>a different look for every state claude is in.</h2>
+  <p class="lead">
+    The card text follows whatever claude is doing right now &mdash; not a generic
+    rotation that cycles through the same six stats forever. Lifetime numbers
+    only show up when you're actually idle.
   </p>
 
   <div class="preview-wrap">
     <div>
+      <span class="sticker tilt-r">v0.3.6 · presence.byStatus</span>
       <div class="status-tabs" id="status-tabs">
-        <span class="status-tab active" data-status="working">Working</span>
-        <span class="status-tab" data-status="thinking">Thinking</span>
-        <span class="status-tab" data-status="notification">Notification</span>
-        <span class="status-tab" data-status="idle">Idle</span>
+        <span class="status-tab active" data-status="working">working</span>
+        <span class="status-tab" data-status="thinking">thinking</span>
+        <span class="status-tab" data-status="notification">notification</span>
+        <span class="status-tab" data-status="idle">idle</span>
       </div>
-      <div id="preview-explain" style="color: var(--fg-dim); font-size: 0.94rem;">
-        While a tool is running, the card shows the project, the tool name, the file Claude
-        just touched, and the live token count for the session.
+      <div class="preview-note" id="preview-explain">
+        <span class="lbl">while a tool is running</span>
+        the card shows the project, the tool name, the file claude just touched,
+        and the live token count for the session.
       </div>
     </div>
 
-    <div class="dc-card" id="dc-card">
-      <div class="dc-header">Playing a game</div>
-      <div class="dc-row">
-        <div class="dc-img-wrap">
-          <div class="big" id="dc-big" style="background-image: url('https://cdn.qualit.ly/clawd-working-building.gif')"></div>
-          <div class="small" id="dc-small"></div>
+    <div class="dc-mount">
+      <div class="dc-shell">
+        <div class="dc-header">Playing a game</div>
+        <div class="dc-row">
+          <div class="dc-img-wrap">
+            <div class="big dc-fade" id="dc-big" style="background-image: url('https://cdn.qualit.ly/clawd-working-building.gif')"></div>
+            <div class="small dc-fade" id="dc-small" style="background:#43b581"></div>
+          </div>
+          <div class="dc-text">
+            <div class="dc-app">Claude Code</div>
+            <div class="dc-details dc-fade" id="dc-details">Working in claude-rpc</div>
+            <div class="dc-state dc-fade" id="dc-state">Edit · src/scanner.js · 2.3k tokens</div>
+            <div class="dc-time" id="dc-time">00:14:32 elapsed</div>
+          </div>
         </div>
-        <div class="dc-text">
-          <div class="dc-app">Claude Code</div>
-          <div class="dc-details" id="dc-details">Working in claude-rpc</div>
-          <div class="dc-state" id="dc-state">Edit &middot; src/scanner.js &middot; 2.3k tokens</div>
-          <div class="dc-time" id="dc-time">00:14:32 elapsed</div>
+        <div class="dc-buttons">
+          <span class="dc-button">View on GitHub →</span>
+          <span class="dc-button">Claude Code</span>
         </div>
-      </div>
-      <div class="dc-buttons">
-        <span class="dc-button">View on GitHub &rarr;</span>
-        <span class="dc-button">Claude Code</span>
       </div>
     </div>
   </div>
@@ -326,153 +951,298 @@
 
 <!-- ─────────────────────────────────────────────────── FEATURES -->
 <section id="features">
-  <div class="kicker">Beyond the card</div>
-  <h2>It's also a personal dashboard for your Claude history.</h2>
-  <p class="section-lead">
-    Everything below is generated locally by walking your
-    <code>~/.claude/projects</code> transcripts. Incremental, cached, no network.
+  <span class="kicker">beyond the card</span>
+  <h2>it's also a personal dashboard for your claude history.</h2>
+  <p class="lead">
+    Every aggregate below is computed locally by walking
+    <code>~/.claude/projects</code>. Incremental, cached, no telemetry, no
+    network beyond the discord IPC itself.
   </p>
 
   <div class="features">
-    <div class="feature">
-      <h3>All-time aggregates</h3>
-      <p>Hours, prompts, tokens, sessions, streaks, top files, top projects,
-      lines added/removed, languages, bash usage, web domains, subagent runs.</p>
+    <div class="feature wide clawd">
+      <span class="num">01</span>
+      <h3>all-time aggregates</h3>
+      <p>Hours, prompts, tokens, sessions, streaks, hotspot files, lines added/removed, languages, bash commands, web domains, subagent runs &mdash; pulled from your transcripts and cached at <code>~/.claude-rpc/aggregate.json</code>.</p>
+      <img src="https://cdn.qualit.ly/clawd-working-typing.gif" alt="clawd typing" />
+    </div>
+    <div class="feature tall">
+      <span class="num">02</span>
+      <h3>cost estimate</h3>
+      <p>Per-model spend (Opus / Sonnet / Haiku) at public list prices. Edit one file to override.</p>
+      <span class="stub">src/pricing.js</span>
+    </div>
+
+    <div class="feature tall">
+      <span class="num">03</span>
+      <h3>cli &amp; tui</h3>
+      <p>Heatmap, hour histogram, top tools / files / projects / languages.</p>
+      <span class="stub">$ claude-rpc status</span>
+    </div>
+    <div class="feature med">
+      <span class="num">04</span>
+      <h3>local web dashboard</h3>
+      <p>SSE-pushed updates, range selector (7d/30d/90d/1y/all), day-detail modal, project drilldown.</p>
+      <span class="stub">$ claude-rpc serve · :47474</span>
     </div>
     <div class="feature">
-      <h3>Cost estimate</h3>
-      <p>Per-model spend (Opus / Sonnet / Haiku) using public list prices.
-      Editable in <code>src/pricing.js</code>.</p>
+      <span class="num">05</span>
+      <h3>readme badges</h3>
+      <p>Shields-style SVG generator and a live endpoint when the daemon's up.</p>
     </div>
-    <div class="feature">
-      <h3>CLI &amp; web dashboards</h3>
-      <p><code>claude-rpc status</code> for a TUI with heatmap and hour
-      histogram. <code>claude-rpc serve</code> for a local web dashboard
-      with SSE live updates and a day-detail modal.</p>
+
+    <div class="feature med">
+      <span class="num">06</span>
+      <h3>six-tab settings gui</h3>
+      <p>Electron config editor: presence (drag-reorder, variable autocomplete, presets), discord, assets, timing, daemon controls, stats.</p>
     </div>
-    <div class="feature">
-      <h3>README badges</h3>
-      <p><code>claude-rpc badge --metric hours --range 7d --out h.svg</code>
-      &mdash; or pull a live one from
-      <code>/api/badge.svg?metric=hours&amp;range=7d</code> when the daemon's
-      running.</p>
-    </div>
-    <div class="feature">
-      <h3>Config GUI</h3>
-      <p>Six-tab Electron app: Presence (drag-reorder, variable autocomplete,
-      presets), Discord, Assets, Timing, Daemon (start/stop/restart, tail log),
-      Stats.</p>
-    </div>
-    <div class="feature">
-      <h3>Insights</h3>
-      <p><code>claude-rpc insights</code> generates 3&ndash;5 contextual lines:
-      weekly trend, peak weekday, hotspot file, cost pace, streak progress.</p>
+    <div class="feature wide clawd">
+      <span class="num">07</span>
+      <h3>auto-generated insights</h3>
+      <p><code>claude-rpc insights</code> prints 3&ndash;5 contextual lines about your week &mdash; trend, peak weekday, hotspot, cost pace, streak progress. Useful for stand-ups, useful for self-awareness, useful for nothing &mdash; up to you.</p>
+      <img src="https://cdn.qualit.ly/clawd-sleeping.gif" alt="clawd sleeping" />
     </div>
   </div>
 </section>
 
-<!-- ─────────────────────────────────────────────────── SHOTS -->
-<section id="shots">
-  <div class="kicker">Screens</div>
-  <h2>Browse the rest from a real desktop UI.</h2>
+<!-- ─────────────────────────────────────────────────── TERMINAL -->
+<section id="setup">
+  <span class="kicker">two-minute setup</span>
+  <h2>three commands. that's it.</h2>
+  <p class="lead">
+    The first <code>setup</code> seeds a config, registers the lifecycle hooks
+    with claude code, and copies the binary into a stable per-user location so
+    future manual updates can never break your hook entries.
+  </p>
 
-  <div class="shots">
-    <div class="shot">
-      <img src="img/dashboard.png" alt="Web dashboard" />
-      <div class="caption">
-        <div class="title">Web dashboard</div>
-        <div class="sub"><code>claude-rpc serve</code> &mdash; range selector, heatmap, languages stack, leaderboards.</div>
+  <div class="term-wrap">
+    <div class="terminal">
+      <div class="term-bar">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="term-title">~ &mdash; claude-rpc setup</span>
+      </div>
+      <div class="term-body">
+        <span class="ln"><span class="term-ps">$</span> claude-rpc setup</span>
+        <span class="ln"><span class="term-dim">  config seeded</span>  → ~/.config/claude-rpc/config.json</span>
+        <span class="ln"><span class="term-dim">  exe installed</span>  → ~/.config/claude-rpc/bin/claude-rpc</span>
+        <span class="ln"><span class="term-dim">  hooks       </span>  → ~/.claude/settings.json</span>
+        <span class="ln"><span class="term-ok">  ✓ done.</span></span>
+        <span class="ln">&nbsp;</span>
+        <span class="ln"><span class="term-ps">$</span> claude-rpc start</span>
+        <span class="ln"><span class="term-ok">  ✓ daemon launched</span>  <span class="term-dim">(pid 24871)</span></span>
+        <span class="ln"><span class="term-dim">  logs:</span> /tmp/claude-rpc/daemon.log</span>
+        <span class="ln">&nbsp;</span>
+        <span class="ln"><span class="term-ps">$</span> claude-rpc status</span>
+        <span class="ln"><span class="term-info">  ╰─ working in claude-rpc · Opus 4.7</span></span>
+        <span class="ln"><span class="term-dim">     8 prompts · 18 tools · 2.3k tokens</span></span>
       </div>
     </div>
-    <div class="shot">
-      <img src="img/electron.png" alt="Settings GUI" />
-      <div class="caption">
-        <div class="title">Settings GUI</div>
-        <div class="sub">Electron config editor &mdash; six tabs, live preview, daemon controls.</div>
-      </div>
+
+    <div>
+      <span class="sticker rust">no polling</span>
+      <h3 style="margin-top: 16px; font-size: 1.3rem;">Hook-driven, not polling.</h3>
+      <p style="color: var(--ink-soft); margin: 8px 0 20px;">
+        Claude Code fires lifecycle events on its own clock
+        (<code>SessionStart</code>, <code>PreToolUse</code>,
+        <code>Notification</code>, <code>SessionEnd</code>&hellip;). Each event
+        updates a small JSON file on disk; the daemon watches that file and
+        pushes a frame to discord within a second.
+      </p>
+      <h3 style="font-size: 1.3rem;">SessionEnd is authoritative.</h3>
+      <p style="color: var(--ink-soft); margin: 8px 0 0;">
+        When you close claude code, the presence clears <em>immediately</em>.
+        No 5-minute "is it still running?" timeout. Shipped with v0.3.5.
+      </p>
     </div>
   </div>
 </section>
 
 <!-- ─────────────────────────────────────────────────── HOW -->
 <section id="how">
-  <div class="kicker">How it works</div>
-  <h2>Three small pieces, glued by JSON files on disk.</h2>
-  <p class="section-lead">
-    No database, no message bus, no background polling between sessions.
-    Hooks fire on Claude lifecycle events, the daemon listens, Discord
-    updates within a second.
+  <span class="kicker">architecture</span>
+  <h2>three small pieces, glued by json files.</h2>
+  <p class="lead">
+    No database, no message bus, no background polling when claude code isn't
+    running. The file-based IPC is intentional — it makes the whole system
+    inspectable with <code>cat</code> and <code>jq</code>.
   </p>
 
   <div class="how">
     <div class="step">
-      <div class="num">01 &middot; hook</div>
-      <h3>Claude fires hooks</h3>
-      <p>SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification,
-      Stop, SessionEnd. Each one updates a shared <code>state.json</code>.</p>
+      <div class="num">01</div>
+      <h3>hook</h3>
+      <p>Claude fires lifecycle events. Each one runs a tiny script that updates a shared state file.</p>
+      <span class="path">~/.claude/settings.json</span>
     </div>
+    <svg class="arrow-between a1" viewBox="0 0 60 40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5 20 C 20 8, 40 32, 55 20" />
+      <path d="M48 14 L 55 20 L 48 26" />
+    </svg>
     <div class="step">
-      <div class="num">02 &middot; daemon</div>
-      <h3>Daemon pushes to Discord</h3>
-      <p>Long-running. Connects to Discord's local IPC. Watches the state file,
-      builds the card, and pushes a frame.</p>
+      <div class="num">02</div>
+      <h3>daemon</h3>
+      <p>Long-running. Connects to discord's local IPC. Watches the state file, builds the card, pushes a frame.</p>
+      <span class="path">src/daemon.js</span>
     </div>
+    <svg class="arrow-between a2" viewBox="0 0 60 40" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5 22 C 22 30, 38 10, 55 18" />
+      <path d="M48 12 L 55 18 L 48 24" />
+    </svg>
     <div class="step">
-      <div class="num">03 &middot; scanner</div>
-      <h3>Scanner builds aggregates</h3>
-      <p>Walks <code>~/.claude/projects/**/*.jsonl</code> incrementally. Cached at
-      <code>~/.claude-rpc/aggregate.json</code>. Feeds the dashboards and the
-      rotation frames.</p>
+      <div class="num">03</div>
+      <h3>scanner</h3>
+      <p>Walks transcripts incrementally for the lifetime aggregates. Feeds the dashboards and the idle rotation frames.</p>
+      <span class="path">~/.claude-rpc/aggregate.json</span>
     </div>
   </div>
 </section>
 
-<!-- ─────────────────────────────────────────────────── CTA -->
-<section style="text-align:center;">
-  <h2>Get it on your profile in two minutes.</h2>
-  <p class="section-lead" style="margin-left:auto;margin-right:auto;">
-    Download, run <code>claude-rpc setup</code>, paste your Discord application ID
-    into the config, and start the daemon. That's it.
+<!-- ─────────────────────────────────────────────────── SHOTS -->
+<section id="shots">
+  <span class="kicker">screens</span>
+  <h2>browse the rest from a real desktop UI.</h2>
+
+  <div class="shots">
+    <div class="shot">
+      <div class="shot-frame">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="url">127.0.0.1:47474</span>
+      </div>
+      <img src="img/dashboard.png" alt="Web dashboard" />
+      <div class="shot-caption">
+        <div class="title">web dashboard</div>
+        <div class="sub"><code>claude-rpc serve</code> &mdash; range selector, heatmap, languages stack, leaderboards.</div>
+      </div>
+    </div>
+    <div class="shot">
+      <div class="shot-frame">
+        <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
+        <span class="url">Claude RPC.app</span>
+      </div>
+      <img src="img/electron.png" alt="Electron config editor" />
+      <div class="shot-caption">
+        <div class="title">settings gui</div>
+        <div class="sub">six-tab electron editor — drag-reorder frames, variable autocomplete, daemon controls, live preview.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────── CHANGELOG -->
+<section id="log">
+  <span class="kicker">building in public</span>
+  <h2>the recent history.</h2>
+  <p class="lead">
+    Shipping small. Each release tag is a real artifact you can download —
+    no nightlies, no marketing-driven version numbers. Read the source on
+    your way through.
   </p>
-  <div class="cta-row" style="justify-content:center;">
-    <a class="btn" href="https://github.com/rar-file/claude-rpc/releases/latest">Download latest release</a>
-    <a class="btn ghost" href="https://github.com/rar-file/claude-rpc#quick-start">Quick start docs</a>
+
+  <div class="changelog">
+    <div class="changelog-head">
+      <div class="ttl">changelog</div>
+      <div class="meta" id="changelog-meta">latest first · <a href="https://github.com/rar-file/claude-rpc/releases">all releases →</a></div>
+    </div>
+    <ul>
+      <li><span class="v">v0.3.8</span> <span class="note">self-healing hooks + state on packaged-default launch — fixes broken close detection after standalone-exe upgrades.</span></li>
+      <li><span class="v">v0.3.7</span> <span class="note">auto-migrate existing configs into the v0.3.6 byStatus shape on upgrade.</span></li>
+      <li><span class="v">v0.3.6</span> <span class="note">status-driven presence templates (<code>presence.byStatus</code>) + 9 new template vars (fileLang, gitBranch, …).</span></li>
+      <li><span class="v">v0.3.5</span> <span class="note">canonical install path; SessionEnd treated as authoritative close signal.</span></li>
+      <li><span class="v">v0.3.0</span> <span class="note">cross-platform desktop app, .dmg + .exe, auto-update.</span></li>
+      <li><span class="v">v0.2.0</span> <span class="note">enriched data, redesigned web dashboard, full-settings GUI.</span></li>
+      <li><span class="v">v0.1.0</span> <span class="note">initial commit. discord rich presence works end-to-end.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ─────────────────────────────────────────────────── FINAL CTA -->
+<section>
+  <div class="final-cta">
+    <h2>get it on your profile in two minutes.</h2>
+    <p class="lead">
+      Download, run <code style="background:rgba(255,255,255,0.12); border-color:rgba(255,255,255,0.2); color:var(--paper);">claude-rpc setup</code>,
+      paste your discord application id into the config, start the daemon. That's the whole flow.
+    </p>
+    <div class="cta-row">
+      <a class="btn cream" href="https://github.com/rar-file/claude-rpc/releases/latest">
+        download latest release <span class="arrow">→</span>
+      </a>
+      <a class="btn" style="background:transparent; color:var(--paper); border-color:var(--paper);" href="https://github.com/rar-file/claude-rpc#quick-start">
+        quick start docs
+      </a>
+    </div>
   </div>
 </section>
 
 <footer>
-  <div>MIT &middot; by <a href="https://github.com/rar-file">Archer Simmons</a></div>
-  <div>
-    <a href="https://github.com/rar-file/claude-rpc">github.com/rar-file/claude-rpc</a>
+  <div class="left">
+    <div class="made">
+      made with <span class="heart">♥</span> by
+      <a href="https://github.com/rar-file">archer</a>
+      · MIT · feel free to fork
+    </div>
+    <div style="margin-top: 6px; font-size: 0.78rem; color: var(--ink-faint);">
+      no analytics on this page. no cookies. one fetch to api.github.com for the latest tag.
+    </div>
+  </div>
+  <div class="right">
+    <a href="https://github.com/rar-file/claude-rpc">source</a>
+    <a href="https://github.com/rar-file/claude-rpc/releases">releases</a>
+    <a href="https://github.com/rar-file/claude-rpc/issues">issues</a>
+    <a href="https://claude.com/claude-code">claude code &#8599;</a>
   </div>
 </footer>
 
 </div>
 
 <script>
-  // ── OS detection ─────────────────────────────────────────────────────────
+  // ─── reveal on scroll ────────────────────────────────────────────────────
+  document.querySelectorAll('section, .hero').forEach(s => s.classList.add('reveal'));
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { e.target.classList.add('shown'); io.unobserve(e.target); }
+    }
+  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.05 });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // ─── OS detection ────────────────────────────────────────────────────────
   const ua = (navigator.userAgent || '').toLowerCase();
   const plat = (navigator.platform || '').toLowerCase();
   let os = 'src';
   if (/windows|win64|win32/.test(ua) || /win/.test(plat)) os = 'win';
   else if (/mac|darwin/.test(ua) || /mac/.test(plat)) os = 'mac';
-
   document.getElementById('dl-' + os)?.classList.add('active');
-  document.getElementById('tag-' + os)?.removeAttribute('hidden');
 
   const primaryLabels = {
-    win: { label: 'Download for Windows', sub: '.exe installer' },
-    mac: { label: 'Download for macOS',   sub: '.dmg (Apple Silicon)' },
-    src: { label: 'View install guide',    sub: 'any OS, Node 18+' },
+    win: { label: 'download for windows', sub: '.exe installer' },
+    mac: { label: 'download for macos',   sub: '.dmg · arm64' },
+    src: { label: 'read install guide',   sub: 'any os · node 18+' },
   };
   const cta = document.getElementById('primary-cta');
-  const ctaSub = document.getElementById('primary-cta-sub');
-  cta.querySelector('span').textContent = primaryLabels[os].label;
-  ctaSub.textContent = primaryLabels[os].sub;
+  document.getElementById('primary-cta-label').textContent = primaryLabels[os].label;
+  document.getElementById('primary-cta-sub').textContent = primaryLabels[os].sub;
 
-  // ── Fetch latest release for direct asset URLs ───────────────────────────
-  // Failure (rate limit, offline, fork) falls back to the /releases/latest
-  // page link that's already in the href — no broken buttons.
+  // ─── copy install ────────────────────────────────────────────────────────
+  const copyBtn = document.getElementById('copy-btn');
+  const installCmd = document.getElementById('install-cmd');
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(installCmd.textContent.trim());
+      copyBtn.textContent = 'copied';
+      copyBtn.classList.add('copied');
+      setTimeout(() => { copyBtn.textContent = 'copy'; copyBtn.classList.remove('copied'); }, 1600);
+    } catch {
+      copyBtn.textContent = 'press ⌘c';
+      setTimeout(() => { copyBtn.textContent = 'copy'; }, 1600);
+    }
+  });
+
+  // ─── fetch latest release ───────────────────────────────────────────────
+  function fmtBytes(n) {
+    if (!n) return '';
+    const mb = n / (1024 * 1024);
+    return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`;
+  }
   async function loadLatest() {
     try {
       const r = await fetch('https://api.github.com/repos/rar-file/claude-rpc/releases/latest', {
@@ -481,99 +1251,118 @@
       if (!r.ok) return;
       const data = await r.json();
       const assets = data.assets || [];
-      const pick = (re) => (assets.find(a => re.test(a.name)) || {}).browser_download_url;
-
+      const pick = (re) => assets.find(a => re.test(a.name));
       const winSetup    = pick(/-setup\.exe$/i);
       const winPortable = pick(/-portable\.exe$/i);
       const macDmg      = pick(/\.dmg$/i);
 
-      if (data.tag_name) document.getElementById('latest-tag').textContent = data.tag_name;
-
-      if (winSetup)    document.getElementById('dl-win-primary').href = winSetup;
-      if (winPortable) document.getElementById('dl-win-portable').href = winPortable;
-      if (macDmg)      document.getElementById('dl-mac-primary').href = macDmg;
-
-      // Wire the hero CTA to the OS-specific direct download.
-      if (os === 'win' && winSetup) cta.href = winSetup;
-      else if (os === 'mac' && macDmg) cta.href = macDmg;
-    } catch (_) { /* fall back to /releases/latest links — already set */ }
+      if (data.tag_name) {
+        document.getElementById('latest-tag').textContent = data.tag_name;
+        document.getElementById('nav-version').textContent = data.tag_name;
+      }
+      if (winSetup) {
+        document.getElementById('dl-win-primary').href = winSetup.browser_download_url;
+        document.getElementById('size-win').textContent = fmtBytes(winSetup.size);
+      }
+      if (winPortable) document.getElementById('dl-win-portable').href = winPortable.browser_download_url;
+      if (macDmg) {
+        document.getElementById('dl-mac-primary').href = macDmg.browser_download_url;
+        document.getElementById('size-mac').textContent = fmtBytes(macDmg.size);
+      }
+      if (os === 'win' && winSetup) cta.href = winSetup.browser_download_url;
+      else if (os === 'mac' && macDmg) cta.href = macDmg.browser_download_url;
+    } catch (_) {}
   }
   loadLatest();
 
-  // ── Discord card preview cycler ──────────────────────────────────────────
+  // ─── discord card cycler ────────────────────────────────────────────────
   const STATES = {
     working: {
       details: 'Working in claude-rpc',
       state:   'Edit · src/scanner.js · 2.3k tokens',
       img:     'https://cdn.qualit.ly/clawd-working-building.gif',
-      small:   '#43853d',
-      explain: "While a tool is running, the card shows the project, the tool name, the file Claude just touched, and the live token count for the session.",
+      small:   '#43b581',
+      lbl:     'while a tool is running',
+      note:    "the card shows the project, the tool name, the file claude just touched, and the live token count for the session.",
     },
     thinking: {
       details: 'Thinking in claude-rpc',
       state:   'Opus 4.7 · 8 prompts · 24k tokens',
       img:     'https://cdn.qualit.ly/clawd-working-typing.gif',
       small:   '#d97757',
-      explain: "Between a user prompt and the first tool call. Surfaces the model and how many prompts this session has cost so far.",
+      lbl:     'between a prompt and the first tool call',
+      note:    "surfaces the model and how many prompts this session has cost so far.",
     },
     notification: {
       details: 'Waiting on you · claude-rpc',
       state:   'Opus 4.7 · 8 prompts',
       img:     'https://cdn.qualit.ly/clawd-notification.gif',
-      small:   '#fe7d37',
-      explain: "Claude is paused for permission or input. The card makes it instantly obvious from another window or from a phone.",
+      small:   '#faa61a',
+      lbl:     'claude is asking for input',
+      note:    "the card makes it instantly obvious from another window or from a phone.",
     },
     idle: {
       details: '23-day streak',
       state:   'Day 53 · 47 sessions',
       img:     'https://cdn.qualit.ly/clawd-sleeping.gif',
       small:   '#5865f2',
-      explain: "When nothing is running, the card cycles through lifetime stats — today, this week, streak, hotspot file, lines added, all-time tokens, cost.",
+      lbl:     'when nothing is running',
+      note:    "the card cycles through lifetime stats — today, this week, streak, hotspot file, lines added, all-time tokens, cost.",
     },
   };
 
   const dcDetails = document.getElementById('dc-details');
-  const dcState = document.getElementById('dc-state');
-  const dcBig = document.getElementById('dc-big');
-  const dcSmall = document.getElementById('dc-small');
-  const dcCard = document.getElementById('dc-card');
-  const explain = document.getElementById('preview-explain');
-  const tabs = document.querySelectorAll('#status-tabs .status-tab');
+  const dcState   = document.getElementById('dc-state');
+  const dcBig     = document.getElementById('dc-big');
+  const dcSmall   = document.getElementById('dc-small');
+  const explain   = document.getElementById('preview-explain');
+  const fades     = [dcDetails, dcState, dcBig, dcSmall];
+  const tabs      = document.querySelectorAll('#status-tabs .status-tab');
 
-  let currentStatus = 'working';
-  let autoTimer = null;
   let userPicked = false;
+  let autoTimer = null;
 
   function renderStatus(name) {
     const s = STATES[name];
     if (!s) return;
-    currentStatus = name;
-    dcCard.style.opacity = '0';
+    fades.forEach(el => el.classList.add('swap'));
+    explain.style.opacity = '0';
     setTimeout(() => {
       dcDetails.textContent = s.details;
-      dcState.textContent = s.state;
+      dcState.textContent   = s.state;
       dcBig.style.backgroundImage = `url('${s.img}')`;
-      dcSmall.style.background = s.small;
-      explain.textContent = s.explain;
+      dcSmall.style.background    = s.small;
+      explain.innerHTML = `<span class="lbl">${s.lbl}</span>${s.note}`;
       tabs.forEach(t => t.classList.toggle('active', t.dataset.status === name));
-      dcCard.style.opacity = '1';
-    }, 180);
+      fades.forEach(el => el.classList.remove('swap'));
+      explain.style.opacity = '1';
+    }, 220);
   }
 
   tabs.forEach(t => t.addEventListener('click', () => {
     userPicked = true;
-    if (autoTimer) clearInterval(autoTimer);
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
     renderStatus(t.dataset.status);
   }));
 
-  // Auto-cycle until the user clicks a tab.
   const order = ['working', 'thinking', 'notification', 'idle'];
   let i = 0;
   autoTimer = setInterval(() => {
     if (userPicked) return;
     i = (i + 1) % order.length;
     renderStatus(order[i]);
-  }, 3500);
+  }, 3800);
+
+  // ─── ticking elapsed timer on the demo card ─────────────────────────────
+  const dcTime = document.getElementById('dc-time');
+  const startMs = Date.now() - (14 * 60 + 32) * 1000;
+  setInterval(() => {
+    const s = Math.floor((Date.now() - startMs) / 1000);
+    const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    dcTime.textContent = `${hh}:${mm}:${ss} elapsed`;
+  }, 1000);
 </script>
 </body>
 </html>
