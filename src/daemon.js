@@ -290,7 +290,12 @@ runBackgroundScan({ force: false });
 const rescanMs = Math.max(60_000, (config.rescanIntervalSec || 300) * 1000);
 setInterval(() => runBackgroundScan({ force: false }), rescanMs);
 
-// Live session polling — cheap mtime walk.
+// Live session polling — cheap mtime walk. With the SessionEnd hook now
+// flipping claudeClosed=true authoritatively (see format.applyIdle), this
+// poll is no longer the primary "is Claude open?" signal — it's a hard-kill
+// backstop and the source for concurrent-session detection. 30s cadence
+// keeps the disk work minimal while still surfacing a new sibling session
+// within a rotation cycle or two.
 function refreshLiveSessions() {
   try {
     const thresholdMs = (config.liveSessionThresholdSec || 90) * 1000;
@@ -307,4 +312,4 @@ function refreshLiveSessions() {
   }
 }
 refreshLiveSessions();
-setInterval(refreshLiveSessions, 5000);
+setInterval(refreshLiveSessions, 30_000);

@@ -507,6 +507,26 @@ export function applyIdle(state, cfg = {}) {
   const staleMs = Math.max(60_000, (cfg.staleSessionMin || 5) * 60 * 1000);
   const notificationMs = (cfg.notificationWindowSec || 8) * 1000;
 
+  // Authoritative close signal from the SessionEnd hook — trust it instead
+  // of waiting on staleSessionMin. Any other hook clears the flag, so a
+  // sibling session staying alive will reset us out of this branch.
+  if (state.claudeClosed) {
+    return {
+      ...state,
+      status: 'stale',
+      currentTool: null,
+      currentFile: null,
+      sessionStart: null,
+      cwd: '',
+      messages: 0,
+      tools: 0,
+      filesOpened: [],
+      filesEdited: [],
+      filesRead: [],
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    };
+  }
+
   // Notification is a brief status — hold it for ~8s after the hook fires,
   // then fall through to normal idle/stale processing.
   if (state.status === 'notification') {

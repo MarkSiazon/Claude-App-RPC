@@ -19,6 +19,10 @@ const DEFAULT_STATE = {
   filesRead: [],
   tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   toolBreakdown: {},
+  // Set true by the SessionEnd hook; cleared by any other hook event.
+  // When true, the daemon goes stale instantly instead of waiting on the
+  // staleSessionMin timeout — the cleanest "Claude is closed" signal we have.
+  claudeClosed: false,
 };
 
 function ensureDir() {

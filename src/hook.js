@@ -42,6 +42,9 @@ export function processHookEvent(event, input = {}) {
     updateState((s) => {
       Object.assign(s, patch);
       s.lastActivity = now;
+      // Any hook firing means Claude Code is alive — clear the closed flag
+      // in case a prior SessionEnd from a sibling session set it.
+      s.claudeClosed = false;
       if (!s.sessionStart) s.sessionStart = now;
       return s;
     });
@@ -62,6 +65,7 @@ export function processHookEvent(event, input = {}) {
         s.lastUserPrompt = now;
         s.lastActivity = now;
         s.status = 'thinking';
+        s.claudeClosed = false;
         if (!s.sessionStart) s.sessionStart = now;
         if (input.cwd) s.cwd = input.cwd;
         return s;
@@ -79,6 +83,7 @@ export function processHookEvent(event, input = {}) {
         s.currentFile = shortFile(file);
         s.status = 'working';
         s.lastActivity = now;
+        s.claudeClosed = false;
         if (!s.sessionStart) s.sessionStart = now;
         if (file && (toolName === 'Read' || toolName === 'NotebookEdit')) {
           s.filesOpened = pushUnique(s.filesOpened, file);
@@ -95,6 +100,7 @@ export function processHookEvent(event, input = {}) {
       updateState((s) => {
         s.currentTool = null;
         s.lastActivity = now;
+        s.claudeClosed = false;
         if (!s.sessionStart) s.sessionStart = now;
         if (file && (toolName === 'Write' || toolName === 'Edit' || toolName === 'NotebookEdit')) {
           s.filesEdited = pushUnique(s.filesEdited, file);
@@ -116,6 +122,7 @@ export function processHookEvent(event, input = {}) {
         s.status = 'notification';
         s.lastNotification = now;
         s.lastActivity = now;
+        s.claudeClosed = false;
         s.currentTool = null;
         s.currentFile = null;
         if (!s.sessionStart) s.sessionStart = now;
@@ -124,9 +131,23 @@ export function processHookEvent(event, input = {}) {
       appendEvent({ type: 'notification', ts: now, cwd: input.cwd || null });
       break;
     }
+    case 'SessionEnd': {
+      // Authoritative "Claude Code is gone" signal — don't wait on the
+      // staleSessionMin timeout. applyIdle short-circuits to stale when it
+      // sees claudeClosed=true. Any subsequent hook from another live
+      // session will flip the flag back to false.
+      updateState((s) => {
+        s.status = 'stale';
+        s.claudeClosed = true;
+        s.currentTool = null;
+        s.currentFile = null;
+        s.lastActivity = now;
+        return s;
+      });
+      break;
+    }
     case 'Stop':
     case 'SubagentStop':
-    case 'SessionEnd':
     default: {
       setActivity({ status: 'idle', currentTool: null, currentFile: null });
     }
