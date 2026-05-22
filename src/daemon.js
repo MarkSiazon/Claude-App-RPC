@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import { Client } from '@xhayper/discord-rpc';
 import { readState } from './state.js';
 import { buildVars, fillTemplate, framePasses, applyIdle } from './format.js';
 import { scan, readAggregate, findLiveSessions } from './scanner.js';
+import { detectGithubUrl } from './git.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH } from './paths.js';
 
 if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
@@ -33,36 +33,13 @@ let lastRotationAt = 0;
 // from a moving transcript mtime, and missing-hook scenarios leave it null —
 // either case would make startTimestamp jump on every rotation.
 let effectiveSessionStart = null;
+// Track which status the rotation cursor belongs to so we can reset it cleanly
+// on a status transition — otherwise the cursor carries over from idle's
+// 7-frame rotation into a single-frame working state and back, producing a
+// jarring "blank tick" until modulo aligns.
+let rotationStatus = null;
 
 writeFileSync(PID_PATH, String(process.pid));
-
-// ── GitHub origin auto-detect ────────────────────────────────────────────────
-const githubCache = new Map(); // cwd → { url, checkedAt }
-const GITHUB_CACHE_TTL = 5 * 60 * 1000;
-
-function detectGithubUrl(cwd) {
-  if (!cwd) return null;
-  const cached = githubCache.get(cwd);
-  if (cached && Date.now() - cached.checkedAt < GITHUB_CACHE_TTL) return cached.url;
-  let url = null;
-  try {
-    const gitCfg = join(cwd, '.git', 'config');
-    if (existsSync(gitCfg)) {
-      const txt = readFileSync(gitCfg, 'utf8');
-      const m = txt.match(/\[remote\s+"origin"\][^\[]*?url\s*=\s*([^\r\n]+)/i);
-      if (m) {
-        let raw = m[1].trim();
-        // SSH form: git@github.com:user/repo(.git)? → https
-        const ssh = raw.match(/^git@github\.com:([^\s]+?)(?:\.git)?$/i);
-        if (ssh) url = `https://github.com/${ssh[1]}`;
-        // HTTPS form: keep as-is, strip trailing .git
-        else if (/^https?:\/\/github\.com\//i.test(raw)) url = raw.replace(/\.git$/i, '');
-      }
-    }
-  } catch {}
-  githubCache.set(cwd, { url, checkedAt: Date.now() });
-  return url;
-}
 
 function maybeAdvanceRotation(rotation, intervalMs) {
   if (!Array.isArray(rotation) || rotation.length === 0) return undefined;
@@ -75,6 +52,30 @@ function maybeAdvanceRotation(rotation, intervalMs) {
   return rotation[rotationIndex % rotation.length];
 }
 
+// Choose frames + a status-level largeImageText override based on the new
+// `presence.byStatus` block when present. Falls back to legacy `p.rotation`
+// (which still works for any existing user config that doesn't use byStatus).
+//
+// Returns { frames, largeImageTextTpl }. A byStatus entry can be:
+//   { details, state, largeImageText, rotation? }
+// If `rotation` is present, the base { details, state } is rendered first
+// and the rotation array cycles after it. Otherwise the entry is a single
+// fixed frame.
+function pickFrames(p, status) {
+  const sb = p.byStatus?.[status];
+  if (sb) {
+    const base = { details: sb.details, state: sb.state, largeImageText: sb.largeImageText };
+    const frames = Array.isArray(sb.rotation) && sb.rotation.length
+      ? [base, ...sb.rotation]
+      : [base];
+    return { frames, largeImageTextTpl: sb.largeImageText || null };
+  }
+  if (Array.isArray(p.rotation) && p.rotation.length) {
+    return { frames: p.rotation, largeImageTextTpl: null };
+  }
+  return { frames: [{ details: p.details, state: p.state }], largeImageTextTpl: null };
+}
+
 function buildActivity(opts = {}) {
   let state = opts.state || readState();
   // Attach live sessions BEFORE applyIdle so the stale/idle decision can
@@ -84,9 +85,15 @@ function buildActivity(opts = {}) {
   const vars = buildVars(state, config, opts.aggregate || aggregate);
   const p = config.presence || {};
 
-  const rawFrames = Array.isArray(p.rotation) && p.rotation.length
-    ? p.rotation
-    : [{ details: p.details, state: p.state }];
+  // Pick the active set of frames + any status-level largeImageText override.
+  // Reset the rotation cursor when status changes so a 7-frame idle rotation
+  // doesn't bleed its index into a 1-frame working state.
+  const { frames: rawFrames, largeImageTextTpl: statusLIT } = pickFrames(p, state.status);
+  if (state.status !== rotationStatus) {
+    rotationIndex = 0;
+    lastRotationAt = 0;
+    rotationStatus = state.status;
+  }
 
   // Drop frames whose `requires` vars are empty/zero. Keeps presence tight.
   const frames = rawFrames.filter((f) => framePasses(f, vars));
@@ -119,7 +126,9 @@ function buildActivity(opts = {}) {
     if (pick) largeKeyTpl = pick;
   }
   if (largeKeyTpl) activity.largeImageKey = fillTemplate(largeKeyTpl, vars);
-  if (p.largeImageText) activity.largeImageText = fillTemplate(p.largeImageText, vars).slice(0, 128);
+  // largeImageText precedence: per-frame override > byStatus entry > global default.
+  const largeTextTpl = frame.largeImageText || statusLIT || p.largeImageText;
+  if (largeTextTpl) activity.largeImageText = fillTemplate(largeTextTpl, vars).slice(0, 128);
 
   // Small image: pick the status icon directly from vars (set via config.statusIcons).
   // Skips when the icon is empty (e.g. 'stale' has no asset).

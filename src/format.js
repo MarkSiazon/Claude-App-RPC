@@ -1,6 +1,8 @@
-import { basename } from 'node:path';
+import { basename, dirname, extname } from 'node:path';
 import { dayKey, weekKey, DATE_SUFFIX_RE, cleanProjectName } from './scanner.js';
 import { fmtCost } from './pricing.js';
+import { languageOf } from './languages.js';
+import { detectGitBranch, detectGitRepo } from './git.js';
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -266,6 +268,22 @@ export function buildVars(state, config, aggregate) {
 
   const currentFilePretty = prettyFilePath(state.currentFile);
 
+  // ── File / directory / language vars ──────────────────────────────────────
+  // Derived from state.currentFile. All empty-string when no file is active,
+  // which keeps `requires`-based frame gating working unchanged.
+  const currentFileNorm = state.currentFile ? String(state.currentFile).replace(/\\/g, '/') : '';
+  const fileName = currentFileNorm ? basename(currentFileNorm) : '';
+  const fileExt = currentFileNorm ? (extname(currentFileNorm).toLowerCase() || '') : '';
+  const fileLang = currentFileNorm ? (languageOf(currentFileNorm) || '') : '';
+  const fileLangUpper = fileLang ? fileLang.toUpperCase() : '';
+  const fullDirName = currentFileNorm ? dirname(currentFileNorm) : '';
+  const dirNameOnly = fullDirName ? basename(fullDirName) : '';
+
+  // ── Git vars ──────────────────────────────────────────────────────────────
+  // Cached per-cwd in src/git.js. Empty strings when not in a repo.
+  const gitBranch = detectGitBranch(state.cwd) || '';
+  const gitRepo = detectGitRepo(state.cwd) || '';
+
   const messages = state.messages || 0;
   const tools = state.tools || 0;
   const filesEdited = (state.filesEdited || []).length;
@@ -304,6 +322,24 @@ export function buildVars(state, config, aggregate) {
     currentToolPretty,
     currentFile: state.currentFile || '',
     currentFilePretty,
+
+    // ── File / directory / language (v0.3.6) ────────────────────
+    fileName,
+    fileExt,
+    fileLang,
+    fileLangUpper,
+    dirName: dirNameOnly,
+    fullDirName,
+
+    // ── Git (v0.3.6) ────────────────────────────────────────────
+    gitBranch,
+    gitRepo,
+
+    // ── App identity (v0.3.6) ───────────────────────────────────
+    appName: config?.appName || 'Claude Code',
+
+    // Literal single space — handy for blanking a line without `requires`.
+    empty: ' ',
 
     // pluralized session labels
     messagesLabel: plural(messages, 'prompt'),
