@@ -282,6 +282,12 @@ function verifyHookPipe(exePath) {
   const args = IS_PACKAGED || IS_NPM_INSTALL
               ? ['hook', 'SessionStart']
               : [HOOK_SCRIPT, 'SessionStart'];
+  // Windows + npm-install: the global bin is `claude-rpc.cmd` (a batch shim),
+  // and Node's spawn doesn't apply PATHEXT — calling `claude-rpc` raw fails
+  // with ENOENT. shell:true makes cmd.exe do the resolution, mirroring how
+  // Claude Code actually invokes the hook string at runtime. Args are static
+  // and trusted; no injection surface.
+  const useShell = IS_NPM_INSTALL && process.platform === 'win32';
   let result;
   try {
     result = spawnSync(cmd, args, {
@@ -289,6 +295,7 @@ function verifyHookPipe(exePath) {
       encoding: 'utf8',
       timeout: 3000,
       windowsHide: true,
+      shell: useShell,
     });
   } catch (e) {
     return { ok: false, detail: `spawn failed: ${e.message}` };

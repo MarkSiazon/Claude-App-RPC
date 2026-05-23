@@ -95,3 +95,27 @@ test('ensureCanonicalExe: dev mode returns input unchanged', () => {
   const out = ensureCanonicalExe('/path/to/foo');
   assert.equal(out, '/path/to/foo');
 });
+
+// ── verifyHookPipe shell-flag regression ──────────────────────────────
+//
+// v0.6.0 shipped a Windows-npm bug: `spawnSync('claude-rpc', [...])` fails
+// with ENOENT because Node doesn't apply PATHEXT, and npm globals on
+// Windows are `claude-rpc.cmd` shims. Fix in v0.6.1 was to set
+// `shell: true` on the spawn options when running under npm-install +
+// Windows. The grep-test below pins the fix in source so a future
+// refactor can't silently re-introduce it.
+
+test('verifyHookPipe sets shell:true for Windows+npm mode', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join, dirname } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const src = readFileSync(join(root, 'src', 'install.js'), 'utf8');
+  // The verifier must compute a shell flag from the install mode + platform
+  // and pass it to spawnSync. A grep is the cheapest way to assert that
+  // without booting a real Windows npm shim.
+  assert.match(src, /shell:\s*useShell|shell:\s*process\.platform\s*===\s*['"]win32['"]/,
+    'verifyHookPipe must pass a shell flag to spawnSync');
+  assert.match(src, /IS_NPM_INSTALL\s*&&\s*process\.platform\s*===\s*['"]win32['"]/,
+    'shell flag must gate on npm-install + Windows');
+});

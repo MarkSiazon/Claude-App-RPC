@@ -4,6 +4,16 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 
 ## Unreleased
 
+_No changes yet._
+
+## [0.6.1] - 2026-05-23
+
+**Fixed**
+
+- Windows + npm-install setup logged `hook pipe ✗ spawn error: spawnSync claude-rpc ENOENT` after install. The setup test-fire was calling `spawnSync('claude-rpc', [...])` raw, and Node doesn't apply `PATHEXT` on Windows — `claude-rpc.cmd` (the npm-shipped shim) couldn't be resolved without going through `cmd.exe`. The fix sets `shell: true` on the verify spawn under npm-install + Windows, mirroring how Claude Code actually invokes the hook string at runtime. Real hook firing was always fine; only the post-install verification probe was broken. Regression test pins the source-level fix.
+
+**Docs**
+
 - README rewritten to match the project's voice (lowercase headings, "built solo on weekends" framing) and to actually represent what claude-rpc is. Adds an inline card-poster preview, surfaces privacy as a first-class section instead of a single row, drops the drift-prone configuration-reference + template-variables tables in favour of pointers to `src/default-config.js` and `claude-rpc vars`. The five generated example cards in `site/examples/` are linked from the README so the reader sees what `claude-rpc card` actually produces.
 
 ## [0.6.0] - 2026-05-23
