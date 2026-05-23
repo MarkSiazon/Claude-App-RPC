@@ -8,36 +8,39 @@
 # claude-rpc
 
 **Discord Rich Presence for [Claude Code](https://claude.com/claude-code).**
-Your model, project, current tool, tokens, and lifetime stats — live in your Discord profile. Driven by Claude Code's hooks. Zero polling, zero overhead between sessions.
+Your live model, project, current tool, tokens, and lifetime stats — in your Discord profile. Driven by the hooks Claude Code already fires. Zero polling between sessions.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node 18+](https://img.shields.io/badge/node-%3E%3D18-43853d.svg?logo=node.js&logoColor=white)](https://nodejs.org)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-hooks-d97757.svg)](https://claude.com/claude-code)
 [![Discord RPC](https://img.shields.io/badge/Discord-RPC-5865F2.svg?logo=discord&logoColor=white)](https://discord.com/developers/docs/topics/rpc)
+[![Release](https://img.shields.io/github/v/release/rar-file/claude-rpc?color=4c1)](https://github.com/rar-file/claude-rpc/releases/latest)
 
 </div>
 
 ---
 
 <div align="center">
-  <img src="docs/demo.gif" width="560" alt="Discord Rich Presence card: Claude Code, working in claude-rpc on Opus 4.7" />
+  <img src="docs/demo.gif" width="560" alt="Discord Rich Presence card showing Claude Code working in claude-rpc on Opus 4.7" />
 </div>
 
-## Install
+A small Node daemon that takes the lifecycle events Claude Code already fires and pipes them into the Discord rich-presence card on your profile. Your friends see what you're building; your future self gets lifetime stats. Built solo, on weekends.
 
-**Windows** (no Node required) — [grab the latest portable exe](https://github.com/rar-file/claude-rpc/releases/latest):
+## install
+
+**Windows (no Node required)** — [grab the portable exe from the latest release](https://github.com/rar-file/claude-rpc/releases/latest):
 
 ```sh
 claude-rpc setup
 claude-rpc start
 ```
 
-That's it. Open Claude Code in any project — the daemon picks it up within a second.
+That's the whole pitch. Open Claude Code in any project — the daemon picks it up within a second. Something looks wrong? `claude-rpc doctor`.
 
-The Discord *desktop* app must be running (the browser client doesn't expose the local IPC). Something looks wrong? `claude-rpc doctor`.
+The Discord *desktop* app must be running. The browser client doesn't expose the local IPC bridge that Rich Presence uses.
 
 <details>
-<summary><b>Other platforms / from source</b></summary>
+<summary><b>other platforms / from source</b></summary>
 
 ```sh
 git clone https://github.com/rar-file/claude-rpc.git
@@ -47,99 +50,77 @@ node ./src/cli.js setup
 node ./src/cli.js start
 ```
 
-Or `npm install -g claude-rpc` for the global bin.
+Or `npm install -g claude-rpc` for the global bin. Both modes survive `npm update` without losing your `clientId` — user config lives under the per-OS config dir, not inside `node_modules`.
 </details>
 
 <details>
-<summary><b>Use your own Discord app</b></summary>
+<summary><b>use your own Discord app</b></summary>
 
-A working Discord application is bundled into the default config — you don't need to register your own to get started. To use a different app name on the card, create one in the [Discord Developer Portal](https://discord.com/developers/applications), copy the Application ID, and put it into `clientId` in your config:
+A working public Discord application is bundled into the default config — you don't need to register your own to get started. If you want a different app name on the card, create one in the [Discord Developer Portal](https://discord.com/developers/applications), copy the Application ID, and drop it into your config:
 
 ```sh
-# Linux / macOS
+# Linux
 echo '{ "clientId": "YOUR_ID" }' > ~/.config/claude-rpc/config.json
-# Windows
-echo { "clientId": "YOUR_ID" } > %APPDATA%\claude-rpc\config.json
+# macOS
+echo '{ "clientId": "YOUR_ID" }' > ~/Library/Application\ Support/claude-rpc/config.json
+# Windows (PowerShell)
+'{ "clientId": "YOUR_ID" }' | Set-Content $env:APPDATA\claude-rpc\config.json
 ```
 
-Run `claude-rpc upgrade-config` afterwards if you carry forward a v0.3-era config.
+`claude-rpc upgrade-config` if you're carrying forward a v0.3-era file.
 </details>
 
-## Features
+## what claude-rpc does
 
-**In Discord**
+### on discord
 
-| | |
-| :--- | :--- |
-| 🔴 **Live status** | Model, project, current tool/file, and token counts update as you work |
-| 🎞️ **Status art** | Large image swaps between *working*, *thinking*, *idle*, *stale*, *notification* |
-| 🔁 **Rotation frames** | Cycle through today's stats, streak, top file, lifetime totals, anything you template |
-| 🐙 **Auto GitHub button** | When your cwd is a git repo with a github origin, a *View on GitHub* button appears |
-| 🔒 **Privacy mode** | Per-project `.claude-rpc.json`, runtime `claude-rpc private` toggle, glob-pattern matchers, and auto-detection of GitHub private repos via `gh` |
+A card that updates as you work. The large image swaps between five states (working / thinking / idle / stale / notification — those gifs at the top of this README). The two lines of text rotate through frames you template — current file, today's hours, lifetime totals, top hotspot, code churn, cost — and the daemon skips frames whose required template variables are empty. The `SessionEnd` hook clears the card instantly when you close Claude Code; no "is it still running?" timeout.
 
-**Beyond Discord**
+A *View on GitHub →* button appears automatically when your cwd is a git repo with a github origin. The daemon checks `.git/config` directly — no shell-out, no surprise GH API call.
 
-| | |
-| :--- | :--- |
-| 📊 **All-time aggregates** | Hours, prompts, tokens, streaks, hotspots, lines changed, languages, cost, bash usage, web domains, subagent runs — incremental scanner over `~/.claude/projects/*.jsonl` |
-| 💰 **Cost estimate** | Per-model spend (Opus/Sonnet/Haiku) using public list prices — editable in `src/pricing.js` |
-| 🧠 **Insights** | `claude-rpc insights` generates 3–5 contextual lines: weekly trend, peak weekday, hotspot file, cost pace, streak progress |
-| 🖥️ **CLI dashboard** | `claude-rpc status` — heatmap, hour histogram, top tools / files / projects / languages / bash commands / cost |
-| 🌐 **Web dashboard** | `claude-rpc serve` — range selector (7d / 30d / 90d / 1y / All), live SSE updates, project drilldown, day-detail modal, theme toggle |
-| 🪪 **Badges & cards** | `claude-rpc badge --metric hours --range 7d` (Shields-style SVG) and `claude-rpc card --range year` (poster-style summary) |
-| ⚙️ **Config GUI** | Electron app — six tabs: Presence, Discord, Assets, Timing, Daemon, Stats |
+### on your machine
 
-## Screens
+Three local surfaces, all reading the same `~/.claude-rpc/aggregate.json`:
 
 <table>
 <tr>
-<td align="center" width="50%"><b>Web dashboard</b><br/><sub><code>claude-rpc serve</code></sub><br/><br/><img src="docs/dashboard.png" alt="Web dashboard with range selector, activity chart, heatmap, cost panel, languages stack, and leaderboards" /></td>
-<td align="center" width="50%"><b>Settings GUI</b><br/><sub><code>npm run dashboard</code></sub><br/><br/><img src="docs/electron.png" alt="Electron config editor with Presence / Discord / Assets / Timing / Daemon / Stats tabs" /></td>
+<td align="center" width="50%"><b>web dashboard</b><br/><sub><code>claude-rpc serve</code> · port 47474</sub><br/><br/><img src="docs/dashboard.png" alt="Web dashboard with range selector, activity chart, heatmap, cost panel, languages stack, and leaderboards" /></td>
+<td align="center" width="50%"><b>settings gui</b><br/><sub><code>npm run dashboard</code> · Electron</sub><br/><br/><img src="docs/electron.png" alt="Electron config editor with Presence / Discord / Assets / Timing / Daemon / Stats tabs" /></td>
 </tr>
 </table>
 
-## Commands
-
-| Command          | Description                                              |
-| ---------------- | -------------------------------------------------------- |
-| `setup`          | Install Claude Code hooks (`~/.claude/settings.json`)    |
-| `uninstall`      | Remove Claude Code hooks                                 |
-| `upgrade-config` | Re-run idempotent migrations on `config.json`            |
-| `start`          | Start the daemon (detached)                              |
-| `stop`           | Stop the daemon                                          |
-| `restart`        | Stop then start                                          |
-| `status`         | Current session + all-time stats (interactive TUI or `--dump`) |
-| `today`          | Today's stats + 24h histogram                            |
-| `week`           | This week's stats + daily breakdown                      |
-| `serve`          | Open the local web dashboard (port 47474)                |
-| `preview`        | Show how each rotation frame renders right now           |
-| `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects`    |
-| `backfill <dir>` | Import transcripts from any folder (backup, other machine) |
-| `insights`       | Print 3–5 auto-generated insight lines                   |
-| `badge`          | Render a Shields-style SVG (`--metric` `--range` `--out`)|
-| `card`           | Poster-style SVG summary (`--range year\|month\|week\|all`) |
-| `private` / `public` / `privacy` | Per-cwd visibility toggles + status        |
-| `doctor`         | Diagnostic checklist — common-failure triage             |
-| `tail` / `logs`  | Tail the daemon log                                      |
-| `daemon`         | Run the daemon in the foreground (debug)                 |
-
-Exit codes: `0` ok · `1` user error · `2` system error · `3` wrong state. `--version` and `--help` work as expected.
-
-## Config GUI
-
-```sh
-cd dashboard
-npm install
-npm start                # dev mode
-npm run dist:mac         # → .dmg
-npm run dist:win         # → portable .exe
+```text
+claude-rpc status                 (TUI — heatmap, hour histogram, leaderboards)
+claude-rpc today                  (today's stats, focused)
+claude-rpc week                   (weekday breakdown)
+claude-rpc preview                (every rotation frame rendered with real data)
+claude-rpc insights               (3–5 auto-generated lines: trend, peak, hotspot)
 ```
 
-The Electron app reads and writes `config.json` directly. The daemon hot-reloads.
+The web dashboard pushes updates via SSE; the TUI refreshes on a 3-second tick.
 
-## How it works
+### beyond your machine
 
-Three cooperating pieces, glued by JSON files on disk.
+Shields-style badges and a poster-style summary card you can paste into a README or a Discord message:
+
+```sh
+claude-rpc badge --metric hours  --range 7d   --out claude-hours.svg
+claude-rpc badge --metric streak              --out claude-streak.svg
+claude-rpc card  --range year                 --out year-on-claude.svg
+```
+
+<div align="center">
+  <img src="site/examples/year-on-claude.svg" width="560" alt="Year-on-claude card — hours, prompts, tokens, lines, cost, daily activity strip" />
+</div>
+
+Live equivalents when the daemon is up:
+
+- `http://127.0.0.1:47474/api/badge.svg?metric=hours&range=7d`
+- `http://127.0.0.1:47474/api/card.svg?range=year`
+
+Cost numbers come from `src/pricing.js`, seeded with **approximate** public list prices. Your actual Claude Code subscription bill is unrelated.
+
+## three pieces, glued by json files
 
 ```
    Claude Code                                          Discord desktop
@@ -157,104 +138,124 @@ Three cooperating pieces, glued by JSON files on disk.
                                 └────────────┘
 ```
 
-1. **Hook** (`src/hook.js`) — Claude Code spawns it on every lifecycle event. Parses the JSON event from stdin and mutates the shared state file.
-2. **Daemon** (`src/daemon.js`) — Long-running. Connects to Discord's local IPC, watches the state file plus periodic transcript scans, pushes presence frames every few seconds. Exponential backoff with jitter on reconnect.
-3. **Scanner** (`src/scanner.js`) — Walks `~/.claude/projects/**/*.jsonl` transcripts for all-time aggregates. Cached at `~/.claude-rpc/aggregate.json` for incremental updates.
+No database, no message bus, no background polling when Claude Code isn't running. State on disk you can `cat` and `jq`. The single runtime dependency is `@xhayper/discord-rpc`.
 
-Persistent state:
+1. **hook** ([`src/hook.js`](src/hook.js)) — Claude Code spawns it on every lifecycle event. Parses the JSON from stdin and mutates the shared state file. Runs in ~20ms.
+2. **daemon** ([`src/daemon.js`](src/daemon.js)) — long-running. Connects to Discord's local IPC, watches the state file, pushes presence frames every few seconds. Exponential backoff with jitter on reconnect; `daemon.log` rotates at 5 MB.
+3. **scanner** ([`src/scanner.js`](src/scanner.js)) — walks `~/.claude/projects/**/*.jsonl` for all-time aggregates (active time, prompts, tools, tokens, streaks, hotspots, lines, languages, cost, bash, web, subagents). Incremental — re-parses only changed files.
+
+Persistent state, all human-readable JSON:
 
 | Path | What |
 | ---- | ---- |
 | `$TMPDIR/claude-rpc/state.json` | Current session, volatile |
 | `~/.claude-rpc/aggregate.json` | All-time aggregates |
 | `~/.claude-rpc/scan-cache.json` | Per-transcript scan cache |
+| `~/.claude-rpc/private-list.json` | Runtime privacy toggles |
 | `~/.claude/settings.json` | Hook registrations (managed by `setup`) |
 
-User config lives at `%APPDATA%\claude-rpc\config.json` (Windows), `~/Library/Application Support/claude-rpc/config.json` (macOS), or `$XDG_CONFIG_HOME/claude-rpc/config.json` (Linux). It only needs to hold *overrides* — defaults are baked into the binary.
+User config lives at `%APPDATA%\claude-rpc\config.json` (Windows), `~/Library/Application Support/claude-rpc/config.json` (macOS), or `$XDG_CONFIG_HOME/claude-rpc/config.json` (Linux). It only needs to hold *overrides* — every key has a baked default. `{ "clientId": "..." }` is a complete config file. Defaults live in [`src/default-config.js`](src/default-config.js); the loader deep-merges over them.
 
-<details>
-<summary><b>Configuration reference</b></summary>
+## privacy
 
-Every key is optional. The shipped defaults work out of the box. Override what you want:
+Per-project, runtime, or auto-detected — whichever fits how you work.
 
-| Key                       | Default | Notes                                                               |
-| ------------------------- | ------- | ------------------------------------------------------------------- |
-| `clientId`                | bundled | Discord application ID (a working public app ships by default)      |
-| `updateIntervalMs`        | `4000`  | How often the daemon pushes to Discord                              |
-| `rotationIntervalMs`      | `12000` | How fast rotation frames cycle                                      |
-| `rescanIntervalSec`       | `300`   | How often transcripts are re-aggregated                             |
-| `idleThresholdSec`        | `60`    | No activity for this long → status `idle`                           |
-| `staleSessionMin`         | `5`     | No activity (minutes) → status `stale`; presence cleared            |
-| `notificationWindowSec`   | `8`     | How long the `notification` status sticks                           |
-| `showElapsed`             | `true`  | Include the elapsed timer                                           |
-| `activityType`            | `0`     | `0` Playing, `2` Listening, `3` Watching, `5` Competing             |
-| `statusAssets`            | gifs    | Image per status (working / thinking / idle / stale / notification) |
-| `presence.byStatus`       | full    | Per-status template block (preferred over `rotation`)               |
-| `presence.rotation`       | —       | Legacy: flat array of `{ details, state, requires? }`               |
-| `presence.buttons`        | one     | Up to 2 `{ label, url }` buttons                                    |
-| `presence.largeImageKey`  | gif     | Fallback large image when no `statusAssets` match                   |
-| `presence.largeImageText` | tpl     | Tooltip on hover                                                    |
-| `privacy.patterns`        | `[]`    | Glob list of cwd basenames to treat as private                      |
-| `privacy.mode`            | hidden  | What `patterns` does — `hidden` / `name-only` / `public`            |
-
-Image precedence: `statusAssets[status]` → `modelAssets[opus|sonnet|haiku]` → `presence.largeImageKey`.
-
-</details>
-
-<details>
-<summary><b>Template variables</b></summary>
-
-Both `details` and `state` (and button labels and URLs) support `{name}` substitution.
-
-| Variable                | Sample             |
-| ----------------------- | ------------------ |
-| `{statusVerbose}`       | `Working`          |
-| `{project}`             | `claude-rpc`       |
-| `{modelPretty}`         | `Opus 4.7`         |
-| `{currentToolPretty}`   | `Edit`             |
-| `{currentFilePretty}`   | `src/app/page.tsx` |
-| `{tokensFmt}`           | `2.3k`             |
-| `{messagesLabel}`       | `8 prompts`        |
-| `{todayHours}`          | `56m`              |
-| `{weekHours}`           | `3.1h`             |
-| `{streakLabel}`         | `7-day streak`     |
-| `{allHours}`            | `52h`              |
-| `{allTokensFmt}`        | `2.82B`            |
-| `{peakHour}`            | `22:00`            |
-| `{topEditedFile}`       | `index.html`       |
-| `{linesAddedFmt}`       | `24k`              |
-| `{topLanguage}`         | `TypeScript`       |
-| `{todayCostFmt}`        | `$1.23`            |
-| `{allCostFmt}`          | `$89.42`           |
-| `{gitBranch}`           | `main`             |
-
-Run `claude-rpc preview` to see every frame rendered with your real data, including which ones would be hidden by their `requires`. Run `claude-rpc vars` for the full machine-readable list.
-
-</details>
-
-## Badges
-
-```sh
-claude-rpc badge --metric hours  --range 7d   --out claude-hours.svg
-claude-rpc badge --metric streak              --out claude-streak.svg
-claude-rpc badge --metric cost   --range 30d  --out claude-cost.svg
-claude-rpc badge --metric lines  --range all  --out claude-lines.svg
+```jsonc
+// drop at your project root: <project>/.claude-rpc.json
+{ "private": true }                                  // shortcut for visibility: "hidden"
+{ "visibility": "name-only" }                        // project name only, no file/tool detail
+{ "projectName": "redacted" }                        // show this name on Discord instead
 ```
 
-Live via the dashboard too: `http://127.0.0.1:47474/api/badge.svg?metric=hours&range=7d`.
+Or from the command line, in any project:
 
-Cost numbers come from `src/pricing.js`, seeded with **approximate** public list prices. Your actual Claude Code subscription bill is unrelated.
+```sh
+claude-rpc private        # add cwd to ~/.claude-rpc/private-list.json
+claude-rpc public         # remove cwd
+claude-rpc privacy        # show the resolved visibility for the current dir
+```
 
-## Troubleshooting
+Or globally, in `config.json`:
 
-**First step is always `claude-rpc doctor`.** It checks Node version, hook registration, daemon liveness, Discord connection, aggregate freshness, and privacy resolution — with a one-line fix hint per failure.
+```json
+{ "privacy": { "patterns": ["client-*", "secret-stuff"], "mode": "hidden" } }
+```
 
-**Discord doesn't pick up presence.** The Discord *desktop* app must be running. The browser client doesn't expose the local IPC. Run `claude-rpc tail` to watch the daemon log live.
+If [`gh`](https://cli.github.com/) is installed and authenticated, GitHub-private repos auto-hide (`privacy.githubPrivateMode`, default `hidden` — opt out with `privacy.autoDetectGithubPrivate: false`). 5-minute cache, 1.5s timeout, silent skip when `gh` isn't there.
 
-**Hooks don't fire.** Run `claude-rpc setup` and check the `hooks` section of `~/.claude/settings.json`. Restart Claude Code so it re-reads hook config. `setup` now test-fires a SessionStart through the same launcher Claude Code will use, so a broken hook command should be caught at install time.
+Aggregates and local dashboards are never affected. Privacy is a one-way valve between local state and Discord.
 
-**Config error.** A bad `config.json` won't brick the daemon any more — it logs one line and falls back to baked-in defaults. Check the daemon log via `claude-rpc tail` to see the parse error.
+## customizing the card
 
-## License
+```sh
+claude-rpc preview        # render every rotation frame with your real data
+claude-rpc vars           # dump the full template-variable list as JSON
+```
+
+Frames have a `requires` field; the daemon skips a frame when any of its required vars resolve empty / zero. Write seven frames knowing only the relevant ones render.
+
+```jsonc
+"idle": {
+  "details": "Idle in {project}",
+  "state":   "{modelPretty} · {todayHours} today",
+  "rotation": [
+    { "details": "This week · {weekHours}",      "state": "{weekPromptsLabel} · {weekTokensFmt} tokens",
+      "requires": ["weekActiveMs"] },
+    { "details": "Code churn · {linesAddedFmt} added",
+      "state":   "{linesNetFmt} net · {topLanguage}",
+      "requires": ["topLanguage"] }
+  ]
+}
+```
+
+The full default config is in [`src/default-config.js`](src/default-config.js) — that's the canonical list of every key. ~140 template variables are available; `claude-rpc vars` is the source of truth.
+
+## commands
+
+| Command          | What it does |
+| ---------------- | ------------ |
+| `setup`          | Install Claude Code hooks (test-fires one synthetic SessionStart to prove the pipe works) |
+| `uninstall`      | Remove Claude Code hooks |
+| `upgrade-config` | Re-run idempotent migrations on `config.json` |
+| `start` / `stop` / `restart` | Lifecycle for the detached daemon |
+| `status`         | Interactive TUI — heatmap, hour histogram, leaderboards (`--dump` for plain output) |
+| `today` / `week` | Focused views (today's stats, weekday breakdown) |
+| `serve`          | Open the local web dashboard (port 47474) |
+| `preview`        | Render every rotation frame against real state |
+| `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects` |
+| `backfill <dir>` | Import transcripts from any folder (backup, other machine) |
+| `insights`       | Print 3–5 auto-generated lines about your week |
+| `badge`          | Shields-style SVG (`--metric` `--range` `--out`) |
+| `card`           | Poster-style SVG (`--range year\|month\|week\|all`) |
+| `private` / `public` / `privacy` | Per-cwd visibility toggles + status |
+| `doctor`         | Diagnostic checklist with one-line fix hints |
+| `tail` / `logs`  | Tail the daemon log |
+| `daemon`         | Run the daemon in the foreground (debugging) |
+| `vars`           | Dump the full template-var list as JSON |
+
+Exit codes: `0` ok · `1` user error · `2` system error · `3` wrong state. `--version` and `--help` work as expected.
+
+## troubleshooting
+
+**First step is always `claude-rpc doctor`.** It checks Node version, hook registration, daemon liveness, Discord IPC connection, aggregate freshness, and privacy resolution — with a one-line fix hint per failure.
+
+- **Discord doesn't show anything.** Discord *desktop* must be running. The browser client doesn't expose the local IPC bridge. `claude-rpc tail` shows what the daemon is actually doing.
+- **Hooks don't fire.** `claude-rpc setup` re-registers them and now test-fires a synthetic `SessionStart` end-to-end, so a broken hook command surfaces immediately. Restart Claude Code afterwards so it re-reads its hook config.
+- **Config error.** Bad JSON in `config.json` no longer crashes anything — the daemon logs one line and falls back to baked defaults. `claude-rpc tail` shows the parse error verbatim.
+- **Old binary path baked into hooks.** Common after manual exe replacement. `claude-rpc setup` rewrites hook entries to point at the canonical install location.
+
+## development
+
+```sh
+npm test                  # 134 tests, ~1.7s
+npm run start             # run daemon in foreground
+npm run serve             # web dashboard against your real data
+npm run dashboard         # Electron settings GUI (dev mode)
+npm run build:exe         # SEA single-file binary for the current OS
+```
+
+Tests are `node --test` with zero deps. The CI pipeline ([release.yml](.github/workflows/release.yml)) gates the matrix build and the npm publish behind the test job. Every public export of `src/*.js` is exercised at least once.
+
+## license
 
 [MIT](LICENSE) © Archer Simmons

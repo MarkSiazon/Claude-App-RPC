@@ -4,7 +4,7 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 
 ## Unreleased
 
-_No changes yet._
+- README rewritten to match the project's voice (lowercase headings, "built solo on weekends" framing) and to actually represent what claude-rpc is. Adds an inline card-poster preview, surfaces privacy as a first-class section instead of a single row, drops the drift-prone configuration-reference + template-variables tables in favour of pointers to `src/default-config.js` and `claude-rpc vars`. The five generated example cards in `site/examples/` are linked from the README so the reader sees what `claude-rpc card` actually produces.
 
 ## [0.6.0] - 2026-05-23
 
