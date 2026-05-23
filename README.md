@@ -8,7 +8,7 @@
 # claude-rpc
 
 **Discord Rich Presence for [Claude Code](https://claude.com/claude-code).**
-Your model, project, current tool, tokens, and lifetime stats — live in your Discord profile.
+Your model, project, current tool, tokens, and lifetime stats — live in your Discord profile. Driven by Claude Code's hooks. Zero polling, zero overhead between sessions.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node 18+](https://img.shields.io/badge/node-%3E%3D18-43853d.svg?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -23,17 +23,47 @@ Your model, project, current tool, tokens, and lifetime stats — live in your D
   <img src="docs/demo.gif" width="560" alt="Discord Rich Presence card: Claude Code, working in claude-rpc on Opus 4.7" />
 </div>
 
-Driven entirely by Claude Code's hook system. Zero polling, zero overhead between sessions.
+## Install
 
-<div align="center">
+**Windows** (no Node required) — [grab the latest portable exe](https://github.com/rar-file/claude-rpc/releases/latest):
 
-<sub>Sample badges (your numbers, your README):</sub>
+```sh
+claude-rpc setup
+claude-rpc start
+```
 
-<img src="https://img.shields.io/badge/claude%20%C2%B7%207d-12.4h-4c1" alt="hours" />&nbsp;<img src="https://img.shields.io/badge/streak-23%20days-fe7d37" alt="streak" />&nbsp;<img src="https://img.shields.io/badge/claude%20cost%20%C2%B7%2030d-$48.20-3a7" alt="cost" />&nbsp;<img src="https://img.shields.io/badge/lines%20%C2%B7%20all--time-24.1k-08c" alt="lines" />&nbsp;<img src="https://img.shields.io/badge/prompts%20%C2%B7%2030d-1.2k-5865F2" alt="prompts" />
+That's it. Open Claude Code in any project — the daemon picks it up within a second.
 
-</div>
+The Discord *desktop* app must be running (the browser client doesn't expose the local IPC). Something looks wrong? `claude-rpc doctor`.
 
-> **What's new in v0.2.0** — Cost estimation, code churn, languages, MCP/built-in split, bash + web + subagent leaderboards, redesigned web dashboard with SSE push, six-tab Electron settings GUI, new `insights` and `badge` subcommands. [Full release notes →](https://github.com/rar-file/claude-rpc/releases/tag/v0.2.0)
+<details>
+<summary><b>Other platforms / from source</b></summary>
+
+```sh
+git clone https://github.com/rar-file/claude-rpc.git
+cd claude-rpc
+npm install
+node ./src/cli.js setup
+node ./src/cli.js start
+```
+
+Or `npm install -g claude-rpc` for the global bin.
+</details>
+
+<details>
+<summary><b>Use your own Discord app</b></summary>
+
+A working Discord application is bundled into the default config — you don't need to register your own to get started. To use a different app name on the card, create one in the [Discord Developer Portal](https://discord.com/developers/applications), copy the Application ID, and put it into `clientId` in your config:
+
+```sh
+# Linux / macOS
+echo '{ "clientId": "YOUR_ID" }' > ~/.config/claude-rpc/config.json
+# Windows
+echo { "clientId": "YOUR_ID" } > %APPDATA%\claude-rpc\config.json
+```
+
+Run `claude-rpc upgrade-config` afterwards if you carry forward a v0.3-era config.
+</details>
 
 ## Features
 
@@ -45,18 +75,19 @@ Driven entirely by Claude Code's hook system. Zero polling, zero overhead betwee
 | 🎞️ **Status art** | Large image swaps between *working*, *thinking*, *idle*, *stale*, *notification* |
 | 🔁 **Rotation frames** | Cycle through today's stats, streak, top file, lifetime totals, anything you template |
 | 🐙 **Auto GitHub button** | When your cwd is a git repo with a github origin, a *View on GitHub* button appears |
+| 🔒 **Privacy mode** | Per-project `.claude-rpc.json`, runtime `claude-rpc private` toggle, glob-pattern matchers, and auto-detection of GitHub private repos via `gh` |
 
 **Beyond Discord**
 
 | | |
 | :--- | :--- |
-| 📊 **All-time aggregates** | Hours, prompts, tokens, streaks, hotspots, **lines changed, languages, cost, bash usage, web domains, subagent runs** — incremental scanner over `~/.claude/projects/*.jsonl` |
+| 📊 **All-time aggregates** | Hours, prompts, tokens, streaks, hotspots, lines changed, languages, cost, bash usage, web domains, subagent runs — incremental scanner over `~/.claude/projects/*.jsonl` |
 | 💰 **Cost estimate** | Per-model spend (Opus/Sonnet/Haiku) using public list prices — editable in `src/pricing.js` |
 | 🧠 **Insights** | `claude-rpc insights` generates 3–5 contextual lines: weekly trend, peak weekday, hotspot file, cost pace, streak progress |
 | 🖥️ **CLI dashboard** | `claude-rpc status` — heatmap, hour histogram, top tools / files / projects / languages / bash commands / cost |
-| 🌐 **Web dashboard** | `claude-rpc serve` — range selector (7d / 30d / 90d / 1y / All), live SSE updates, project drilldown, day-detail modal, achievements, theme toggle |
-| 🪪 **README badges** | `claude-rpc badge --metric hours --range 7d --out h.svg` (or live at `/api/badge.svg?metric=…`) |
-| ⚙️ **Config GUI** | Electron app with six tabs: Presence (drag-reorder, variable autocomplete, presets), Discord, Assets, Timing, Daemon (start/stop/restart, tail log), Stats |
+| 🌐 **Web dashboard** | `claude-rpc serve` — range selector (7d / 30d / 90d / 1y / All), live SSE updates, project drilldown, day-detail modal, theme toggle |
+| 🪪 **Badges & cards** | `claude-rpc badge --metric hours --range 7d` (Shields-style SVG) and `claude-rpc card --range year` (poster-style summary) |
+| ⚙️ **Config GUI** | Electron app — six tabs: Presence, Discord, Assets, Timing, Daemon, Stats |
 
 ## Screens
 
@@ -67,69 +98,32 @@ Driven entirely by Claude Code's hook system. Zero polling, zero overhead betwee
 </tr>
 </table>
 
-## Install
-
-**Windows (no Node required)** — grab the latest portable exe:
-
-```sh
-# From https://github.com/rar-file/claude-rpc/releases/latest
-# Download claude-rpc.exe, drop it anywhere on PATH.
-claude-rpc setup
-claude-rpc start
-```
-
-**Any OS (from source)** — Node 18+:
-
-```sh
-git clone https://github.com/rar-file/claude-rpc.git
-cd claude-rpc
-npm install
-cp config.example.json config.json
-npm link            # optional, makes `claude-rpc` global
-```
-
-Requires the Discord **desktop** client (RPC IPC is unavailable in the browser client) and Claude Code with hook support.
-
-## Quick start
-
-```sh
-node ./src/cli.js setup      # register hooks into ~/.claude/settings.json
-node ./src/cli.js start      # launch the daemon (detached)
-node ./src/cli.js status     # CLI dashboard
-node ./src/cli.js serve      # web dashboard at http://127.0.0.1:47474
-```
-
-Open Claude Code in any project. Hooks fire on `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, and `SessionEnd`, and the daemon pushes updated presence to Discord within a second.
-
-If you `npm link` (or install the packaged exe), every command above becomes `claude-rpc <command>`.
-
-## Discord app setup
-
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and create a new application named something like `Claude Code`.
-2. Copy the **Application ID** into `config.json` under `clientId`.
-3. *(Optional)* Under **Rich Presence → Art Assets**, upload images named `claude`, `working`, `thinking`, `idle`, `notification` to match the keys in `statusAssets`.
-4. Or skip uploading and use direct URLs in `statusAssets` (e.g. `"https://example.com/working.gif"`). Modern Discord clients fetch them through their media proxy.
-
 ## Commands
 
-| Command       | Description                                              |
-| ------------- | -------------------------------------------------------- |
-| `setup`       | Install hooks into `~/.claude/settings.json`             |
-| `uninstall`   | Remove hooks                                             |
-| `start`       | Start the daemon (detached)                              |
-| `stop`        | Stop the daemon                                          |
-| `restart`     | Stop then start                                          |
-| `status`      | Current session + all-time dashboard                     |
-| `today`       | Today's stats + 24h histogram                            |
-| `week`        | This week's stats + daily breakdown                      |
-| `serve`       | Open the local web dashboard (port 47474)                |
-| `preview`     | Show how each rotation frame renders right now           |
-| `scan`        | Incrementally rescan `~/.claude/projects` for aggregates |
-| `rescan`      | Force re-parse every transcript                          |
-| `insights`    | Print 3–5 auto-generated insight lines                   |
-| `badge`       | Render a Shields-style SVG (`--metric hours\|streak\|cost\|lines`, `--range 7d\|30d\|all`, `--out file.svg`) |
-| `tail`        | Tail the daemon log                                      |
-| `daemon`      | Run the daemon in the foreground (for debugging)         |
+| Command          | Description                                              |
+| ---------------- | -------------------------------------------------------- |
+| `setup`          | Install Claude Code hooks (`~/.claude/settings.json`)    |
+| `uninstall`      | Remove Claude Code hooks                                 |
+| `upgrade-config` | Re-run idempotent migrations on `config.json`            |
+| `start`          | Start the daemon (detached)                              |
+| `stop`           | Stop the daemon                                          |
+| `restart`        | Stop then start                                          |
+| `status`         | Current session + all-time stats (interactive TUI or `--dump`) |
+| `today`          | Today's stats + 24h histogram                            |
+| `week`           | This week's stats + daily breakdown                      |
+| `serve`          | Open the local web dashboard (port 47474)                |
+| `preview`        | Show how each rotation frame renders right now           |
+| `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects`    |
+| `backfill <dir>` | Import transcripts from any folder (backup, other machine) |
+| `insights`       | Print 3–5 auto-generated insight lines                   |
+| `badge`          | Render a Shields-style SVG (`--metric` `--range` `--out`)|
+| `card`           | Poster-style SVG summary (`--range year\|month\|week\|all`) |
+| `private` / `public` / `privacy` | Per-cwd visibility toggles + status        |
+| `doctor`         | Diagnostic checklist — common-failure triage             |
+| `tail` / `logs`  | Tail the daemon log                                      |
+| `daemon`         | Run the daemon in the foreground (debug)                 |
+
+Exit codes: `0` ok · `1` user error · `2` system error · `3` wrong state. `--version` and `--help` work as expected.
 
 ## Config GUI
 
@@ -137,7 +131,8 @@ If you `npm link` (or install the packaged exe), every command above becomes `cl
 cd dashboard
 npm install
 npm start                # dev mode
-npm run build            # → dist/claude-rpc-dashboard.exe (Windows portable)
+npm run dist:mac         # → .dmg
+npm run dist:win         # → portable .exe
 ```
 
 The Electron app reads and writes `config.json` directly. The daemon hot-reloads.
@@ -162,11 +157,11 @@ Three cooperating pieces, glued by JSON files on disk.
                                 └────────────┘
 ```
 
-1. **Hook** (`src/hook.js`) — Claude Code spawns it on every lifecycle event. Parses the event JSON from stdin and mutates the shared state file.
-2. **Daemon** (`src/daemon.js`) — Long-running. Connects to Discord's local IPC, watches the state file plus periodic transcript scans, pushes presence frames every few seconds.
-3. **Scanner** (`src/scanner.js`) — Walks `~/.claude/projects/**/*.jsonl` transcripts for all-time aggregates (active time, prompts, tool calls, tokens, streaks, hour-of-day, top files / projects). Cached at `~/.claude-rpc/aggregate.json` for incremental updates.
+1. **Hook** (`src/hook.js`) — Claude Code spawns it on every lifecycle event. Parses the JSON event from stdin and mutates the shared state file.
+2. **Daemon** (`src/daemon.js`) — Long-running. Connects to Discord's local IPC, watches the state file plus periodic transcript scans, pushes presence frames every few seconds. Exponential backoff with jitter on reconnect.
+3. **Scanner** (`src/scanner.js`) — Walks `~/.claude/projects/**/*.jsonl` transcripts for all-time aggregates. Cached at `~/.claude-rpc/aggregate.json` for incremental updates.
 
-Persistent state lives in a few well-known places:
+Persistent state:
 
 | Path | What |
 | ---- | ---- |
@@ -175,54 +170,34 @@ Persistent state lives in a few well-known places:
 | `~/.claude-rpc/scan-cache.json` | Per-transcript scan cache |
 | `~/.claude/settings.json` | Hook registrations (managed by `setup`) |
 
+User config lives at `%APPDATA%\claude-rpc\config.json` (Windows), `~/Library/Application Support/claude-rpc/config.json` (macOS), or `$XDG_CONFIG_HOME/claude-rpc/config.json` (Linux). It only needs to hold *overrides* — defaults are baked into the binary.
+
 <details>
 <summary><b>Configuration reference</b></summary>
 
-`config.json` keys, all optional unless noted:
+Every key is optional. The shipped defaults work out of the box. Override what you want:
 
 | Key                       | Default | Notes                                                               |
 | ------------------------- | ------- | ------------------------------------------------------------------- |
-| `clientId`                | —       | **Required.** Discord application ID                                |
+| `clientId`                | bundled | Discord application ID (a working public app ships by default)      |
 | `updateIntervalMs`        | `4000`  | How often the daemon pushes to Discord                              |
 | `rotationIntervalMs`      | `12000` | How fast rotation frames cycle                                      |
 | `rescanIntervalSec`       | `300`   | How often transcripts are re-aggregated                             |
 | `idleThresholdSec`        | `60`    | No activity for this long → status `idle`                           |
-| `staleSessionMin`         | `5`     | No activity for this long (minutes) → status `stale`; presence is cleared |
+| `staleSessionMin`         | `5`     | No activity (minutes) → status `stale`; presence cleared            |
 | `notificationWindowSec`   | `8`     | How long the `notification` status sticks                           |
 | `showElapsed`             | `true`  | Include the elapsed timer                                           |
 | `activityType`            | `0`     | `0` Playing, `2` Listening, `3` Watching, `5` Competing             |
-| `statusAssets`            | `{}`    | Image per status (working / thinking / idle / stale / notification) |
-| `presence.largeImageKey`  | —       | Fallback large image when no `statusAssets` match                   |
-| `presence.largeImageText` | —       | Tooltip on hover                                                    |
-| `presence.smallImageKey`  | —       | Small badge in the corner of the large image                        |
-| `presence.smallImageText` | —       | Tooltip on hover                                                    |
-| `presence.rotation`       | `[]`    | Array of frames, each `{ details, state, requires? }`               |
-| `presence.buttons`        | `[]`    | Up to 2 `{ label, url }` buttons                                    |
-| `statusIcons`             | `{}`    | Small image key per status (empty string hides it)                  |
+| `statusAssets`            | gifs    | Image per status (working / thinking / idle / stale / notification) |
+| `presence.byStatus`       | full    | Per-status template block (preferred over `rotation`)               |
+| `presence.rotation`       | —       | Legacy: flat array of `{ details, state, requires? }`               |
+| `presence.buttons`        | one     | Up to 2 `{ label, url }` buttons                                    |
+| `presence.largeImageKey`  | gif     | Fallback large image when no `statusAssets` match                   |
+| `presence.largeImageText` | tpl     | Tooltip on hover                                                    |
+| `privacy.patterns`        | `[]`    | Glob list of cwd basenames to treat as private                      |
+| `privacy.mode`            | hidden  | What `patterns` does — `hidden` / `name-only` / `public`            |
 
-### Rotation frames
-
-```jsonc
-{
-  "presence": {
-    "rotation": [
-      { "details": "{statusVerbose} in {project}",   "state": "{modelPretty}" },
-      { "details": "{currentToolPretty} · {currentFilePretty}",
-        "state":   "{tokensFmt} tokens",
-        "requires": ["currentFile"] },
-      { "details": "Today · {todayHours}",
-        "state":   "{todayPromptsLabel}",
-        "requires": ["todayActiveMs"] }
-    ]
-  }
-}
-```
-
-Each frame has:
-
-- `details` — bold first line (Discord max 128 chars)
-- `state` — lighter second line (Discord max 128 chars)
-- `requires` *(optional)* — a variable name or array of names. The frame is skipped if any required variable is empty / `0`. Lets you have context-dependent frames (e.g. only show the *current tool* frame when there's actually a tool running).
+Image precedence: `statusAssets[status]` → `modelAssets[opus|sonnet|haiku]` → `presence.largeImageKey`.
 
 </details>
 
@@ -240,60 +215,45 @@ Both `details` and `state` (and button labels and URLs) support `{name}` substit
 | `{currentFilePretty}`   | `src/app/page.tsx` |
 | `{tokensFmt}`           | `2.3k`             |
 | `{messagesLabel}`       | `8 prompts`        |
-| `{projectSessionLabel}` | `Session #1`       |
-| `{projectHours}`        | `22m`              |
 | `{todayHours}`          | `56m`              |
 | `{weekHours}`           | `3.1h`             |
 | `{streakLabel}`         | `7-day streak`     |
-| `{daysSinceFirstLabel}` | `Day 31`           |
 | `{allHours}`            | `52h`              |
 | `{allTokensFmt}`        | `2.82B`            |
 | `{peakHour}`            | `22:00`            |
 | `{topEditedFile}`       | `index.html`       |
 | `{linesAddedFmt}`       | `24k`              |
-| `{todayLinesAddedFmt}`  | `320`              |
-| `{linesNetFmt}`         | `+18k`             |
 | `{topLanguage}`         | `TypeScript`       |
-| `{languagesLabel}`      | `TypeScript · Python · Rust` |
-| `{topBashCmdLabel}`     | `git × 820`        |
-| `{topDomainLabel}`      | `docs.anthropic.com × 28` |
-| `{subagentLabel}`       | `Explore × 18`     |
-| `{mcpToolPercentLabel}` | `12% MCP`          |
 | `{todayCostFmt}`        | `$1.23`            |
 | `{allCostFmt}`          | `$89.42`           |
-| `{weekdayLabel}`        | `Thursday`         |
-| `{startTimeLabel}`      | `started 09:14`    |
+| `{gitBranch}`           | `main`             |
 
-Run `node ./src/cli.js preview` to see every frame rendered with your real data, including which ones would be hidden by their `requires`.
+Run `claude-rpc preview` to see every frame rendered with your real data, including which ones would be hidden by their `requires`. Run `claude-rpc vars` for the full machine-readable list.
 
 </details>
 
 ## Badges
 
-Generate a Shields-style SVG you can drop into a README:
-
 ```sh
-claude-rpc badge --metric hours  --range 7d --out claude-hours.svg
+claude-rpc badge --metric hours  --range 7d   --out claude-hours.svg
 claude-rpc badge --metric streak              --out claude-streak.svg
 claude-rpc badge --metric cost   --range 30d  --out claude-cost.svg
 claude-rpc badge --metric lines  --range all  --out claude-lines.svg
 ```
 
-While the daemon's `serve` command is running, the same data is also available live at:
+Live via the dashboard too: `http://127.0.0.1:47474/api/badge.svg?metric=hours&range=7d`.
 
-```
-http://127.0.0.1:47474/api/badge.svg?metric=hours&range=7d
-```
-
-Cost numbers come from `src/pricing.js`, seeded with **approximate** public list prices for Anthropic models. Edit that file to override — your actual Claude Code subscription bill is unrelated.
+Cost numbers come from `src/pricing.js`, seeded with **approximate** public list prices. Your actual Claude Code subscription bill is unrelated.
 
 ## Troubleshooting
 
-**Discord doesn't pick up presence.** The Discord *desktop* app must be running. The browser client doesn't expose the local IPC bridge. Verify `clientId` matches your Discord application, and run `claude-rpc tail` to watch the daemon log live.
+**First step is always `claude-rpc doctor`.** It checks Node version, hook registration, daemon liveness, Discord connection, aggregate freshness, and privacy resolution — with a one-line fix hint per failure.
 
-**Hooks don't fire.** Run `claude-rpc setup` and check the `hooks` section of `~/.claude/settings.json`. Restart Claude Code afterwards so it re-reads the hook config.
+**Discord doesn't pick up presence.** The Discord *desktop* app must be running. The browser client doesn't expose the local IPC. Run `claude-rpc tail` to watch the daemon log live.
 
-**Elapsed timer resets on rotation.** Update to the current version. Older builds passed timestamps in seconds; Discord expects milliseconds.
+**Hooks don't fire.** Run `claude-rpc setup` and check the `hooks` section of `~/.claude/settings.json`. Restart Claude Code so it re-reads hook config. `setup` now test-fires a SessionStart through the same launcher Claude Code will use, so a broken hook command should be caught at install time.
+
+**Config error.** A bad `config.json` won't brick the daemon any more — it logs one line and falls back to baked-in defaults. Check the daemon log via `claude-rpc tail` to see the parse error.
 
 ## License
 
