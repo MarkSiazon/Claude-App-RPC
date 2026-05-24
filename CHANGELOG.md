@@ -4,6 +4,10 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 
 ## Unreleased
 
+_No changes yet._
+
+## [0.7.2] - 2026-05-24
+
 **Design**
 
 - **Web dashboard + Electron GUI reskinned** to match the landing page's warm-paper / terracotta "brutalist" look: hard offset shadows (`--shadow*` now solid `Npx Npx 0`), 2px ink borders, dashed dividers, rotated tape-label accents (the live rail wears a "LIVE PREVIEW" tag), and display/mono type via Space Grotesk + JetBrains Mono. The dashboard drops its dark/light toggle and `html.light` theme — paper is the only mode now; backwards-compat `--bg`/`--text`/etc. vars are mapped onto the new palette so existing markup resolves unchanged. CSS-only; no HTML/JS structure changed.
