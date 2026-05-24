@@ -10,6 +10,23 @@ const DEFAULT_STATE = {
   status: 'idle',
   currentTool: null,
   currentFile: null,
+  // Set by PreCompact, cleared by PostCompact. While non-null the daemon
+  // renders the `compacting` frame so the card never reads "thinking"
+  // during a context squeeze (which is mechanically distinct from reasoning).
+  compactStartedAt: null,
+  compactTrigger: null,
+  // Set by PreToolUse, cleared by PostToolUse. format.js derives {toolElapsed}
+  // from this when the working tool has been running long enough to be
+  // worth surfacing (>5s by default — quick reads don't flicker on the card).
+  toolStartedAt: null,
+  // Set by PostToolUse when a `git push` or `git commit` is observed.
+  // format.applyShipped promotes status to 'shipped' for shippedFrameSec
+  // (default 60s) after this timestamp, so the card briefly celebrates
+  // a ship instead of immediately returning to "Working in <project>".
+  justShipped: null,
+  justShippedKind: null,     // 'push' | 'commit'
+  justShippedSubject: null,
+  justShippedBranch: null,
   model: 'claude',
   cwd: process.cwd(),
   messages: 0,

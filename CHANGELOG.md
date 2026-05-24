@@ -6,6 +6,35 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 
 _No changes yet._
 
+## [0.7.0] - 2026-05-24
+
+**New presence frames**
+
+- **Compaction-only state.** Claude Code's `PreCompact` hook now drives a dedicated `byStatus.compacting` template — "Compacting context in {project}" with the trigger (manual/auto) on the large image. Previously a context squeeze rendered as "Thinking…" for the 10-60s it can take. `PostCompact` clears the marker and the card returns to idle until the next real hook. The trigger surfaces as `{compactTrigger}` / `{compactTriggerLabel}` and elapsed as `{compactDuration}`.
+- **Tool-duration spotlight.** `PreToolUse` now stamps `state.toolStartedAt`; `format.fmtToolElapsed` derives a `{toolElapsed}` var, populated only when the running tool has exceeded a 5-second threshold (no flicker on quick reads). The default working frame became `{currentToolPretty} · {currentFilePretty} · {toolElapsed} · {tokensLabel}` — so a long `npm test` reads "Bash · 2.5min" without the empty-separator collapse from v0.6.3 having to do extra work.
+- **Just-shipped overlay.** `PostToolUse` on a Bash command containing `git push` or `git commit` (chains like `git add . && git commit` included) stamps `state.justShipped` + branch + commit subject (read from `.git/COMMIT_EDITMSG` with a fallback to `.git/logs/HEAD`). A new `applyShipped(state, cfg)` helper promotes status to `'shipped'` for the next `shippedFrameSec` (default 60) seconds, then yields back to the underlying status. The new `byStatus.shipped` frame reads "Just shipped in {project}" with `{justShippedLabel}` ("Pushed to main" / "Committed on feat/x") on the image. Stale always wins — no celebration when Claude is closed.
+
+**Shareable badges**
+
+- **`claude-rpc badge --gist`.** Publishes the rendered badge SVG to your own GitHub gist; raw URL is README-ready. First successful publish records `gist.id` + `gist.owner` in `config.json` so subsequent runs *update* the same gist — the README URL stays stable across re-runs. Uses `gh` when available (no token plumbing), falls back to GitHub REST with `GH_TOKEN`/`GITHUB_TOKEN` (scope: `gist`).
+
+**Community totals (opt-in)**
+
+- **Cloudflare Worker at [`worker/`](worker/).** A small Worker (one file + a vendored badge renderer, no deps) accepts opt-in counter reports and serves `GET /sessions.svg` / `GET /tokens.svg` for the claude-rpc README. Source lives in this repo so the privacy story is auditable. KV namespace `TOTALS` holds two running sums plus a 30-day `seen:<id>` dedup marker and a 60-second rate-limiter. `validateReport` strictly enforces the schema; the request payload has no room for IPs, paths, prompts, models, repos, or costs.
+- **`claude-rpc community on|off|status|report`.** Disabled by default. `on` prints the exact payload that will be sent and asks for explicit `y` confirmation before flipping `community.enabled` + minting a UUID v4 instance id. The daemon flushes deltas every `community.flushIntervalMin` (default 30 min) via `flushCommunity()` — best-effort, the cursor only advances on a successful POST so a network outage doesn't lose deltas. `report` does a one-shot manual flush for testing.
+
+**Internals**
+
+- `src/git.js` gains `detectLastCommitSubject(cwd, max)` — reads `.git/COMMIT_EDITMSG` first, falls back to parsing the last line of `.git/logs/HEAD`. Not cached (the only caller is the just-shipped hook flow, which needs the fresh value).
+- New `src/gist.js` (~150 LOC) — `gh`-first publisher with a REST fallback, exports `publishGistFile`, `rawGistUrl`, `gistMarkdown`, `parseGistUrl`, `hasGh`. Tests cover the pure helpers; spawn/fetch paths are exercised manually since they need real auth.
+- New `src/community.js` (~120 LOC) — opt-in flush client. `flushCommunity` accepts an injected `fetchImpl` for hermetic tests against an in-memory KV stub.
+- `state.js` gains `compactStartedAt`, `compactTrigger`, `toolStartedAt`, `justShipped` (+ kind / subject / branch). All cleared on `SessionStart`.
+- `default-config.js` adds `statusAssets.compacting`, `statusAssets.shipped`, `statusIcons` for both, the `byStatus.compacting` and `byStatus.shipped` templates, and the new `shippedFrameSec` / `gist` / `community` config blocks.
+
+**Tests**
+
+- 134 → 203 tests in the main suite plus 19 in the new `worker/test/`. Coverage includes the PreCompact/PostCompact flow, the just-shipped detection (including chained Bash), `applyShipped` under every status, `fmtToolElapsed` at boundaries, the gist URL parser + markdown builder, the community payload builder + every flush branch (no-delta / 429 / 5xx / network), and every worker route handler.
+
 ## [0.6.3] - 2026-05-23
 
 **Fixed**

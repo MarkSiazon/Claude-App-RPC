@@ -72,3 +72,47 @@ function lookup(cwd) {
 export function detectGithubUrl(cwd) { return lookup(cwd).github; }
 export function detectGitBranch(cwd) { return lookup(cwd).branch; }
 export function detectGitRepo(cwd)   { return lookup(cwd).repo; }
+
+// Last commit subject for the "just shipped" frame. Read on demand from
+// `.git/COMMIT_EDITMSG` (written by `git commit` and left in place after).
+// Falls back to the last line of `.git/logs/HEAD` when COMMIT_EDITMSG is
+// missing — that file always reflects the most recent ref movement.
+//
+// Not cached on purpose: this is only called the moment a `git
+// push`/`git commit` is detected, so we want the freshest possible value,
+// and a cache hit might return the *previous* commit's subject if the user
+// just made a new one.
+export function detectLastCommitSubject(cwd, max = 80) {
+  if (!cwd) return '';
+  const gitDir = join(cwd, '.git');
+  if (!existsSync(gitDir)) return '';
+
+  // COMMIT_EDITMSG: the editor buffer from the most recent `git commit`.
+  // First non-blank, non-comment line is the subject.
+  try {
+    const raw = readFileSync(join(gitDir, 'COMMIT_EDITMSG'), 'utf8');
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      return trimmed.slice(0, max);
+    }
+  } catch { /* file may not exist on a freshly cloned repo */ }
+
+  // logs/HEAD line shape:
+  //   <old> <new> Name <email> <ts> <tz>\t<action>: <subject>
+  // We split on the tab, take the action message, strip a leading
+  // "commit: " / "commit (initial): " / "merge ..." prefix.
+  try {
+    const raw = readFileSync(join(gitDir, 'logs', 'HEAD'), 'utf8');
+    const lines = raw.split(/\r?\n/).filter(Boolean);
+    if (!lines.length) return '';
+    const last = lines[lines.length - 1];
+    const tab = last.indexOf('\t');
+    if (tab < 0) return '';
+    let msg = last.slice(tab + 1).trim();
+    msg = msg.replace(/^(commit(?:\s+\([^)]+\))?:\s*)/, '');
+    return msg.slice(0, max);
+  } catch { /* no logs/HEAD — repo too young or .git/logs disabled */ }
+
+  return '';
+}

@@ -25,11 +25,38 @@ export const DEFAULT_CONFIG = {
   // goes stale — your profile shows nothing instead of an "Away" frame.
   hideWhenStale: true,
   notificationWindowSec: 8,
+  // How long after a `git push` / `git commit` the card stays on the
+  // celebratory "Just shipped" frame before falling back to the
+  // underlying status. Set 0 to disable the overlay entirely.
+  shippedFrameSec: 60,
+  // `claude-rpc badge --gist` records id+owner here after a successful
+  // first publish so subsequent publishes UPDATE the same gist (the raw
+  // URL in your README stays stable). filename is the file inside the
+  // gist — change it only if you publish multiple badges to one gist.
+  gist: {
+    id: null,
+    owner: null,
+    filename: "claude.svg",
+    public: true,
+  },
+  // Opt-in community totals. Disabled by default. `claude-rpc community on`
+  // walks through the consent flow and flips `enabled`, mints an anonymous
+  // instanceId (UUID v4), and the daemon starts batching deltas to the
+  // endpoint. See worker/src/index.js for the receiving end and exactly
+  // what payload is accepted (the validator there is the schema of record).
+  community: {
+    enabled: false,
+    instanceId: null,
+    endpoint: "https://claude-rpc-totals.claude-rpc.workers.dev",
+    flushIntervalMin: 30,
+  },
   showElapsed: true,
   activityType: 0,
   statusAssets: {
     working:      "https://cdn.qualit.ly/clawd-working-building.gif",
     thinking:     "https://cdn.qualit.ly/clawd-working-typing.gif",
+    compacting:   "https://cdn.qualit.ly/clawd-working-typing.gif",
+    shipped:      "https://cdn.qualit.ly/clawd-working-building.gif",
     idle:         "https://cdn.qualit.ly/clawd-sleeping.gif",
     stale:        "https://cdn.qualit.ly/clawd-sleeping.gif",
     notification: "https://cdn.qualit.ly/clawd-notification.gif",
@@ -48,13 +75,23 @@ export const DEFAULT_CONFIG = {
     byStatus: {
       working: {
         details: "Working in {project}",
-        state:   "{currentToolPretty} · {currentFilePretty} · {tokensLabel}",
+        state:   "{currentToolPretty} · {currentFilePretty} · {toolElapsed} · {tokensLabel}",
         largeImageText: "Working on a {fileLang} file",
       },
       thinking: {
         details: "Thinking in {project}",
         state:   "{modelPretty} · {messagesLabel} · {tokensLabel}",
         largeImageText: "Reasoning with {modelPretty}",
+      },
+      compacting: {
+        details: "Compacting context in {project}",
+        state:   "{modelPretty} · {messagesLabel}",
+        largeImageText: "Compacting · {compactTriggerLabel}",
+      },
+      shipped: {
+        details: "Just shipped in {project}",
+        state:   "{lastCommit}",
+        largeImageText: "{justShippedLabel}",
       },
       notification: {
         details: "Waiting on you · {project}",
@@ -84,6 +121,8 @@ export const DEFAULT_CONFIG = {
   statusIcons: {
     working:      "working",
     thinking:     "thinking",
+    compacting:   "thinking",
+    shipped:      "working",
     idle:         "idle",
     notification: "",
     stale:        "",

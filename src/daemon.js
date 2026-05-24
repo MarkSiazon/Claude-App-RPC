@@ -2,7 +2,7 @@
 import { writeFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { Client } from '@xhayper/discord-rpc';
 import { readState } from './state.js';
-import { buildVars, fillTemplate, framePasses, applyIdle } from './format.js';
+import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
@@ -121,6 +121,9 @@ function buildActivity(opts = {}) {
   // see ongoing transcript activity, not just this daemon's hook state.
   state.liveSessions = opts.liveSessions || liveSessions;
   state = applyIdle(state, config);
+  // Shipped overlay sits on top of idle/working/thinking — but never over
+  // stale (we don't celebrate when Claude isn't running).
+  state = applyShipped(state, config);
 
   // Pull live session tokens from the transcript file. Claude Code's hook
   // payloads don't include usage data, so state.tokens from PostToolUse
@@ -250,6 +253,7 @@ async function pushPresence() {
     let resolved = readState();
     resolved.liveSessions = liveSessions;
     resolved = applyIdle(resolved, config);
+    resolved = applyShipped(resolved, config);
     // Privacy can convert any state into a "hidden" verdict — give it the
     // same treatment as hideWhenStale: a single clearActivity, deduped via
     // lastPayloadHash so we don't spam the IPC.
@@ -449,3 +453,29 @@ function refreshLiveSessions() {
 }
 refreshLiveSessions();
 setInterval(refreshLiveSessions, 30_000);
+
+// Community-totals flush. Disabled by default; turns on via
+// `claude-rpc community on`. Best-effort — flushCommunity swallows every
+// failure mode, so a flaky endpoint or no network just means the deltas
+// pile up locally until the next successful flush. Cadence is config-
+// driven (`community.flushIntervalMin`, default 30 min).
+async function runCommunityFlush() {
+  if (!config.community?.enabled) return;
+  try {
+    const { flushCommunity } = await import('./community.js');
+    const result = await flushCommunity(config);
+    if (result.ok && result.delta) {
+      log(`community: flushed +${result.delta.sessions} sessions, +${result.delta.tokens} tokens`);
+    } else if (!result.ok && result.reason !== 'rate-limited' && result.reason !== 'no-delta') {
+      // Don't spam the log for routine "nothing to send" cases.
+      log(`community: ${result.reason}${result.error ? ' (' + result.error + ')' : ''}`);
+    }
+  } catch (e) {
+    log('community flush threw:', e.message);
+  }
+}
+const communityFlushMs = Math.max(60_000, (config.community?.flushIntervalMin || 30) * 60 * 1000);
+setInterval(runCommunityFlush, communityFlushMs);
+// Initial flush after a short delay — gives the scan above a chance to
+// build aggregate.json before we ask community.js to read it.
+setTimeout(runCommunityFlush, 60_000);

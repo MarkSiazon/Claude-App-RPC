@@ -51,6 +51,23 @@ function fmtDuration(ms) {
   return `${sec}s`;
 }
 
+// Tighter formatter for the working-frame "tool has been running for X" var.
+// Sub-minute: bare seconds. Sub-hour: decimal minutes (1.5min) up to 10,
+// integer minutes thereafter. Hour+: "1h 5m" to match fmtDuration. The
+// short forms keep the working frame readable on Discord's narrow rows
+// — fmtDuration's "120m 0s" wraps awkwardly there.
+function fmtToolElapsed(ms) {
+  if (!ms || ms < 0) return '';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = sec / 60;
+  if (min < 10) return `${min.toFixed(1)}min`;
+  if (sec < 3600) return `${Math.round(min)}min`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
 function fmtHours(ms) {
   if (!ms || ms < 0) return '0h';
   const hours = ms / 3_600_000;
@@ -118,6 +135,7 @@ function statusVerbose(status, currentToolPretty, idleMs) {
   switch (status) {
     case 'working': return currentToolPretty ? `Using ${currentToolPretty}` : 'Working';
     case 'thinking': return 'Thinking';
+    case 'compacting': return 'Compacting context';
     case 'notification': return 'Waiting on you';
     case 'idle': {
       if (idleMs && idleMs > 60_000) {
@@ -304,6 +322,29 @@ export function buildVars(state, config, aggregate) {
     ? Math.max(0, Date.now() - state.lastActivity)
     : 0;
 
+  // Tool-duration spotlight. Empty until the running tool has burned past
+  // a short threshold — quick Reads/Edits don't need a timer on the card,
+  // and showing it flickers as fast tools complete. Once it does exceed
+  // the threshold, "Bash · running tests · 2.5min" reads naturally.
+  const toolMs = (state.status === 'working' && state.toolStartedAt)
+    ? Math.max(0, Date.now() - state.toolStartedAt)
+    : 0;
+  const TOOL_ELAPSED_THRESHOLD_MS = 5_000;
+  const toolElapsed = toolMs >= TOOL_ELAPSED_THRESHOLD_MS ? fmtToolElapsed(toolMs) : '';
+
+  // Compaction vars — populated only while a compaction is in flight so
+  // the {compactDuration} suffix in the compacting template collapses
+  // away naturally otherwise (via fillTemplate's `·` collapse).
+  const compactMs = state.compactStartedAt
+    ? Math.max(0, Date.now() - state.compactStartedAt)
+    : 0;
+  const compactTrigger = state.compactTrigger || '';
+  const compactTriggerLabel = compactTrigger === 'manual'
+    ? 'manual compaction'
+    : compactTrigger === 'auto'
+      ? 'auto-compaction'
+      : 'context squeeze';
+
   const currentFilePretty = prettyFilePath(state.currentFile);
 
   // ── File / directory / language vars ──────────────────────────────────────
@@ -391,6 +432,31 @@ export function buildVars(state, config, aggregate) {
 
     // session lifecycle flag (for `requires` gating)
     sessionActive,
+
+    // ── Tool-duration spotlight (v0.7) ──────────────────────────
+    toolMs,
+    toolElapsed,
+
+    // ── Just-shipped (v0.7) ─────────────────────────────────────
+    justShippedKind: state.justShippedKind || '',
+    justShippedSubject: state.justShippedSubject || '',
+    justShippedBranch: state.justShippedBranch || '',
+    // Friendly headline for the largeImageText — "Pushed to main" or
+    // "Committed to feat/x". Falls back to a verb-only label when no
+    // branch is available (detached HEAD, sparse `.git`, etc.).
+    justShippedLabel: state.justShippedKind === 'push'
+      ? (state.justShippedBranch ? `Pushed to ${state.justShippedBranch}` : 'Pushed')
+      : state.justShippedKind === 'commit'
+        ? (state.justShippedBranch ? `Committed on ${state.justShippedBranch}` : 'Committed')
+        : '',
+    // {lastCommit} reads more naturally than {justShippedSubject} in user templates.
+    lastCommit: state.justShippedSubject || '',
+
+    // ── Compaction (v0.7) ───────────────────────────────────────
+    compactMs,
+    compactDuration: compactMs ? fmtDuration(compactMs) : '',
+    compactTrigger,
+    compactTriggerLabel,
 
     // concurrent / live
     concurrent,
@@ -700,6 +766,24 @@ export function applyIdle(state, cfg = {}) {
   return state;
 }
 
+// Promote status to 'shipped' for a brief celebratory window after a
+// `git push` / `git commit` is observed. Called by the daemon AFTER
+// applyIdle — stale/idle decisions still take precedence over the shipped
+// overlay (we don't celebrate when Claude isn't running). The window is
+// configurable via `shippedFrameSec` (default 60).
+//
+// Pure: returns a new state object when promoting, the input otherwise.
+// The underlying `state.status` is untouched so the daemon falls back
+// cleanly once the window expires.
+export function applyShipped(state, cfg = {}) {
+  if (!state.justShipped) return state;
+  if (state.status === 'stale') return state;
+  const windowMs = Math.max(5_000, (cfg.shippedFrameSec ?? 60) * 1000);
+  const age = Date.now() - state.justShipped;
+  if (age < 0 || age > windowMs) return state;
+  return { ...state, status: 'shipped' };
+}
+
 // True when `requires` (string or array of strings) all resolve to non-zero / non-empty.
 export function framePasses(frame, vars) {
   const req = frame.requires;
@@ -712,4 +796,4 @@ export function framePasses(frame, vars) {
   return true;
 }
 
-export { fmtNum, fmtDuration, fmtHours, humanModel, humanTool, humanProject, plural };
+export { fmtNum, fmtDuration, fmtHours, fmtToolElapsed, humanModel, humanTool, humanProject, plural };

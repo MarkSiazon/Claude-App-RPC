@@ -1,0 +1,15 @@
+name = "claude-rpc-totals"
+main = "src/index.js"
+compatibility_date = "2026-05-01"
+workers_dev = true
+preview_urls = false
+
+# The KV namespace that holds total:sessions, total:tokens, seen:<id>,
+# and rate:<id>. Create one with:
+#   wrangler kv:namespace create TOTALS
+# and paste the returned `id` below. For local development add a `preview_id`
+# from `wrangler kv:namespace create TOTALS --preview`.
+
+[[kv_namespaces]]
+binding = "TOTALS"
+id = "6ca3b87cd4cc46469008d28558701dac"

@@ -106,6 +106,7 @@ Shields-style badges and a poster-style summary card you can paste into a README
 ```sh
 claude-rpc badge --metric hours  --range 7d   --out claude-hours.svg
 claude-rpc badge --metric streak              --out claude-streak.svg
+claude-rpc badge --metric hours  --gist                                     # publish to a gist (live README badge)
 claude-rpc card  --range year                 --out year-on-claude.svg
 ```
 
@@ -113,12 +114,32 @@ claude-rpc card  --range year                 --out year-on-claude.svg
   <img src="site/examples/year-on-claude.svg" width="560" alt="Year-on-claude card — hours, prompts, tokens, lines, cost, daily activity strip" />
 </div>
 
+`badge --gist` writes the SVG to your own GitHub gist (creates one on first run, updates it after — id remembered in `config.json`). The URL printed back is README-ready and updates every time you re-run the command. Uses `gh` if available, else `GH_TOKEN` with `gist` scope.
+
 Live equivalents when the daemon is up:
 
 - `http://127.0.0.1:47474/api/badge.svg?metric=hours&range=7d`
 - `http://127.0.0.1:47474/api/card.svg?range=year`
 
 Cost numbers come from `src/pricing.js`, seeded with **approximate** public list prices. Your actual Claude Code subscription bill is unrelated.
+
+### community totals (opt-in)
+
+A small Cloudflare Worker ([`worker/`](worker/)) hosts running totals of sessions and tokens across every install that has opted in:
+
+![sessions](https://claude-rpc-totals.claude-rpc.workers.dev/sessions.svg)
+![tokens](https://claude-rpc-totals.claude-rpc.workers.dev/tokens.svg)
+
+The opt-in is per-install and **off by default**:
+
+```sh
+claude-rpc community              # show state
+claude-rpc community on           # opt in (consent flow + prints exact payload)
+claude-rpc community off          # opt out
+claude-rpc community report       # one-shot manual flush (testing)
+```
+
+Each report sends only: a `sessionsDelta`, a `tokensDelta`, the claude-rpc version, OS family (`linux`/`darwin`/`win32`), and an anonymous UUID v4. No prompts, paths, models, repos, costs, usernames, or hostnames — the Worker's [`validateReport`](worker/src/index.js) is the schema of record. The full Worker source is in this repo so the privacy claim is auditable.
 
 ## three pieces, glued by json files
 
@@ -225,9 +246,10 @@ The full default config is in [`src/default-config.js`](src/default-config.js) �
 | `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects` |
 | `backfill <dir>` | Import transcripts from any folder (backup, other machine) |
 | `insights`       | Print 3–5 auto-generated lines about your week |
-| `badge`          | Shields-style SVG (`--metric` `--range` `--out`) |
+| `badge`          | Shields-style SVG (`--metric` `--range` `--out` `--gist`) |
 | `card`           | Poster-style SVG (`--range year\|month\|week\|all`) |
 | `private` / `public` / `privacy` | Per-cwd visibility toggles + status |
+| `community`      | Opt-in community totals — `on` \| `off` \| `status` \| `report` |
 | `doctor`         | Diagnostic checklist with one-line fix hints |
 | `tail` / `logs`  | Tail the daemon log |
 | `daemon`         | Run the daemon in the foreground (debugging) |
@@ -247,7 +269,7 @@ Exit codes: `0` ok · `1` user error · `2` system error · `3` wrong state. `--
 ## development
 
 ```sh
-npm test                  # 134 tests, ~1.7s
+npm test                  # 200+ tests, ~1.7s
 npm run start             # run daemon in foreground
 npm run serve             # web dashboard against your real data
 npm run dashboard         # Electron settings GUI (dev mode)

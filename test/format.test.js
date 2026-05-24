@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { applyIdle, buildVars, fillTemplate, framePasses } = await import('../src/format.js');
+const { applyIdle, applyShipped, buildVars, fillTemplate, framePasses } = await import('../src/format.js');
 
 const now = () => Date.now();
 
@@ -268,6 +268,142 @@ test('buildVars: tokensLabel renders "X tokens" when present', () => {
   const s = baseState({ tokens: { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 } });
   const v = buildVars(s, {}, {});
   assert.match(v.tokensLabel, /1\.5k tokens$/);
+});
+
+// ── compaction vars (v0.7) ─────────────────────────────────────────────
+
+test('buildVars: compactTriggerLabel humanizes the trigger', () => {
+  assert.equal(
+    buildVars(baseState({ status: 'compacting', compactTrigger: 'auto' }), {}, {}).compactTriggerLabel,
+    'auto-compaction',
+  );
+  assert.equal(
+    buildVars(baseState({ status: 'compacting', compactTrigger: 'manual' }), {}, {}).compactTriggerLabel,
+    'manual compaction',
+  );
+  // No trigger info still produces a usable label (avoids "Compacting · " orphans).
+  assert.equal(
+    buildVars(baseState({ status: 'compacting' }), {}, {}).compactTriggerLabel,
+    'context squeeze',
+  );
+});
+
+test('buildVars: compactMs measures elapsed since PreCompact', () => {
+  const startedAt = Date.now() - 12_000;
+  const v = buildVars(baseState({ status: 'compacting', compactStartedAt: startedAt }), {}, {});
+  assert.ok(v.compactMs >= 11_000 && v.compactMs <= 13_000, 'elapsed within window');
+  assert.match(v.compactDuration, /^12s$|^11s$|^13s$/, 'fmtDuration rendered the seconds');
+});
+
+test('buildVars: compactDuration empty when no compaction active', () => {
+  const v = buildVars(baseState({ status: 'working', compactStartedAt: null }), {}, {});
+  assert.equal(v.compactDuration, '', 'empty so it collapses out of templates');
+  assert.equal(v.compactMs, 0);
+});
+
+test('buildVars: statusVerbose handles compacting', () => {
+  const v = buildVars(baseState({ status: 'compacting' }), {}, {});
+  assert.equal(v.statusVerbose, 'Compacting context');
+});
+
+// ── tool-duration spotlight (v0.7) ─────────────────────────────────────
+
+const { fmtToolElapsed } = await import('../src/format.js');
+
+test('fmtToolElapsed: sub-minute → bare seconds', () => {
+  assert.equal(fmtToolElapsed(0), '');
+  assert.equal(fmtToolElapsed(5_000), '5s');
+  assert.equal(fmtToolElapsed(45_000), '45s');
+  assert.equal(fmtToolElapsed(59_999), '59s');
+});
+
+test('fmtToolElapsed: sub-10min → decimal minutes', () => {
+  assert.equal(fmtToolElapsed(60_000), '1.0min');
+  assert.equal(fmtToolElapsed(90_000), '1.5min');
+  assert.equal(fmtToolElapsed(150_000), '2.5min');
+});
+
+test('fmtToolElapsed: ≥10min → integer minutes', () => {
+  assert.equal(fmtToolElapsed(600_000), '10min');
+  assert.equal(fmtToolElapsed(900_000), '15min');
+});
+
+test('fmtToolElapsed: hour+ → "Xh Ym"', () => {
+  assert.equal(fmtToolElapsed(3_600_000), '1h 0m');
+  assert.equal(fmtToolElapsed(3_660_000), '1h 1m');
+  assert.equal(fmtToolElapsed(7_200_000), '2h 0m');
+});
+
+test('buildVars: toolElapsed empty under 5s threshold', () => {
+  const s = baseState({ status: 'working', toolStartedAt: Date.now() - 2_000 });
+  const v = buildVars(s, {}, {});
+  assert.equal(v.toolElapsed, '', 'quick tools never flicker on the card');
+});
+
+test('buildVars: toolElapsed populated past threshold', () => {
+  const s = baseState({ status: 'working', toolStartedAt: Date.now() - 30_000 });
+  const v = buildVars(s, {}, {});
+  assert.match(v.toolElapsed, /^(2[89]|3[01])s$/, 'rendered seconds');
+});
+
+test('buildVars: toolElapsed empty when not working', () => {
+  const s = baseState({ status: 'idle', toolStartedAt: Date.now() - 30_000 });
+  const v = buildVars(s, {}, {});
+  assert.equal(v.toolElapsed, '', 'idle state suppresses the timer');
+});
+
+// ── just-shipped overlay (v0.7) ────────────────────────────────────────
+
+test('applyShipped: within window promotes status to shipped', () => {
+  const s = baseState({ status: 'idle', justShipped: Date.now() - 10_000, justShippedKind: 'push' });
+  const r = applyShipped(s, { shippedFrameSec: 60 });
+  assert.equal(r.status, 'shipped');
+});
+
+test('applyShipped: past window falls back to underlying status', () => {
+  const s = baseState({ status: 'idle', justShipped: Date.now() - 120_000, justShippedKind: 'push' });
+  const r = applyShipped(s, { shippedFrameSec: 60 });
+  assert.equal(r.status, 'idle', 'expired overlay leaves state unchanged');
+});
+
+test('applyShipped: stale always wins (no celebration when Claude is closed)', () => {
+  const s = baseState({ status: 'stale', justShipped: Date.now() - 5_000, justShippedKind: 'push' });
+  const r = applyShipped(s, { shippedFrameSec: 60 });
+  assert.equal(r.status, 'stale');
+});
+
+test('applyShipped: no justShipped is a no-op', () => {
+  const s = baseState({ status: 'working' });
+  const r = applyShipped(s, { shippedFrameSec: 60 });
+  assert.equal(r, s, 'returns the same object reference');
+});
+
+test('applyShipped: respects custom shippedFrameSec', () => {
+  const s = baseState({ status: 'idle', justShipped: Date.now() - 20_000, justShippedKind: 'push' });
+  // Window of 10s — 20s ago already expired.
+  assert.equal(applyShipped(s, { shippedFrameSec: 10 }).status, 'idle');
+  // Window of 30s — 20s ago still in.
+  assert.equal(applyShipped(s, { shippedFrameSec: 30 }).status, 'shipped');
+});
+
+test('buildVars: justShippedLabel renders branch-aware verb', () => {
+  const push = baseState({ justShippedKind: 'push', justShippedBranch: 'main' });
+  assert.equal(buildVars(push, {}, {}).justShippedLabel, 'Pushed to main');
+
+  const commit = baseState({ justShippedKind: 'commit', justShippedBranch: 'feat/x' });
+  assert.equal(buildVars(commit, {}, {}).justShippedLabel, 'Committed on feat/x');
+
+  // Detached HEAD / unknown branch — falls back to a bare verb.
+  const detached = baseState({ justShippedKind: 'push', justShippedBranch: null });
+  assert.equal(buildVars(detached, {}, {}).justShippedLabel, 'Pushed');
+
+  // No kind set — empty (so the `·` collapse hides it in templates).
+  assert.equal(buildVars(baseState(), {}, {}).justShippedLabel, '');
+});
+
+test('buildVars: lastCommit aliases justShippedSubject', () => {
+  const s = baseState({ justShippedSubject: 'wire compaction frame' });
+  assert.equal(buildVars(s, {}, {}).lastCommit, 'wire compaction frame');
 });
 
 // ── framePasses ────────────────────────────────────────────────────────

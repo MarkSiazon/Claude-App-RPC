@@ -24,6 +24,8 @@ import { addPrivateCwd, removePrivateCwd, listPrivateCwds, resolveVisibility } f
 import { loadConfig, hasUserConfig } from './config.js';
 import { VERSION } from './version.js';
 import { fail, EX_USER_ERROR, EX_BAD_STATE } from './ui.js';
+import { randomUUID } from 'node:crypto';
+import { createInterface } from 'node:readline';
 import { basename } from 'node:path';
 
 const cmd = process.argv[2];
@@ -641,29 +643,80 @@ function showInsights() {
 }
 
 function parseBadgeArgs(argv) {
-  const out = { metric: 'hours', range: '7d', out: '' };
+  const out = { metric: 'hours', range: '7d', out: '', gist: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--metric' || a === '-m') out.metric = argv[++i];
     else if (a === '--range' || a === '-r') out.range = argv[++i];
     else if (a === '--out' || a === '-o') out.out = argv[++i];
     else if (a === '--label' || a === '-l') out.label = argv[++i];
+    else if (a === '--gist') out.gist = true;
   }
   return out;
 }
 
-function doBadge(argv) {
+async function doBadge(argv) {
   const opts = parseBadgeArgs(argv);
   const aggregate = readAggregate();
   if (!aggregate) {
     fail('no aggregate yet — nothing to render', { hint: 'run `claude-rpc scan` first', code: EX_BAD_STATE });
   }
   const svg = badgeSvg({ aggregate, metric: opts.metric, range: opts.range, label: opts.label });
+  if (opts.gist) {
+    await publishBadgeToGist(svg, opts);
+    return;
+  }
   if (opts.out) {
     writeFileSync(opts.out, svg);
     console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
   } else {
     process.stdout.write(svg);
+  }
+}
+
+// Publish the rendered badge to a GitHub gist and emit the README-ready
+// markdown snippet. First successful publish records id+owner in
+// config.json so subsequent runs UPDATE that gist (raw URL stays stable).
+async function publishBadgeToGist(svg, opts) {
+  const { publishGistFile, gistMarkdown } = await import('./gist.js');
+  const cfg = loadConfig();
+  const stored = cfg.gist || {};
+  const filename = stored.filename || 'claude.svg';
+  try {
+    const result = await publishGistFile({
+      svg,
+      filename,
+      description: `claude-rpc — ${opts.metric || 'hours'} (${opts.range || '7d'})`,
+      gistId: stored.id || undefined,
+      owner: stored.owner || undefined,
+      isPublic: stored.public !== false,
+    });
+    // Persist the resolved id+owner so the next `--gist` run does an EDIT.
+    // We merge into the user's config.json directly (not the merged-defaults)
+    // so the file stays minimal.
+    const userCfg = readJson(CONFIG_PATH, {});
+    userCfg.gist = {
+      ...(userCfg.gist || {}),
+      id: result.id,
+      owner: result.owner,
+      filename,
+    };
+    if (stored.public !== undefined) userCfg.gist.public = stored.public;
+    writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+    const wasUpdate = !!stored.id;
+    console.log('');
+    console.log(`  ${c.green}✓${c.reset} ${wasUpdate ? 'Updated' : 'Created'} gist ${c.cyan}${result.id}${c.reset}`);
+    console.log(`  ${c.dim}raw:${c.reset}      ${c.cyan}${result.rawUrl}${c.reset}`);
+    if (result.htmlUrl) console.log(`  ${c.dim}gist:${c.reset}     ${c.dim}${result.htmlUrl}${c.reset}`);
+    console.log('');
+    console.log(`  ${c.dim}Paste into your README:${c.reset}`);
+    console.log(`    ${gistMarkdown({ owner: result.owner, id: result.id, filename, label: 'Claude' })}`);
+    console.log('');
+  } catch (e) {
+    fail(`gist publish failed: ${e.message}`, {
+      hint: 'install gh (`gh auth login`) or set GH_TOKEN with `gist` scope',
+      code: EX_USER_ERROR,
+    });
   }
 }
 
@@ -743,6 +796,130 @@ function doPrivacy() {
   console.log(`  ${c.dim}toggle:   claude-rpc private  /  claude-rpc public${c.reset}`);
   console.log(`  ${c.dim}per-proj: drop a {"private": true} into .claude-rpc.json at the repo root${c.reset}`);
   console.log('');
+}
+
+// ── Community totals ─────────────────────────────────────────────────────
+//
+// `claude-rpc community`         → show current opt-in state + endpoint
+// `claude-rpc community on`      → interactive consent flow, mint instanceId
+// `claude-rpc community off`     → flip the flag off; instanceId retained
+// `claude-rpc community report`  → one-shot manual flush (useful for testing)
+//
+// See src/community.js for the payload schema and worker/src/index.js
+// for the receiving end. The opt-in is per-install — disabled by default.
+
+function prompt(question) {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => { rl.close(); resolve(answer); });
+  });
+}
+
+function communityStatus() {
+  const cfg = loadConfig();
+  const community = cfg.community || {};
+  const on = !!community.enabled;
+  console.log('');
+  console.log(`  ${c.bold}community totals${c.reset}`);
+  console.log(`    ${c.dim}state:    ${c.reset} ${on ? c.green + 'on' + c.reset : c.yellow + 'off' + c.reset}`);
+  console.log(`    ${c.dim}endpoint: ${c.reset} ${community.endpoint || '(unset)'}`);
+  if (community.instanceId) {
+    console.log(`    ${c.dim}id:       ${c.reset} ${c.dim}…${community.instanceId.slice(-8)}${c.reset}`);
+  }
+  console.log('');
+  if (!on) {
+    console.log(`  ${c.dim}enable with ${c.reset}${c.cyan}claude-rpc community on${c.reset}`);
+  } else {
+    console.log(`  ${c.dim}disable with ${c.reset}${c.cyan}claude-rpc community off${c.reset}`);
+  }
+  console.log('');
+}
+
+async function communityOn() {
+  const cfg = loadConfig();
+  const community = cfg.community || {};
+  if (community.enabled) {
+    console.log(`${c.green}✓${c.reset} community totals are already enabled`);
+    return;
+  }
+  console.log('');
+  console.log(`  ${c.bold}claude-rpc community totals${c.reset}`);
+  console.log('');
+  console.log(`  ${c.dim}What gets sent (and only this):${c.reset}`);
+  console.log(`    ${c.green}·${c.reset} sessions delta since the last report`);
+  console.log(`    ${c.green}·${c.reset} tokens   delta since the last report`);
+  console.log(`    ${c.green}·${c.reset} claude-rpc version (${c.cyan}${VERSION}${c.reset})`);
+  console.log(`    ${c.green}·${c.reset} OS family (${c.cyan}${process.platform}${c.reset})`);
+  console.log(`    ${c.green}·${c.reset} anonymous instanceId (a fresh UUID v4)`);
+  console.log('');
+  console.log(`  ${c.dim}What never leaves your machine:${c.reset}`);
+  console.log(`    ${c.red}·${c.reset} prompts, file paths, models, repos, costs`);
+  console.log(`    ${c.red}·${c.reset} usernames, hostnames, IPs (the worker stores none)`);
+  console.log('');
+  console.log(`  ${c.dim}Endpoint:${c.reset} ${community.endpoint}`);
+  console.log(`  ${c.dim}Source:  ${c.reset} ${c.cyan}worker/src/index.js${c.reset} in the claude-rpc repo`);
+  console.log('');
+  const answer = (await prompt(`  Enable? ${c.dim}[y/N]${c.reset} `)).trim();
+  if (!/^y(es)?$/i.test(answer)) {
+    console.log('');
+    console.log(`  ${c.dim}cancelled.${c.reset}`);
+    console.log('');
+    return;
+  }
+  const userCfg = readJson(CONFIG_PATH, {});
+  const next = {
+    ...(userCfg.community || {}),
+    enabled: true,
+    instanceId: userCfg.community?.instanceId || community.instanceId || randomUUID(),
+  };
+  userCfg.community = next;
+  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  console.log('');
+  console.log(`  ${c.green}✓${c.reset} community totals enabled`);
+  console.log(`    ${c.dim}id: …${next.instanceId.slice(-8)}${c.reset}`);
+  console.log(`    ${c.dim}the daemon flushes every ${community.flushIntervalMin || 30} min${c.reset}`);
+  console.log('');
+}
+
+function communityOff() {
+  const userCfg = readJson(CONFIG_PATH, {});
+  if (!userCfg.community?.enabled) {
+    console.log(`${c.dim}community totals are already off.${c.reset}`);
+    return;
+  }
+  userCfg.community = { ...userCfg.community, enabled: false };
+  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  console.log(`${c.green}✓${c.reset} community totals disabled. instanceId retained for re-enable continuity.`);
+}
+
+async function communityReport() {
+  const cfg = loadConfig();
+  if (!cfg.community?.enabled) {
+    fail('community totals are off', { hint: 'run `claude-rpc community on` first', code: EX_BAD_STATE });
+  }
+  const { flushCommunity } = await import('./community.js');
+  const result = await flushCommunity(cfg);
+  console.log('');
+  if (result.ok && result.delta) {
+    console.log(`  ${c.green}✓${c.reset} reported  ${c.cyan}+${result.delta.sessions} sessions${c.reset}  ${c.cyan}+${result.delta.tokens} tokens${c.reset}`);
+  } else if (result.ok) {
+    console.log(`  ${c.dim}${result.reason}${c.reset}`);
+  } else {
+    console.log(`  ${c.yellow}↳${c.reset} flush did not complete  ${c.dim}(${result.reason}${result.error ? ': ' + result.error : ''})${c.reset}`);
+  }
+  console.log('');
+}
+
+async function doCommunity(argv) {
+  const sub = (argv[0] || 'status').toLowerCase();
+  if (sub === 'on') return communityOn();
+  if (sub === 'off') return communityOff();
+  if (sub === 'status' || sub === '') return communityStatus();
+  if (sub === 'report' || sub === 'flush') return communityReport();
+  fail(`unknown community subcommand: ${sub}`, {
+    hint: 'try: community [status|on|off|report]',
+    code: EX_USER_ERROR,
+  });
 }
 
 function tailLog() {
@@ -857,11 +1034,12 @@ function help() {
     ['rescan',    'Force re-parse every transcript (ignores cache)'],
     ['backfill',  'Import transcripts from any folder (e.g. a backup)'],
     ['insights',  'Auto-generated insights from your history'],
-    ['badge',     'Render a Shields-style SVG (--metric --range --out)'],
+    ['badge',     'Render a Shields-style SVG (--metric --range --out --gist)'],
     ['card',      'Render a poster-style SVG summary (--range year|month|week|all)'],
     ['private',   'Mark the current directory as private (hide from Discord)'],
     ['public',    'Un-mark the current directory'],
     ['privacy',   'Show resolved visibility for the current directory'],
+    ['community', 'Opt in/out of anonymous community totals (on|off|status|report)'],
     ['doctor',    'Run a diagnostic checklist — common-failure triage'],
     ['tail',      'Tail the daemon log file'],
     ['daemon',    'Run daemon in foreground (debug)'],
@@ -924,11 +1102,12 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'rescan':    doScan(true); break;
     case 'backfill':  doBackfill(process.argv.slice(3)); break;
     case 'insights':  showInsights(); break;
-    case 'badge':     doBadge(process.argv.slice(3)); break;
+    case 'badge':     await doBadge(process.argv.slice(3)); break;
     case 'card':      await doCard(process.argv.slice(3)); break;
     case 'private':   doPrivate(); break;
     case 'public':    doPublic(); break;
     case 'privacy':   doPrivacy(); break;
+    case 'community': await doCommunity(process.argv.slice(3)); break;
     case 'doctor': {
       const { runDoctor } = await import('./doctor.js');
       process.exit(runDoctor());

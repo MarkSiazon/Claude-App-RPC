@@ -75,6 +75,74 @@ test('PostToolUse clears currentTool but keeps currentFile', () => {
   // currentFile may persist briefly — depends on subsequent hook
 });
 
+test('PreToolUse stamps toolStartedAt; PostToolUse clears it', () => {
+  resetStateFile();
+  processHookEvent('SessionStart', { cwd: '/tmp/proj' });
+  processHookEvent('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  let s = readState();
+  assert.ok(s.toolStartedAt, 'toolStartedAt set on PreToolUse');
+  processHookEvent('PostToolUse', { tool_name: 'Bash' });
+  s = readState();
+  assert.equal(s.toolStartedAt, null, 'cleared on PostToolUse');
+});
+
+test('PostToolUse Bash: git push trips the just-shipped marker', () => {
+  resetStateFile();
+  processHookEvent('SessionStart', { cwd: process.cwd() });
+  processHookEvent('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: 'git push origin main' },
+    cwd: process.cwd(),
+  });
+  const s = readState();
+  assert.ok(s.justShipped, 'justShipped timestamp populated');
+  assert.equal(s.justShippedKind, 'push');
+  // subject may be empty in CI shallow clones; type is what we assert.
+  assert.equal(typeof s.justShippedSubject, typeof '' || typeof null);
+});
+
+test('PostToolUse Bash: git commit also trips the marker', () => {
+  resetStateFile();
+  processHookEvent('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: 'git commit -m "wip"' },
+    cwd: process.cwd(),
+  });
+  const s = readState();
+  assert.equal(s.justShippedKind, 'commit');
+});
+
+test('PostToolUse Bash: chained "git add && git commit" still detected', () => {
+  resetStateFile();
+  processHookEvent('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: 'git add -A && git commit -m "fix"' },
+    cwd: process.cwd(),
+  });
+  const s = readState();
+  assert.equal(s.justShippedKind, 'commit', 'second clause in chain still matches');
+});
+
+test('PostToolUse Bash: unrelated commands do not trip the marker', () => {
+  resetStateFile();
+  processHookEvent('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: 'echo "git push is not happening here"' },
+  });
+  const s = readState();
+  assert.equal(s.justShipped, null, 'string-in-argument false positive avoided');
+});
+
+test('PostToolUse non-Bash: write/edit do not check for git', () => {
+  resetStateFile();
+  processHookEvent('PostToolUse', {
+    tool_name: 'Edit',
+    tool_input: { file_path: '/tmp/x.md', command: 'git commit -m bypassed' },
+  });
+  const s = readState();
+  assert.equal(s.justShipped, null);
+});
+
 test('SessionEnd sets claudeClosed=true and status=stale', () => {
   resetStateFile();
   processHookEvent('SessionStart', { cwd: '/tmp/proj' });
@@ -106,6 +174,35 @@ test('Notification sets status with timestamp', () => {
   assert.equal(s.status, 'notification');
   assert.ok(s.lastNotification, 'lastNotification is set');
   assert.equal(s.claudeClosed, false);
+});
+
+test('PreCompact sets status=compacting with start timestamp + trigger', () => {
+  resetStateFile();
+  processHookEvent('SessionStart', { cwd: '/tmp/proj' });
+  processHookEvent('PreCompact', { cwd: '/tmp/proj', trigger: 'auto' });
+  const s = readState();
+  assert.equal(s.status, 'compacting');
+  assert.ok(s.compactStartedAt, 'compactStartedAt populated');
+  assert.equal(s.compactTrigger, 'auto');
+  assert.equal(s.currentTool, null, 'compaction wipes active tool');
+  assert.equal(s.currentFile, null);
+});
+
+test('PreCompact falls back to matcher field when trigger missing', () => {
+  resetStateFile();
+  processHookEvent('PreCompact', { matcher: 'manual' });
+  const s = readState();
+  assert.equal(s.compactTrigger, 'manual', 'matcher used when trigger absent');
+});
+
+test('PostCompact clears the compacting marker', () => {
+  resetStateFile();
+  processHookEvent('PreCompact', { trigger: 'auto' });
+  processHookEvent('PostCompact', {});
+  const s = readState();
+  assert.equal(s.compactStartedAt, null);
+  assert.equal(s.compactTrigger, null);
+  assert.equal(s.status, 'idle', 'falls back to idle until next real hook');
 });
 
 test('Stop/SubagentStop go to idle (not stale)', () => {

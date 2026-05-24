@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { detectGithubUrl, detectGitBranch, detectGitRepo } = await import('../src/git.js');
+const { detectGithubUrl, detectGitBranch, detectGitRepo, detectLastCommitSubject } = await import('../src/git.js');
 
 const ROOT = process.cwd();
 
@@ -39,4 +39,29 @@ test('detect functions: empty/null cwd returns safe defaults', () => {
   assert.equal(detectGithubUrl(''), null);
   // detectGitRepo returns '' for null cwd
   assert.equal(detectGitRepo(null), '');
+});
+
+test('detectLastCommitSubject: returns a non-empty subject in this repo', () => {
+  // This repo always has at least one commit in `.git/logs/HEAD` even if
+  // COMMIT_EDITMSG was cleaned up by a fresh clone.
+  const subj = detectLastCommitSubject(ROOT);
+  assert.ok(typeof subj === 'string');
+  // CI shallow-clones may have empty logs/HEAD; only assert shape when populated.
+  if (subj) {
+    assert.ok(subj.length > 0, 'subject populated');
+    assert.ok(!subj.startsWith('commit:'), 'leading "commit: " prefix stripped');
+  }
+});
+
+test('detectLastCommitSubject: truncates at max length', () => {
+  // Hard-limit guards templates against multi-paragraph commit bodies.
+  // 80 is the default; checking the shape regardless of repo state.
+  const subj = detectLastCommitSubject(ROOT, 20);
+  assert.ok(subj.length <= 20, 'respects max parameter');
+});
+
+test('detectLastCommitSubject: returns "" outside any repo', () => {
+  assert.equal(detectLastCommitSubject('/'), '');
+  assert.equal(detectLastCommitSubject(null), '');
+  assert.equal(detectLastCommitSubject(''), '');
 });

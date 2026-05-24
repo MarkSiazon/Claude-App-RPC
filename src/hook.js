@@ -2,7 +2,13 @@
 import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { updateState, resetState, pushUnique, shortFile } from './state.js';
+import { detectLastCommitSubject, detectGitBranch } from './git.js';
 import { EVENTS_LOG_PATH } from './paths.js';
+
+// Match the bash invocations we treat as "just shipped" — captures the
+// verb (push / commit) for state.justShippedKind. Tolerates extra args,
+// leading env vars, and chained commands ("git add . && git commit -m ...").
+const GIT_SHIP_RE = /(?:^|[;&|]|\s)git\s+(push|commit)(?:\s|$)/;
 
 const EVENTS_LOG_ROTATE_BYTES = 5 * 1024 * 1024;
 
@@ -81,6 +87,7 @@ export function processHookEvent(event, input = {}) {
         s.toolBreakdown[toolName] = (s.toolBreakdown[toolName] || 0) + 1;
         s.currentTool = toolName;
         s.currentFile = shortFile(file);
+        s.toolStartedAt = now;
         s.status = 'working';
         s.lastActivity = now;
         s.claudeClosed = false;
@@ -97,14 +104,38 @@ export function processHookEvent(event, input = {}) {
       const toolName = input.tool_name || input.toolName || '';
       const toolInput = input.tool_input || input.toolInput || {};
       const file = toolInput.file_path || toolInput.path || null;
+      // Just-shipped detection: any Bash command that contains `git push`
+      // or `git commit`. Capture cwd + branch + last commit subject NOW
+      // — by the time the daemon renders the next frame this info may be
+      // gone (Claude often `cd`s after a commit).
+      let shipKind = null;
+      let shipSubject = null;
+      let shipBranch = null;
+      if (toolName === 'Bash') {
+        const cmd = String(toolInput.command || '');
+        const m = cmd.match(GIT_SHIP_RE);
+        if (m) {
+          shipKind = m[1];
+          const shipCwd = input.cwd || process.cwd();
+          shipSubject = detectLastCommitSubject(shipCwd) || null;
+          shipBranch = detectGitBranch(shipCwd) || null;
+        }
+      }
       updateState((s) => {
         s.currentTool = null;
+        s.toolStartedAt = null;
         s.lastActivity = now;
         s.claudeClosed = false;
         if (!s.sessionStart) s.sessionStart = now;
         if (file && (toolName === 'Write' || toolName === 'Edit' || toolName === 'NotebookEdit')) {
           s.filesEdited = pushUnique(s.filesEdited, file);
           s.filesOpened = pushUnique(s.filesOpened, file);
+        }
+        if (shipKind) {
+          s.justShipped = now;
+          s.justShippedKind = shipKind;
+          s.justShippedSubject = shipSubject;
+          s.justShippedBranch = shipBranch;
         }
         const usage = input.tool_response?.usage || input.usage;
         if (usage) {
@@ -129,6 +160,39 @@ export function processHookEvent(event, input = {}) {
         return s;
       });
       appendEvent({ type: 'notification', ts: now, cwd: input.cwd || null });
+      break;
+    }
+    case 'PreCompact': {
+      // Compaction is mechanically distinct from "thinking" — the model is
+      // rewriting earlier context, not advancing a turn. Surface it as its
+      // own state so the card stops reading "Thinking…" for the 10-60s
+      // compactions can take on big sessions.
+      updateState((s) => {
+        s.status = 'compacting';
+        s.compactStartedAt = now;
+        s.compactTrigger = input.trigger || input.matcher || null;
+        s.currentTool = null;
+        s.currentFile = null;
+        s.lastActivity = now;
+        s.claudeClosed = false;
+        if (!s.sessionStart) s.sessionStart = now;
+        return s;
+      });
+      appendEvent({ type: 'precompact', ts: now, trigger: input.trigger || input.matcher || null, cwd: input.cwd || null });
+      break;
+    }
+    case 'PostCompact': {
+      // Compaction finished — clear the marker and drop to idle. The next
+      // hook (UserPromptSubmit / PreToolUse) will set the real next state.
+      updateState((s) => {
+        s.status = 'idle';
+        s.compactStartedAt = null;
+        s.compactTrigger = null;
+        s.lastActivity = now;
+        s.claudeClosed = false;
+        return s;
+      });
+      appendEvent({ type: 'postcompact', ts: now, cwd: input.cwd || null });
       break;
     }
     case 'SessionEnd': {
