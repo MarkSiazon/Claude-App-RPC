@@ -800,13 +800,16 @@ function doPrivacy() {
 
 // ── Community totals ─────────────────────────────────────────────────────
 //
-// `claude-rpc community`         → show current opt-in state + endpoint
+// `claude-rpc community`         → show current state + endpoint
 // `claude-rpc community on`      → interactive consent flow, mint instanceId
+//                                  (used by pre-v0.7 upgraders; fresh installs
+//                                   already had setup mint the id)
 // `claude-rpc community off`     → flip the flag off; instanceId retained
 // `claude-rpc community report`  → one-shot manual flush (useful for testing)
 //
 // See src/community.js for the payload schema and worker/src/index.js
-// for the receiving end. The opt-in is per-install — disabled by default.
+// for the receiving end. As of v0.7 this is on by default for fresh
+// installs and preserved-off for pre-v0.7 upgraders (see migrateConfig).
 
 function prompt(question) {
   return new Promise((resolve) => {
@@ -1019,8 +1022,8 @@ function overview() {
 
 function help() {
   const cmds = [
-    ['setup',     'Install Claude Code hooks (~/.claude/settings.json)'],
-    ['uninstall', 'Remove Claude Code hooks'],
+    ['setup',     'Install Claude Code hooks + Windows startup entry (~/.claude/settings.json)'],
+    ['uninstall', 'Remove Claude Code hooks + Windows startup entry'],
     ['upgrade-config', 'Re-run idempotent migrations on an existing config.json'],
     ['start',     'Start the Discord RPC daemon (detached)'],
     ['stop',      'Stop the daemon'],
@@ -1079,7 +1082,11 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case '--help':
     case '-h':
     case 'help':      help(); break;
-    case 'setup':     await runInstall({ exePath: EXE_PATH || process.execPath, withStartup: false }); break;
+    // `setup` and `install` are aliases as of v0.7: both register hooks AND
+    // the Windows startup entry. Older behavior split them (setup = no
+    // startup, install = with) but in practice users expect one command
+    // to do everything. Non-Windows: addStartupEntry is a no-op + warning.
+    case 'setup':
     case 'install':   await runInstall({ exePath: EXE_PATH || process.execPath }); break;
     case 'uninstall': await runUninstall(); break;
     case 'upgrade-config': migrateConfig(); break;

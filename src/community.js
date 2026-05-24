@@ -1,6 +1,9 @@
-// Opt-in community-totals client. Reads aggregate.json + a small cursor
-// file to compute counter DELTAs (not absolute values — the cursor moves
-// forward as we report), then POSTs to the configured worker endpoint.
+// Community-totals client. On by default for fresh installs (setup mints
+// the instanceId into the seeded config); existing users upgrading from a
+// pre-v0.7 config keep the explicit-opt-in flow via `claude-rpc community
+// on`. Reads aggregate.json + a small cursor file to compute counter
+// DELTAs (not absolute values — the cursor moves forward as we report),
+// then POSTs to the configured worker endpoint.
 //
 // Three guarantees this module owes the rest of the codebase:
 //

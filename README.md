@@ -10,9 +10,9 @@
 **Discord Rich Presence for [Claude Code](https://claude.com/claude-code).**
 Your live model, project, current tool, tokens, and lifetime stats — in your Discord profile. Driven by the hooks Claude Code already fires. Zero polling between sessions.
 
-[![community · sessions](https://claude-rpc-totals.claude-rpc.workers.dev/sessions.svg)](#community-totals-opt-in) &nbsp; [![community · tokens](https://claude-rpc-totals.claude-rpc.workers.dev/tokens.svg)](#community-totals-opt-in)
+[![community · sessions](https://claude-rpc-totals.claude-rpc.workers.dev/sessions.svg)](#community-totals) &nbsp; [![community · tokens](https://claude-rpc-totals.claude-rpc.workers.dev/tokens.svg)](#community-totals)
 
-<sub>live, opt-in — see [community totals](#community-totals-opt-in)</sub>
+<sub>live — on by default for fresh installs, opt out any time. see [community totals](#community-totals)</sub>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node 18+](https://img.shields.io/badge/node-%3E%3D18-43853d.svg?logo=node.js&logoColor=white)](https://nodejs.org)
@@ -127,18 +127,18 @@ Live equivalents when the daemon is up:
 
 Cost numbers come from `src/pricing.js`, seeded with **approximate** public list prices. Your actual Claude Code subscription bill is unrelated.
 
-### community totals (opt-in)
+### community totals
 
-The badges at the top of this README are live, served by a small Cloudflare Worker ([`worker/`](worker/)) that holds running totals of sessions and tokens across every install that has opted in. The opt-in is per-install and **off by default**:
+The badges at the top of this README are live, served by a small Cloudflare Worker ([`worker/`](worker/)) that holds running totals of sessions and tokens across every install that's reporting. As of v0.7 **fresh installs are on by default** — `setup` mints an anonymous UUID v4 and the daemon starts flushing deltas every 30 minutes. Existing users upgrading from a pre-v0.7 config stay off until they explicitly run `community on` (the consent flow prints the exact payload first).
 
 ```sh
-claude-rpc community              # show state
-claude-rpc community on           # opt in (consent flow + prints exact payload)
-claude-rpc community off          # opt out
+claude-rpc community              # show state + instanceId (last 8 chars)
+claude-rpc community off          # opt out; instanceId retained for re-enable continuity
+claude-rpc community on           # explicit consent flow (upgraders / re-enable)
 claude-rpc community report       # one-shot manual flush (testing)
 ```
 
-Each report sends only: a `sessionsDelta`, a `tokensDelta`, the claude-rpc version, OS family (`linux`/`darwin`/`win32`), and an anonymous UUID v4. No prompts, paths, models, repos, costs, usernames, or hostnames — the Worker's [`validateReport`](worker/src/index.js) is the schema of record. The full Worker source is in this repo so the privacy claim is auditable.
+Each report sends only: a `sessionsDelta`, a `tokensDelta`, the claude-rpc version, OS family (`linux`/`darwin`/`win32`), and the anonymous UUID v4. No prompts, paths, models, repos, costs, usernames, or hostnames — the Worker's [`validateReport`](worker/src/index.js) is the schema of record. The full Worker source is in this repo so the privacy claim is auditable.
 
 ## three pieces, glued by json files
 

@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR, ROOT,
   HOOK_SCRIPT, IS_PACKAGED, IS_NPM_INSTALL,
@@ -211,8 +212,18 @@ export function seedConfig() {
     return false;
   }
   mkdirSync(USER_CONFIG_DIR, { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_CONFIG, null, 2));
+  // Fresh install: mint an anonymous instanceId so community.enabled:true
+  // (the new default in v0.7) is immediately actionable — the daemon needs
+  // an id to actually flush. Users who want out: `claude-rpc community off`.
+  const seeded = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+  if (seeded.community?.enabled && !seeded.community.instanceId) {
+    seeded.community.instanceId = randomUUID();
+  }
+  writeFileSync(CONFIG_PATH, JSON.stringify(seeded, null, 2));
   console.log(`  config seeded → ${CONFIG_PATH}`);
+  if (seeded.community?.enabled && seeded.community.instanceId) {
+    console.log(`  community totals on by default → opt out with \`claude-rpc community off\``);
+  }
   return true;
 }
 
@@ -277,6 +288,16 @@ export function migrateConfig() {
       DEFAULT_CONFIG.presence?.byStatus?.thinking?.state) {
     cfg.presence.byStatus.thinking.state = DEFAULT_CONFIG.presence.byStatus.thinking.state;
     added.push('presence.byStatus.thinking.state');
+  }
+
+  // v0.7: community.enabled flipped to true in DEFAULT_CONFIG. For users
+  // upgrading from a version without a community block, we must NOT
+  // silently turn telemetry on — write an explicit `enabled: false` so
+  // the deep-merge in loadConfig sees their opt-out. They can run
+  // `claude-rpc community on` to consent.
+  if (!cfg.community) {
+    cfg.community = { enabled: false };
+    added.push('community (preserved-off)');
   }
 
   if (added.length === 0) {

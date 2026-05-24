@@ -63,6 +63,87 @@ test('migrate: already-migrated config is a no-op', () => {
   assert.deepEqual(cfg, before, 'config unchanged');
 });
 
+// ── v0.7 community preserve-off-for-upgraders ─────────────────────────
+//
+// DEFAULT_CONFIG.community.enabled flipped to true in v0.7. The deep
+// merge in loadConfig would silently enable telemetry for any pre-v0.7
+// user whose config has no community block. migrateConfig MUST write an
+// explicit { enabled: false } into their file before that can happen.
+
+function migrateCommunity(cfg) {
+  const added = [];
+  if (!cfg.community) {
+    cfg.community = { enabled: false };
+    added.push('community (preserved-off)');
+  }
+  return added;
+}
+
+test('migrate: pre-v0.7 config without community block gets explicit enabled:false', () => {
+  const cfg = { clientId: '123', presence: { byStatus: { working: {} } } };
+  const added = migrateCommunity(cfg);
+  assert.equal(cfg.community.enabled, false,
+    'upgrader must NOT silently inherit the new on-by-default');
+  assert.ok(added.includes('community (preserved-off)'));
+});
+
+test('migrate: an explicit user community block is left untouched', () => {
+  const cfg = {
+    clientId: '123',
+    community: { enabled: true, instanceId: 'aaaa-bbbb-cccc', endpoint: 'https://custom' },
+  };
+  const before = JSON.parse(JSON.stringify(cfg.community));
+  const added = migrateCommunity(cfg);
+  assert.deepEqual(cfg.community, before, 'pre-existing community block preserved');
+  assert.deepEqual(added, [], 'no migration entry when block already present');
+});
+
+test('migrate: opted-out user (enabled:false) is not flipped on', () => {
+  const cfg = { clientId: '123', community: { enabled: false, instanceId: 'kept' } };
+  const before = JSON.parse(JSON.stringify(cfg.community));
+  migrateCommunity(cfg);
+  assert.deepEqual(cfg.community, before, 'opt-out preserved across migration');
+});
+
+// ── seedConfig: fresh install mints an instanceId ────────────────────
+//
+// seedConfig writes DEFAULT_CONFIG to disk on first run. v0.7 added a
+// mint step so the freshly-seeded `community.enabled: true` is actually
+// actionable — without an instanceId the daemon's flushCommunity bails
+// with no-instance-id. Re-implement the mint-on-seed logic here for
+// hermetic assertion.
+
+function seedInPlace(defaults, randomUuid) {
+  const seeded = JSON.parse(JSON.stringify(defaults));
+  if (seeded.community?.enabled && !seeded.community.instanceId) {
+    seeded.community.instanceId = randomUuid();
+  }
+  return seeded;
+}
+
+test('seed: fresh install with community.enabled mints an instanceId', () => {
+  const fakeUuid = () => '11111111-2222-4333-8444-555555555555';
+  const seeded = seedInPlace(DEFAULT_CONFIG, fakeUuid);
+  assert.equal(seeded.community.enabled, true,
+    'precondition — DEFAULT_CONFIG flipped to enabled:true in v0.7');
+  assert.equal(seeded.community.instanceId, '11111111-2222-4333-8444-555555555555',
+    'instanceId minted at seed time');
+});
+
+test('seed: does not overwrite a pre-existing instanceId in defaults', () => {
+  const defaults = {
+    community: { enabled: true, instanceId: 'pre-existing-id' },
+  };
+  const seeded = seedInPlace(defaults, () => 'should-not-be-called');
+  assert.equal(seeded.community.instanceId, 'pre-existing-id');
+});
+
+test('seed: enabled:false in defaults does not mint', () => {
+  const defaults = { community: { enabled: false, instanceId: null } };
+  const seeded = seedInPlace(defaults, () => 'should-not-be-called');
+  assert.equal(seeded.community.instanceId, null);
+});
+
 test('migrate: preserves user customizations', () => {
   const cfg = {
     clientId: '123',

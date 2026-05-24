@@ -39,13 +39,17 @@ export const DEFAULT_CONFIG = {
     filename: "claude.svg",
     public: true,
   },
-  // Opt-in community totals. Disabled by default. `claude-rpc community on`
-  // walks through the consent flow and flips `enabled`, mints an anonymous
-  // instanceId (UUID v4), and the daemon starts batching deltas to the
-  // endpoint. See worker/src/index.js for the receiving end and exactly
-  // what payload is accepted (the validator there is the schema of record).
+  // Community totals. On by default for fresh installs — `setup` mints an
+  // anonymous instanceId (UUID v4) into the freshly-seeded config so the
+  // daemon starts batching deltas immediately. Existing users upgrading
+  // from a version without this block keep their old behavior: migrateConfig
+  // writes `community.enabled: false` into their file, and the consent flow
+  // at `claude-rpc community on` is the only path to enable. Opt out at any
+  // time with `claude-rpc community off`. See worker/src/index.js for the
+  // receiving end and exactly what payload is accepted (the validator there
+  // is the schema of record).
   community: {
-    enabled: false,
+    enabled: true,
     instanceId: null,
     endpoint: "https://claude-rpc-totals.claude-rpc.workers.dev",
     flushIntervalMin: 30,
