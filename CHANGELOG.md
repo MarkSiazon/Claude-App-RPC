@@ -4,6 +4,10 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 
 ## Unreleased
 
+_No changes yet._
+
+## [0.7.3] - 2026-05-24
+
 **Features**
 
 - **System tray for the Electron app.** Closing the window now hides to a tray icon instead of quitting; a right-click menu offers Open settings, Open web dashboard, Start/Stop/Restart daemon (label reflects live status), and Quit. The daemon actions reuse the in-window control path, and the tray label stays in sync whether you drive the daemon from the tray or the Daemon tab. Ships a small on-brand diamond icon (`dashboard/tray.png`).
