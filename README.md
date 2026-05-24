@@ -10,6 +10,8 @@
 **Discord Rich Presence for [Claude Code](https://claude.com/claude-code).**
 Your live model, project, current tool, tokens, and lifetime stats — in your Discord profile. Driven by the hooks Claude Code already fires. Zero polling between sessions.
 
+**→ [claude-rpc.vercel.app](https://claude-rpc.vercel.app)** — what it looks like, in one page.
+
 [![community · sessions](https://claude-rpc-totals.claude-rpc.workers.dev/sessions.svg)](#community-totals) &nbsp; [![community · tokens](https://claude-rpc-totals.claude-rpc.workers.dev/tokens.svg)](#community-totals)
 
 <sub>live — on by default for fresh installs, opt out any time. see [community totals](#community-totals)</sub>

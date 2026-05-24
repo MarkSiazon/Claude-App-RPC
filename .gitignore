@@ -32,3 +32,5 @@ NOTES.md
 
 # Wrangler dev state (worker/) — caches, miniflare, build output
 .wrangler/
+
+.vercel
