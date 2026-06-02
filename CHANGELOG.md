@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.11.2] - 2026-06-02
+
+**Changed**
+
+- **Claude Wrapped got a visual glow-up.** Flat slide backgrounds are now bold duotone gradients; each stat slide carries a giant faded background number/word (the headline stat, e.g. a huge "53" behind your hours); a soft floating glow sits behind the content; and slide content blur-rises in instead of a plain fade. Purely cosmetic — same data, same flow.
+
 ## [0.11.1] - 2026-06-02
 
 **Fixed**

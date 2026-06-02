@@ -49,25 +49,47 @@ body {
   opacity: 0; visibility: hidden; transition: opacity 0.45s ease;
 }
 .slide.active { opacity: 1; visibility: visible; }
-.slide.ink    { background: var(--ink);    color: var(--paper); }
-.slide.rust   { background: var(--rust);   color: var(--paper); }
-.slide.gold   { background: var(--tape);   color: var(--ink); }
-.slide.grass  { background: var(--grass);  color: var(--paper); }
-.slide.blurple{ background: var(--blurple);color: var(--paper); }
-.slide.plum   { background: var(--plum);   color: var(--paper); }
-.slide.paper  { background: var(--paper);  color: var(--ink); }
-.slide::after { /* subtle dot grid */
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.10;
+.slide.ink    { background: radial-gradient(125% 125% at 50% 0%, #2c241b 0%, #1a1611 55%, #0e0b07 100%); color: var(--paper); }
+.slide.rust   { background: linear-gradient(155deg, #d6551e 0%, #b03c14 58%, #8d2f11 100%); color: var(--paper); }
+.slide.gold   { background: linear-gradient(155deg, #f7e294 0%, #f0cd54 55%, #e3b133 100%); color: var(--ink); }
+.slide.grass  { background: linear-gradient(155deg, #59ab76 0%, #418456 58%, #316843 100%); color: var(--paper); }
+.slide.blurple{ background: linear-gradient(155deg, #717bff 0%, #5158d6 52%, #6b3f86 100%); color: var(--paper); }
+.slide.plum   { background: linear-gradient(155deg, #9c5085 0%, #6e3760 55%, #4b2643 100%); color: var(--paper); }
+.slide.paper  { background: linear-gradient(155deg, #f9f3e8 0%, #f1e7d6 55%, #e5d9c0 100%); color: var(--ink); }
+
+/* content sits above the watermark + glow */
+.slide > * { position: relative; z-index: 1; }
+
+/* soft floating glow blob behind everything */
+.slide::before {
+  content: ''; position: absolute; z-index: 0; width: 80vmin; height: 80vmin; border-radius: 50%;
+  left: 50%; top: 15%; transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(255,255,255,0.17), transparent 72%);
+  pointer-events: none; filter: blur(10px); animation: float 9s ease-in-out infinite;
+}
+.slide.gold::before, .slide.paper::before { background: radial-gradient(closest-side, rgba(194,73,30,0.14), transparent 72%); }
+@keyframes float { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-45%, -57%) scale(1.15); } }
+
+/* giant faded background number / glyph */
+.wm {
+  position: absolute; inset: 0; z-index: 0; display: grid; place-items: center; pointer-events: none;
+  font-weight: 800; font-size: 46vmin; line-height: 1; letter-spacing: -6px;
+  opacity: 0.075; transform: rotate(-9deg); white-space: nowrap;
+}
+
+/* subtle dot grid texture */
+.slide::after {
+  content: ''; position: absolute; z-index: 0; inset: 0; pointer-events: none; opacity: 0.09;
   background-image: radial-gradient(currentColor 1px, transparent 1.4px);
   background-size: 26px 26px;
 }
 
-/* entrance animation — children with .anim rise + fade in, staggered */
-.slide .anim { opacity: 0; transform: translateY(26px); }
-.slide.active .anim { animation: rise 0.7s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i, 0) * 0.13s + 0.1s); }
-@keyframes rise { to { opacity: 1; transform: none; } }
-.slide.active .pop { animation: pop 0.6s cubic-bezier(.2,1.4,.4,1) forwards; animation-delay: calc(var(--i, 0) * 0.13s + 0.15s); }
-@keyframes pop { 0% { opacity: 0; transform: scale(0.6); } 100% { opacity: 1; transform: scale(1); } }
+/* entrance — children with .anim blur + rise in, staggered */
+.slide .anim { opacity: 0; transform: translateY(30px) scale(0.97); filter: blur(7px); }
+.slide.active .anim { animation: rise 0.75s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i, 0) * 0.13s + 0.12s); }
+@keyframes rise { to { opacity: 1; transform: none; filter: blur(0); } }
+.slide.active .pop { animation: pop 0.65s cubic-bezier(.2,1.4,.4,1) forwards; animation-delay: calc(var(--i, 0) * 0.13s + 0.16s); }
+@keyframes pop { 0% { opacity: 0; transform: scale(0.55); } 100% { opacity: 1; transform: scale(1); } }
 
 .kicker { font-family: 'JetBrains Mono', monospace; font-size: clamp(13px, 3.6vw, 17px); letter-spacing: 1px; opacity: 0.85; max-width: 16ch; line-height: 1.5; }
 .huge   { font-weight: 800; font-size: clamp(64px, 22vw, 168px); line-height: 0.92; letter-spacing: -4px; }

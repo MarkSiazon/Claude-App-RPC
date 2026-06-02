@@ -24,14 +24,15 @@
     const perDay = d.prompts / Math.max(1, d.daysSinceFirst);
     const pad2 = (h) => String(h).padStart(2, '0');
 
-    const S = (cls, body, dur) => { _i = 0; out.push({ cls, html: body, dur: dur || 5200 }); };
+    const year = new Date(d.generatedAt).getFullYear();
+    const S = (cls, body, dur, wm) => { _i = 0; out.push({ cls, html: (wm != null && wm !== '' ? `<div class="wm">${esc(wm)}</div>` : '') + body, dur: dur || 5200 }); };
 
     // 1. intro
     S('ink', `
       <img class="gif anim" ${A()} src="${GIF}clawd-working-building.gif" alt="" />
       <div class="kicker anim" ${A()}>claude-rpc presents</div>
       <div class="big anim" ${A()}>Your Year<br/>on Claude Code</div>
-      <div class="sub anim" ${A()}>${esc(d.daysSinceFirst)} days in the making · tap →</div>`, 4200);
+      <div class="sub anim" ${A()}>${esc(d.daysSinceFirst)} days in the making · tap →</div>`, 4200, year);
 
     // 2. hours
     S('rust', `
@@ -150,6 +151,22 @@
     const barEls = [...story.querySelectorAll('.bar')];
     const els = [...story.querySelectorAll('.slide')];
     let idx = -1, timer = null, paused = false;
+
+    // Giant faded background number/word per slide — derived from its headline
+    // stat. Slides that already carry a .wm (e.g. the intro's year) are skipped.
+    els.forEach((s) => {
+      if (s.querySelector('.wm')) return;
+      const cnt = s.querySelector('[data-count]');
+      const big = s.querySelector('.big, .tapebadge');
+      let wm = '';
+      if (cnt) {
+        const t = parseFloat(cnt.dataset.count) || 0;
+        wm = (cnt.dataset.fmt === 'num') ? fmtNum(t) : String(Math.round(t));
+      } else if (big) {
+        wm = (big.textContent || '').trim().split('\n')[0].split(/\s+/)[0];
+      }
+      if (wm) { const w = document.createElement('div'); w.className = 'wm'; w.textContent = wm; s.prepend(w); }
+    });
 
     function runCountups(slide) {
       slide.querySelectorAll('[data-count]').forEach((node) => {
