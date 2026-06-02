@@ -2,12 +2,14 @@
 import { writeFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { Client } from '@xhayper/discord-rpc';
 import { readState } from './state.js';
-import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped } from './format.js';
+import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
 import { loadConfig } from './config.js';
 import { migrateConfig } from './install.js';
+import { desktopNotify, postWebhook, shouldWebhook, shouldNotify } from './notify.js';
+import { humanProject } from './format.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH } from './paths.js';
 
 if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
@@ -72,6 +74,9 @@ let liveSessions = [];
 let client = null;
 let connected = false;
 let lastPayloadHash = '';
+// Last status we acted on for outbound side-effects (webhook / desktop notify).
+// Tracked separately from the render hash so we fire once per transition.
+let lastNotifiedStatus = null;
 let reconnectTimer = null;
 // Exponential backoff for Discord reconnect: 5s → 10s → 20s → … → 300s cap.
 // Reset to RECONNECT_BASE_MS on a successful connect so the next outage
@@ -139,6 +144,8 @@ function buildActivity(opts = {}) {
   // Shipped overlay sits on top of idle/working/thinking — but never over
   // stale (we don't celebrate when Claude isn't running).
   state = applyShipped(state, config);
+  // Custom-command trigger overlay (config.triggers) — never over stale/shipped.
+  state = applyTrigger(state, config);
 
   // Pull live session tokens from the transcript file. Claude Code's hook
   // payloads don't include usage data, so state.tokens from PostToolUse
@@ -168,7 +175,13 @@ function buildActivity(opts = {}) {
   // Pick the active set of frames + any status-level largeImageText override.
   // Reset the rotation cursor when status changes so a 7-frame idle rotation
   // doesn't bleed its index into a 1-frame working state.
-  const { frames: rawFrames, largeImageTextTpl: statusLIT } = pickFrames(p, state.status);
+  let rawFrames, statusLIT;
+  if (state.status === 'trigger' && state._triggerFrame) {
+    rawFrames = [state._triggerFrame];
+    statusLIT = state._triggerFrame.largeImageText || null;
+  } else {
+    ({ frames: rawFrames, largeImageTextTpl: statusLIT } = pickFrames(p, state.status));
+  }
   if (state.status !== rotationStatus) {
     rotationIndex = 0;
     lastRotationAt = 0;
@@ -259,6 +272,33 @@ function buildActivity(opts = {}) {
   return activity;
 }
 
+// Fire desktop-notification + webhook on a status transition (once per change).
+function fireStatusSideEffects(resolved) {
+  const status = resolved.status;
+  if (status === lastNotifiedStatus) return;
+  const prev = lastNotifiedStatus;
+  lastNotifiedStatus = status;
+  try {
+    const project = humanProject(resolved.cwd) || 'Claude Code';
+    if (shouldNotify(config.notify, prev, status)) {
+      desktopNotify('Claude Code needs you', `Waiting on you in ${project}`);
+      log(`desktop notification raised (status=${status})`);
+    }
+    if (shouldWebhook(config.webhook, prev, status)) {
+      postWebhook(config.webhook.url, {
+        status,
+        project,
+        model: resolved.model || null,
+        justShipped: resolved.justShippedKind || null,
+        ts: Date.now(),
+      });
+      log(`webhook: POSTed status=${status} (${project})`);
+    }
+  } catch (e) {
+    log('status side-effect failed:', e.message);
+  }
+}
+
 async function pushPresence() {
   if (!connected || !client?.user) return;
   try {
@@ -273,6 +313,10 @@ async function pushPresence() {
     // same treatment as hideWhenStale: a single clearActivity, deduped via
     // lastPayloadHash so we don't spam the IPC.
     resolved = applyPrivacy(resolved, config);
+
+    // Outbound side-effects on a status TRANSITION (fire once per change):
+    // a desktop notification when Claude needs you, and an opt-in webhook POST.
+    fireStatusSideEffects(resolved);
 
     const hideWhenStale = config.hideWhenStale !== false;
     const privacyHidden = resolved._privacy?.visibility === 'hidden';

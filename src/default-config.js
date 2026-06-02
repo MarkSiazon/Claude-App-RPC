@@ -37,6 +37,40 @@ export const DEFAULT_CONFIG = {
   // celebratory "Just shipped" frame before falling back to the
   // underlying status. Set 0 to disable the overlay entirely.
   shippedFrameSec: 60,
+  // Daily / weekly goals (v0.10). When set (> 0), the daemon surfaces a
+  // progress frame ("2.1h / 4h · 52%") and the dashboard shows a ring.
+  // Set any field to 0/null to disable that goal.
+  goals: {
+    dailyHours: 0,     // target active hours per day
+    dailyPrompts: 0,   // target prompts per day
+    weeklyHours: 0,    // target active hours per week
+  },
+  // Monthly cost budget (v0.10). When budget.monthly > 0, the dashboard and
+  // a presence frame warn as month-to-date spend approaches it.
+  budget: {
+    monthly: 0,        // USD; 0 disables
+    warnAtPct: 80,     // surface a warning once MTD spend hits this %
+  },
+  // Outbound status webhook (v0.10). When url is set, the daemon POSTs a small
+  // JSON body on status transitions you opt into (best-effort, fire-and-forget).
+  // Pair with a Slack/Discord incoming-webhook or your own endpoint.
+  webhook: {
+    url: "",                                  // "" disables
+    on: ["shipped", "notification"],          // statuses that fire a POST
+  },
+  // Desktop notifications (v0.10). When enabled, the daemon raises a native OS
+  // notification (notify-send / osascript / PowerShell toast) when Claude needs
+  // you — so a permission prompt isn't missed while you're tabbed away.
+  notify: {
+    enabled: false,
+    onNotification: true,   // raise on the Notification hook
+  },
+  // Custom command triggers (v0.10). Each entry maps a regex against the Bash
+  // command Claude runs to a brief presence frame, generalizing ship-detection.
+  // e.g. { "match": "npm (run )?test", "details": "Running tests in {project}" }
+  triggers: [],
+  // How long (seconds) a matched trigger frame stays up after the command ran.
+  triggerFrameSec: 20,
   // `claude-rpc badge --gist` records id+owner here after a successful
   // first publish so subsequent publishes UPDATE the same gist (the raw
   // URL in your README stays stable). filename is the file inside the
@@ -131,6 +165,8 @@ export const DEFAULT_CONFIG = {
           { details: "{allFreshTokensFmt} fresh tokens",       state: "{allCachePctLabel}",                         requires: ["allCachePctLabel"] },
           { details: "Code churn · {linesAddedFmt} added",     state: "{linesNetFmt} net · {topLanguage}",            requires: ["topLanguage"] },
           { details: "Cost · {todayCostFmt} today",            state: "{allCostFmt} all-time",                        requires: ["allCost"] },
+          { details: "Daily goal",                             state: "{goalLabel}",                                  requires: ["goalLabel"] },
+          { details: "Monthly budget",                         state: "{budgetLabel}",                                requires: ["budgetLabel"] },
         ],
       },
     },

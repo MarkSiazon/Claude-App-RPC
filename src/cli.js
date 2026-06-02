@@ -785,6 +785,68 @@ async function doGithubStat(argv) {
   }
 }
 
+// Build the live template-variable table the way the daemon does — current
+// state + idle/stale resolution + aggregate. Shared by statusline/session-card.
+function liveVars() {
+  const state = readState();
+  state.liveSessions = findLiveSessions({ thresholdMs: 90_000 });
+  const config = loadConfig();
+  const resolved = applyIdle(state, config);
+  return { vars: buildVars(resolved, config, readAggregate()), config };
+}
+
+// statusline — a compact one-line status for tmux / starship / shell prompts
+// and Claude Code's own statusline. `--template "..."` overrides the format.
+function doStatusline(argv) {
+  let tpl = '{statusVerbose} · {project} · {modelPretty}{tokensLabelPad}';
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--template' || argv[i] === '-t') tpl = argv[++i] || tpl;
+  }
+  const { vars } = liveVars();
+  vars.tokensLabelPad = vars.tokensLabel ? ` · ${vars.tokensLabel}` : '';
+  process.stdout.write(fillTemplate(tpl, vars));
+}
+
+// Activity calendar — GitHub-contributions-style year heatmap SVG.
+async function doCalendar(argv) {
+  const opts = { out: '', gist: false };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--out' || argv[i] === '-o') opts.out = argv[++i];
+    else if (argv[i] === '--gist') opts.gist = true;
+  }
+  const aggregate = readAggregate();
+  if (!aggregate) fail('no aggregate yet — run `claude-rpc scan` first', { code: EX_BAD_STATE });
+  const { renderCalendar } = await import('./calendar.js');
+  const svg = renderCalendar(aggregate, {});
+  if (opts.gist) return publishBadgeToGist(svg, { metric: 'calendar', range: 'year' });
+  if (opts.out) {
+    writeFileSync(opts.out, svg);
+    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
+  } else process.stdout.write(svg);
+}
+
+// Per-session recap card — current/most-recent session as a shareable SVG.
+async function doSessionCard(argv) {
+  const opts = { out: '' };
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--out' || argv[i] === '-o') opts.out = argv[++i];
+  }
+  const { vars } = liveVars();
+  const { renderSessionCard } = await import('./session-card.js');
+  const svg = renderSessionCard(vars, {});
+  if (opts.out) {
+    writeFileSync(opts.out, svg);
+    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
+  } else process.stdout.write(svg);
+}
+
+// MCP server — expose stats to Claude Code over stdio. Long-running; never
+// writes to stdout except JSON-RPC frames.
+async function doMcp() {
+  const { runMcpServer } = await import('./mcp.js');
+  runMcpServer();
+}
+
 // ── Privacy commands ─────────────────────────────────────────────────────
 //
 // `claude-rpc private`        → add current cwd to ~/.claude-rpc/private-list.json
@@ -1075,11 +1137,15 @@ function help() {
     ['badge',     'Render a Shields-style SVG (--metric --range --out --gist)'],
     ['card',      'Render a poster-style SVG summary (--range year|month|week|all)'],
     ['github-stat', 'Render an embeddable profile stat card (--handle --out --gist)'],
+    ['statusline', 'One-line status for tmux/shell prompts (--template)'],
+    ['calendar',  'Year activity heatmap SVG (--out --gist)'],
+    ['session-card', 'Recap card for the current session (--out)'],
+    ['mcp',       'Run as an MCP server — expose your stats to Claude Code'],
     ['private',   'Mark the current directory as private (hide from Discord)'],
     ['public',    'Un-mark the current directory'],
     ['privacy',   'Show resolved visibility for the current directory'],
     ['community', 'Opt in/out of anonymous community totals (on|off|status|report)'],
-    ['doctor',    'Run a diagnostic checklist — common-failure triage'],
+    ['doctor',    'Run a diagnostic checklist — common-failure triage (--fix to auto-repair)'],
     ['tail',      'Tail the daemon log file'],
     ['daemon',    'Run daemon in foreground (debug)'],
   ];
@@ -1148,14 +1214,32 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'badge':     await doBadge(process.argv.slice(3)); break;
     case 'card':      await doCard(process.argv.slice(3)); break;
     case 'github-stat': await doGithubStat(process.argv.slice(3)); break;
+    case 'statusline': doStatusline(process.argv.slice(3)); break;
+    case 'calendar':  await doCalendar(process.argv.slice(3)); break;
+    case 'session-card': await doSessionCard(process.argv.slice(3)); break;
+    case 'mcp':       await doMcp(); break;
     case 'private':   doPrivate(); break;
     case 'public':    doPublic(); break;
     case 'privacy':   doPrivacy(); break;
     case 'community': await doCommunity(process.argv.slice(3)); break;
     case 'doctor': {
       const { runDoctor } = await import('./doctor.js');
-      process.exit(runDoctor());
-      break;
+      const fix = process.argv.includes('--fix');
+      const code = runDoctor();
+      if (!fix) process.exit(code);
+      // --fix: re-run setup (re-seeds/migrates config, re-wires hooks — all
+      // idempotent) and restart the daemon to pick it up. Covers the common
+      // breakages doctor flags: missing/stale hooks, bricked config, dead daemon.
+      console.log(`\n  ${c.cyan}◆ --fix${c.reset} ${c.dim}— re-running setup and restarting the daemon${c.reset}`);
+      try {
+        await runInstall({ exePath: EXE_PATH || process.execPath });
+        console.log(`  ${c.green}✓${c.reset} config + hooks repaired`);
+      } catch (e) {
+        console.log(`  ${c.red}✗${c.reset} setup step failed: ${e.message}`);
+      }
+      restartDaemon();
+      console.log(`  ${c.green}✓${c.reset} daemon restarting — run ${c.cyan}claude-rpc doctor${c.reset} again in a few seconds to confirm.`);
+      break; // let the restart timer fire before the process drains
     }
     case 'tail':
     case 'logs':

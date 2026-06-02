@@ -106,6 +106,12 @@ export function processHookEvent(event, input = {}) {
         s.lastActivity = now;
         s.claudeClosed = false;
         if (!s.sessionStart) s.sessionStart = now;
+        // Remember the running Bash command so the daemon can match custom
+        // triggers (config.triggers) against it for a brief overlay frame.
+        if (toolName === 'Bash' && toolInput.command) {
+          s.lastBashCommand = String(toolInput.command).slice(0, 500);
+          s.lastBashAt = now;
+        }
         if (file && (toolName === 'Read' || toolName === 'NotebookEdit')) {
           s.filesOpened = pushUnique(s.filesOpened, file);
           if (toolName === 'Read') s.filesRead = pushUnique(s.filesRead, file);

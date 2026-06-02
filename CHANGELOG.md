@@ -2,6 +2,21 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.10.0] - 2026-06-02
+
+**Added — ten features**
+
+- **MCP server — `claude-rpc mcp`.** Exposes your own Claude Code stats to Claude as MCP tools (`get_lifetime_stats`, `get_today`, `get_top_files`, `get_model_split`), so mid-session you can ask "how long have I worked today?" or "what's my hottest file?". Wire it up: `claude mcp add claude-rpc -- claude-rpc mcp`. Minimal stdio JSON-RPC, no SDK dependency.
+- **Status webhooks.** When `webhook.url` is set, the daemon POSTs a small JSON body on status transitions you opt into (`webhook.on`, default `["shipped","notification"]`) — pair it with a Slack/Discord incoming webhook or your own endpoint. Best-effort, fire-and-forget.
+- **Desktop notifications.** `notify.enabled: true` raises a native OS notification (notify-send / osascript / PowerShell toast) when Claude needs you, so a permission prompt isn't missed while you're tabbed away.
+- **Goals & targets.** Set `goals.dailyHours` / `dailyPrompts` / `weeklyHours`; a presence frame shows progress ("2.1h / 4h · 52%") via `{goalLabel}` / `{goalHit}`.
+- **`claude-rpc statusline`.** A one-line status for tmux / starship / shell prompts and Claude Code's own statusline. `--template` to customize.
+- **`claude-rpc session-card`.** A shareable SVG recap of the current session (project, model, duration, prompts, tools, files, tokens, cost).
+- **`claude-rpc calendar`.** A GitHub-contributions-style year activity heatmap as an embeddable SVG (`--out` / `--gist`).
+- **Cost budget + alerts.** Set `budget.monthly`; `{budgetLabel}` / `{budgetWarn}` and the dashboard warn as month-to-date spend approaches it.
+- **Custom command triggers.** `triggers: [{ match, details, state }]` maps a regex against the Bash command Claude runs to a brief presence frame — generalizes ship-detection (e.g. `npm test` → "Running tests in {project}").
+- **`claude-rpc doctor --fix`.** Auto-repairs the common breakages doctor flags: re-runs setup (re-seeds/migrates config, re-wires hooks) and restarts the daemon.
+
 ## [0.9.1] - 2026-06-02
 
 **Changed**

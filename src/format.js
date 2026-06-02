@@ -303,6 +303,38 @@ export function buildVars(state, config, aggregate) {
   // Per-project cost for the current cwd's project.
   const projectCost = projectStats?.cost || 0;
 
+  // Goals (v0.10) — daily/weekly targets → progress label + hit flag.
+  const goalsCfg = config?.goals || {};
+  const todayHoursNum = (today.activeMs || 0) / 3_600_000;
+  const weekHoursNum = (thisWeek.activeMs || 0) / 3_600_000;
+  const pctOf = (cur, target) => (target > 0 ? Math.min(999, Math.round((cur / target) * 100)) : 0);
+  const goalDailyHoursPct = pctOf(todayHoursNum, goalsCfg.dailyHours || 0);
+  const goalDailyPromptsPct = pctOf(today.userMessages || 0, goalsCfg.dailyPrompts || 0);
+  const goalWeeklyHoursPct = pctOf(weekHoursNum, goalsCfg.weeklyHours || 0);
+  let goalLabel = '', goalHit = 0;
+  if ((goalsCfg.dailyHours || 0) > 0) {
+    goalLabel = `${fmtHours(today.activeMs || 0)} / ${goalsCfg.dailyHours}h · ${goalDailyHoursPct}%`;
+    goalHit = goalDailyHoursPct >= 100 ? 1 : 0;
+  } else if ((goalsCfg.dailyPrompts || 0) > 0) {
+    goalLabel = `${today.userMessages || 0} / ${goalsCfg.dailyPrompts} prompts · ${goalDailyPromptsPct}%`;
+    goalHit = goalDailyPromptsPct >= 100 ? 1 : 0;
+  } else if ((goalsCfg.weeklyHours || 0) > 0) {
+    goalLabel = `${fmtHours(thisWeek.activeMs || 0)} / ${goalsCfg.weeklyHours}h this week · ${goalWeeklyHoursPct}%`;
+    goalHit = goalWeeklyHoursPct >= 100 ? 1 : 0;
+  }
+
+  // Monthly cost budget (v0.10) — month-to-date spend vs budget.
+  const budgetCfg = config?.budget || {};
+  const monthlyBudget = budgetCfg.monthly || 0;
+  const monthPrefix = dayKey(Date.now()).slice(0, 7); // YYYY-MM
+  let mtdCost = 0;
+  for (const [k, d] of Object.entries(agg.byDay || {})) {
+    if (k.startsWith(monthPrefix)) mtdCost += d.cost || 0;
+  }
+  const budgetPct = monthlyBudget > 0 ? Math.round((mtdCost / monthlyBudget) * 100) : 0;
+  const budgetWarn = monthlyBudget > 0 && budgetPct >= (budgetCfg.warnAtPct || 80) ? 1 : 0;
+  const budgetLabel = monthlyBudget > 0 ? `${fmtCost(mtdCost)} / ${fmtCost(monthlyBudget)} · ${budgetPct}%` : '';
+
   // Weekday name from today's date.
   const weekdayLabel = WEEKDAY_NAMES[new Date().getDay()];
 
@@ -673,6 +705,17 @@ export function buildVars(state, config, aggregate) {
     projectCost,
     projectCostFmt: fmtCost(projectCost),
 
+    // ── Goals & budget (v0.10) ──────────────────────────────────
+    goalLabel,
+    goalHit,
+    goalDailyHoursPct,
+    goalDailyPromptsPct,
+    goalWeeklyHoursPct,
+    budgetLabel,
+    budgetPct,
+    budgetWarn,
+    budgetMtdFmt: fmtCost(mtdCost),
+
     // ── Time-of-day / weekday ───────────────────────────────────
     weekdayLabel,
     startTimeLabel: todayStartLabel,
@@ -845,6 +888,38 @@ export function applyShipped(state, cfg = {}) {
   const age = Date.now() - state.justShipped;
   if (age < 0 || age > windowMs) return state;
   return { ...state, status: 'shipped' };
+}
+
+// Overlay a custom-trigger frame when a recent Bash command matches a
+// user-defined pattern (config.triggers: [{ match, details, state }]). Called
+// by the daemon AFTER applyIdle/applyShipped — never overrides stale or the
+// shipped celebration. Window = triggerFrameSec (default 20s) from the command.
+// Returns a new state with status:'trigger' + _triggerFrame, or the input.
+export function applyTrigger(state, cfg = {}) {
+  const triggers = Array.isArray(cfg.triggers) ? cfg.triggers : [];
+  if (!triggers.length) return state;
+  if (state.status === 'stale' || state.status === 'shipped') return state;
+  const cmd = state.lastBashCommand || '';
+  if (!cmd) return state;
+  const windowMs = Math.max(3_000, (cfg.triggerFrameSec ?? 20) * 1000);
+  if (Date.now() - (state.lastBashAt || 0) > windowMs) return state;
+  for (const t of triggers) {
+    if (!t || !t.match) continue;
+    let re;
+    try { re = new RegExp(t.match, 'i'); } catch { continue; }
+    if (re.test(cmd)) {
+      return {
+        ...state,
+        status: 'trigger',
+        _triggerFrame: {
+          details: t.details || '{statusVerbose} in {project}',
+          state: t.state || '',
+          largeImageText: t.largeImageText || null,
+        },
+      };
+    }
+  }
+  return state;
 }
 
 // True when `requires` (string or array of strings) all resolve to non-zero / non-empty.

@@ -561,3 +561,41 @@ test('buildVars: session milestone fires within window, not outside', () => {
   assert.equal(miss.sessionMilestoneHit, 0);
   assert.equal(miss.sessionMilestoneLabel, '');
 });
+
+// ── v0.10: goals, budget, custom triggers ───────────────────────────────
+const { applyTrigger } = await import('../src/format.js');
+
+test('buildVars: daily goal progress label', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const agg = { byDay: { [today]: { activeMs: 2 * 3.6e6, userMessages: 20 } } };
+  const v = buildVars(baseState({ status: 'idle' }), { goals: { dailyHours: 4 } }, agg);
+  assert.equal(v.goalLabel, '2.0h / 4h · 50%');
+  assert.equal(v.goalHit, 0);
+  const hit = buildVars(baseState({ status: 'idle' }), { goals: { dailyHours: 1 } }, agg);
+  assert.equal(hit.goalHit, 1, '2h vs 1h goal → hit');
+});
+
+test('buildVars: monthly budget label + warn flag', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const agg = { byDay: { [today]: { cost: 45 } } };
+  const v = buildVars(baseState(), { budget: { monthly: 50, warnAtPct: 80 } }, agg);
+  assert.equal(v.budgetLabel, '$45.00 / $50.00 · 90%');
+  assert.equal(v.budgetWarn, 1, '90% ≥ 80% warn threshold');
+  const under = buildVars(baseState(), { budget: { monthly: 1000, warnAtPct: 80 } }, agg);
+  assert.equal(under.budgetWarn, 0);
+});
+
+test('applyTrigger: matches a command pattern within the window', () => {
+  const cfg = { triggers: [{ match: 'npm (run )?test', details: 'Running tests in {project}', state: '{toolElapsed}' }], triggerFrameSec: 20 };
+  const hit = applyTrigger({ status: 'working', cwd: '/p', lastBashCommand: 'npm run test', lastBashAt: Date.now() }, cfg);
+  assert.equal(hit.status, 'trigger');
+  assert.equal(hit._triggerFrame.details, 'Running tests in {project}');
+});
+
+test('applyTrigger: ignores expired commands, non-matches, and stale state', () => {
+  const cfg = { triggers: [{ match: 'docker build', details: 'Building' }], triggerFrameSec: 20 };
+  assert.equal(applyTrigger({ status: 'working', lastBashCommand: 'docker build .', lastBashAt: Date.now() - 60_000 }, cfg).status, 'working', 'expired');
+  assert.equal(applyTrigger({ status: 'working', lastBashCommand: 'ls', lastBashAt: Date.now() }, cfg).status, 'working', 'no match');
+  assert.equal(applyTrigger({ status: 'stale', lastBashCommand: 'docker build .', lastBashAt: Date.now() }, cfg).status, 'stale', 'never over stale');
+  assert.equal(applyTrigger({ status: 'working' }, {}).status, 'working', 'no triggers configured');
+});
