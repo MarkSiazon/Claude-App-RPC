@@ -29,6 +29,16 @@ function migrateInPlace(cfg) {
     cfg.presence.largeImageText = DEFAULT_CONFIG.presence.largeImageText;
     added.push('presence.largeImageText');
   }
+  // v0.8.1 button-URL move — rewrite only the verbatim old default.
+  const OLD_BTN_URL = 'https://claude.com/claude-code';
+  const NEW_BTN_URL = DEFAULT_CONFIG.presence?.buttons?.[0]?.url;
+  if (NEW_BTN_URL && Array.isArray(cfg.presence?.buttons)) {
+    let changed = false;
+    for (const b of cfg.presence.buttons) {
+      if (b && b.url === OLD_BTN_URL) { b.url = NEW_BTN_URL; changed = true; }
+    }
+    if (changed) added.push('presence.buttons[].url → repo');
+  }
   return added;
 }
 
@@ -47,6 +57,34 @@ test('migrate: legacy v0.3.0 config gains byStatus + appName', () => {
   assert.equal(cfg.appName, 'Claude Code');
   assert.ok(cfg.presence.byStatus.working, 'byStatus.working seeded');
   assert.deepEqual(cfg.presence.rotation, [{ details: 'A', state: 'B' }], 'rotation preserved');
+});
+
+test('migrate: old Claude Code button URL is rewritten to the repo (label kept)', () => {
+  const cfg = {
+    clientId: '123', appName: 'Claude Code',
+    presence: {
+      byStatus: { working: { details: 'X', state: 'Y' } },
+      buttons: [{ label: 'Claude Code', url: 'https://claude.com/claude-code' }],
+    },
+  };
+  const added = migrateInPlace(cfg);
+  assert.ok(added.includes('presence.buttons[].url → repo'), 'button url migrated');
+  assert.equal(cfg.presence.buttons[0].url, DEFAULT_CONFIG.presence.buttons[0].url);
+  assert.notEqual(cfg.presence.buttons[0].url, 'https://claude.com/claude-code');
+  assert.equal(cfg.presence.buttons[0].label, 'Claude Code', 'label left untouched');
+});
+
+test('migrate: a user-customized button URL is left untouched', () => {
+  const cfg = {
+    clientId: '123', appName: 'Claude Code',
+    presence: {
+      byStatus: { working: { details: 'X', state: 'Y' } },
+      buttons: [{ label: 'My Site', url: 'https://example.com' }],
+    },
+  };
+  const added = migrateInPlace(cfg);
+  assert.ok(!added.includes('presence.buttons[].url → repo'), 'custom button not touched');
+  assert.equal(cfg.presence.buttons[0].url, 'https://example.com');
 });
 
 test('migrate: already-migrated config is a no-op', () => {

@@ -235,12 +235,12 @@ export function seedConfig() {
 // without clobbering the user's customizations. Anything the user already
 // has — including a pre-existing byStatus, custom rotation array, custom
 // appName etc. — is left untouched.
-export function migrateConfig() {
+export function migrateConfig({ silent = false } = {}) {
   if (!existsSync(CONFIG_PATH)) return false;
   let cfg;
   try { cfg = JSON.parse(readFileSync(CONFIG_PATH, 'utf8')); }
   catch (e) {
-    console.warn(`  ! could not read config for migration: ${e.message}`);
+    if (!silent) console.warn(`  ! could not read config for migration: ${e.message}`);
     return false;
   }
   if (!cfg || typeof cfg !== 'object') return false;
@@ -300,13 +300,31 @@ export function migrateConfig() {
     added.push('community (preserved-off)');
   }
 
+  // v0.8.1: the default presence button moved from the Claude Code website
+  // to the project repo. Existing configs carry their own `buttons` array,
+  // which fully REPLACES the default (arrays don't deep-merge) — so the new
+  // default never reaches upgraders just by bumping the package. Rewrite
+  // ONLY a button still pointing at the verbatim old default URL; anything a
+  // user has customized (label or url) is left untouched.
+  const OLD_BTN_URL = 'https://claude.com/claude-code';
+  const NEW_BTN_URL = DEFAULT_CONFIG.presence?.buttons?.[0]?.url;
+  if (NEW_BTN_URL && Array.isArray(cfg.presence?.buttons)) {
+    let changed = false;
+    for (const b of cfg.presence.buttons) {
+      if (b && b.url === OLD_BTN_URL) { b.url = NEW_BTN_URL; changed = true; }
+    }
+    if (changed) added.push('presence.buttons[].url → repo');
+  }
+
   if (added.length === 0) {
-    console.log(`  config up to date → ${CONFIG_PATH}`);
+    if (!silent) console.log(`  config up to date → ${CONFIG_PATH}`);
     return false;
   }
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
-  console.log(`  config migrated  → ${CONFIG_PATH}`);
-  console.log(`    added: ${added.join(', ')}`);
+  if (!silent) {
+    console.log(`  config migrated  → ${CONFIG_PATH}`);
+    console.log(`    added: ${added.join(', ')}`);
+  }
   return true;
 }
 

@@ -7,6 +7,7 @@ import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scan
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
 import { loadConfig } from './config.js';
+import { migrateConfig } from './install.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH } from './paths.js';
 
 if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
@@ -49,6 +50,20 @@ function log(...args) {
 // the "no, just keep going with what we shipped" failsafe.
 function loadConfigWithLog() {
   return loadConfig({ onError: (msg) => log(msg) });
+}
+
+// Bring an existing config.json up to date with the current defaults before
+// we load it. This is how upgrades reach users who just `npm update` + restart
+// the daemon without re-running `claude-rpc setup` — e.g. the v0.8.1 button-URL
+// move. Idempotent: only writes when something actually changes, so steady-state
+// restarts are a no-op and can't loop the config watcher. Best-effort — a
+// migration failure must never stop the daemon from starting.
+try {
+  if (migrateConfig({ silent: true })) {
+    log('config.json migrated to current defaults on startup');
+  }
+} catch (e) {
+  log('startup config migration failed (continuing):', e?.message || String(e));
 }
 
 let config = loadConfigWithLog();

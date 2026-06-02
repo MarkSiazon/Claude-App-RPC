@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.1] - 2026-06-02
+
+**Fixed**
+
+- **Upgrades now actually update the presence button.** The 0.8.0 default-button change (→ project repo) never reached existing users: their `config.json` carries its own `buttons` array, and config arrays *replace* rather than deep-merge, so the new default was always overridden. The daemon now runs `migrateConfig()` on startup, which rewrites a button still pointing at the old `claude.com/claude-code` URL to the repo — so a plain `npm i -g claude-rpc@latest` + `claude-rpc stop && start` picks it up, no `setup` re-run needed. Only the verbatim old default is touched; any button you've customized (label or URL) is left alone. `migrateConfig` gained a `silent` option so the startup run stays quiet in the daemon log unless it actually changes something.
+
 ## [0.8.0] - 2026-06-02
 
 **Reliability**
