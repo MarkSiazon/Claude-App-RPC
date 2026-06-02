@@ -2,6 +2,17 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.8.0] - 2026-06-02
+
+**Reliability**
+
+- **The card now stays as `idle` while a Claude Code session is open but paused, instead of vanishing.** Previously, once no transcript was being written anywhere on disk, `applyIdle` went straight to `stale` (and `hideWhenStale` cleared the card) within ~90–120s — so stepping away for a couple of minutes with the session still open dropped your presence entirely. Now an open-but-quiet session resolves to `idle`; only an authoritative `SessionEnd` hook or the full `staleSessionMin` (5min) dormancy window drops to `stale`. New `idleWhenOpen` config flag (default `true`) — set it `false` to restore the old aggressive clear.
+- **Auto-healing Discord RPC connection.** The daemon already reconnected on `disconnected` events and login failures, but two silent-death modes slipped through: a `setActivity` call failing on a broken IPC pipe (Discord restart / socket reset / OS sleep) left `connected=true` and the daemon dark forever, and a half-open client (connected flag set, user handle gone) never recovered. `setActivity` failures that look connection-level now tear down and force a backoff reconnect, and a 30s **watchdog** guarantees the daemon always converges back to a live connection (forces a reconnect on half-open clients and whenever it's down with no retry pending). This is the most common "it just stopped showing up" failure — the daemon now self-heals instead of needing a manual restart.
+
+**Changed**
+
+- **Default presence button now points at the project repo** (`github.com/rar-file/claude-rpc`) instead of the Claude Code website, so people who see your card can find the tool.
+
 ## [0.7.4] - 2026-05-24
 
 **Docs / transparency**

@@ -682,6 +682,12 @@ export function applyIdle(state, cfg = {}) {
   const idleMs = (cfg.idleThresholdSec || 60) * 1000;
   const staleMs = Math.max(60_000, (cfg.staleSessionMin || 5) * 60 * 1000);
   const notificationMs = (cfg.notificationWindowSec || 8) * 1000;
+  // When the Claude Code session is still open (no authoritative SessionEnd)
+  // but its transcript has gone quiet, prefer 'idle' over clearing the card.
+  // Only an explicit close (claudeClosed) or the staleMs dormancy backstop
+  // drops us to stale. Default on; set idleWhenOpen:false to restore the old
+  // aggressive ~90-120s clear when no transcript is being written.
+  const idleWhenOpen = cfg.idleWhenOpen !== false;
 
   // Authoritative close signal from the SessionEnd hook — trust it instead
   // of waiting on staleSessionMin. Any other hook clears the flag, so a
@@ -730,24 +736,26 @@ export function applyIdle(state, cfg = {}) {
 
   // Local state is fresh.
   if (state.status === 'idle') {
-    // Fast-path stale: if there are NO transcripts being written anywhere
-    // on disk, Claude Code isn't running. SessionEnd may not have fired
-    // (force-quit, OS sleep, crash). Going stale here clears Discord
-    // within ~90-120s of close instead of waiting the full staleMs (5min)
-    // — keeps the user's cwd off the card when they're away from their
-    // machine. The 5min legacy fallback below still catches the case
-    // where transcript mtime is fresh but the hook channel is silent.
-    if (liveSessions.length === 0) return staleWipe(state);
+    // No transcripts being written anywhere on disk — Claude Code may have
+    // closed without a SessionEnd hook (force-quit, OS sleep, crash). With
+    // idleWhenOpen (default) we keep showing 'idle': the session hasn't been
+    // authoritatively closed and the staleMs dormancy backstop above will
+    // still clear it if Claude is truly gone. Set idleWhenOpen:false to go
+    // straight to stale here — clears Discord ~90-120s after the last write,
+    // at the cost of dropping the card whenever you pause for a couple
+    // minutes with the session still open.
+    if (liveSessions.length === 0 && !idleWhenOpen) return staleWipe(state);
     return state;
   }
   if (ageMs > idleMs) {
     // Hook channel is quiet, but a live transcript was modified recently?
     // Keep "working" instead of dropping to "idle".
     if (liveAgeMs <= idleMs) return state;
-    // Hooks quiet AND no live transcripts → Claude is closed, not paused.
-    // Skip idle, go straight to stale. Same privacy reasoning as the
-    // idle-state fast-path above.
-    if (liveSessions.length === 0) return staleWipe(state);
+    // Hooks quiet AND no live transcripts. With idleWhenOpen (default) the
+    // session is treated as open-but-paused and drops to idle; the staleMs
+    // backstop above clears it if Claude is actually gone. Set
+    // idleWhenOpen:false to go straight to stale here (old behavior).
+    if (liveSessions.length === 0 && !idleWhenOpen) return staleWipe(state);
     // Going idle — wipe "current activity" indicators so rotation frames
     // gated on filesEdited / currentFile / currentTool stop showing stale
     // active-session data. Keep the session counters (messages/tools/tokens)

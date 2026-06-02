@@ -79,19 +79,26 @@ test('applyIdle: respects legacy state with no claudeClosed field', () => {
   assert.equal(r.status, 'working', 'undefined flag is falsy, no crash');
 });
 
-// ── fast-path stale detection (v0.6.2) ─────────────────────────────────
+// ── idle-when-open vs fast-path stale (v0.8.0) ─────────────────────────
 //
-// SessionEnd doesn't fire on force-quit / crash / OS sleep, so the only
-// honest signal that Claude Code isn't running anymore is "no transcripts
-// are being written to disk". When that's true, going stale right away
-// keeps yesterday's cwd off the Discord card. The legacy 5-min staleMs
-// fallback still catches edge cases where transcripts are fresh but
-// hooks are silent.
+// SessionEnd doesn't fire on force-quit / crash / OS sleep, so "no
+// transcripts are being written to disk" is the only passive signal that
+// Claude Code may be gone. Pre-0.8.0 the daemon went stale immediately on
+// that signal. With idleWhenOpen (default true) an open-but-quiet session
+// instead resolves to 'idle' — the session hasn't been authoritatively
+// closed, and the 5-min staleMs dormancy backstop still catches a real
+// crash. idleWhenOpen:false restores the old aggressive ~90-120s clear.
 
-test('applyIdle: status=idle + no live sessions → stale immediately', () => {
+test('applyIdle: status=idle + no live sessions → stays idle (idleWhenOpen default)', () => {
   const s = baseState({ status: 'idle', lastActivity: now() - 30_000, liveSessions: [] });
   const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60 });
-  assert.equal(r.status, 'stale', 'no live sessions ≡ Claude not running');
+  assert.equal(r.status, 'idle', 'open-but-paused session stays idle, not stale');
+});
+
+test('applyIdle: status=idle + no live sessions + idleWhenOpen:false → stale immediately', () => {
+  const s = baseState({ status: 'idle', lastActivity: now() - 30_000, liveSessions: [] });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60, idleWhenOpen: false });
+  assert.equal(r.status, 'stale', 'opt-out restores the old aggressive clear');
   assert.equal(r.cwd, '', 'cwd wiped so {project} stops leaking');
 });
 
@@ -103,11 +110,26 @@ test('applyIdle: status=idle WITH live sessions stays idle', () => {
   assert.equal(r.status, 'idle', 'paused-but-open Claude stays idle');
 });
 
-test('applyIdle: working past idleMs + no live sessions → stale, skipping idle', () => {
+test('applyIdle: working past idleMs + no live sessions → idle (idleWhenOpen default)', () => {
   const past = now() - 90_000; // 90s ago, past idleMs=60s but well under staleMs=5min
   const s = baseState({ status: 'working', lastActivity: past, liveSessions: [] });
   const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60 });
-  assert.equal(r.status, 'stale', 'no live sessions overrides 5-min staleMs wait');
+  assert.equal(r.status, 'idle', 'open-but-paused drops to idle, not stale');
+});
+
+test('applyIdle: working past idleMs + no live sessions + idleWhenOpen:false → stale', () => {
+  const past = now() - 90_000;
+  const s = baseState({ status: 'working', lastActivity: past, liveSessions: [] });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60, idleWhenOpen: false });
+  assert.equal(r.status, 'stale', 'opt-out: no live sessions overrides the 5-min staleMs wait');
+  assert.equal(r.cwd, '');
+});
+
+test('applyIdle: dormant past staleMs + no live sessions → stale even with idleWhenOpen', () => {
+  const past = now() - 6 * 60_000; // 6min, past staleMs=5min
+  const s = baseState({ status: 'working', lastActivity: past, liveSessions: [] });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60 });
+  assert.equal(r.status, 'stale', 'dormancy backstop still clears a truly-dead session');
   assert.equal(r.cwd, '');
 });
 

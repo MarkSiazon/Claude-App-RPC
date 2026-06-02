@@ -282,7 +282,31 @@ async function pushPresence() {
     log('Presence updated:', activity.details || '-', '|', activity.state || '-');
   } catch (e) {
     log('setActivity failed:', e.message, '|', e.stack?.split('\n').slice(0, 3).join(' | '));
+    // A failed setActivity usually means the IPC pipe died WITHOUT the client
+    // emitting a 'disconnected' event (Discord restart, socket reset, OS
+    // sleep). Left alone, `connected` stays true and the daemon goes silently
+    // dark forever. Tear the client down and force a backoff reconnect so we
+    // self-heal. Guarded to connection-shaped errors so a one-off API hiccup
+    // doesn't needlessly bounce a healthy socket.
+    if (isConnectionError(e)) {
+      log('setActivity error looks connection-level — forcing reconnect');
+      connected = false;
+      lastPayloadHash = '';
+      try { client?.destroy(); } catch { /* already gone */ }
+      scheduleReconnect('setActivity failed');
+    }
   }
+}
+
+// Heuristic: does this error indicate the IPC transport itself is dead
+// (vs. a transient/application-level failure)? Matches the common broken-pipe
+// / closed-socket shapes from @xhayper/discord-rpc and the underlying net
+// socket so we only force a reconnect when the connection is actually gone.
+function isConnectionError(e) {
+  const code = (e && e.code) || '';
+  if (['EPIPE', 'ECONNRESET', 'ENOENT', 'ECONNREFUSED', 'ERR_STREAM_WRITE_AFTER_END'].includes(code)) return true;
+  const m = String((e && e.message) || '').toLowerCase();
+  return /closed|reset|broken pipe|not connected|disconnect|write after end|socket|econnreset|epipe|connection/.test(m);
 }
 
 async function connect() {
@@ -453,6 +477,36 @@ function refreshLiveSessions() {
 }
 refreshLiveSessions();
 setInterval(refreshLiveSessions, 30_000);
+
+// ── Connection watchdog (auto-heal) ──────────────────────────────────────────
+// The reconnect path is event-driven (the 'disconnected' handler + login
+// failures + setActivity errors). But a connection can rot in ways that emit
+// no event at all: a half-open client where `connected` is still true but the
+// user handle is gone, or a state where we're down with no retry in flight.
+// This periodic check guarantees the daemon always converges back to a live
+// connection instead of silently staying dark — the single most common
+// "it just stopped showing up" failure users hit.
+const HEALTH_CHECK_MS = 30_000;
+setInterval(() => {
+  try {
+    // Half-open: flag says connected but there's no usable user handle.
+    if (connected && !client?.user) {
+      log('Watchdog: connected but no user handle — forcing reconnect');
+      connected = false;
+      try { client?.destroy(); } catch { /* already gone */ }
+      scheduleReconnect('watchdog: half-open');
+      return;
+    }
+    // Down with nothing scheduled to bring us back. scheduleReconnect is a
+    // no-op when a timer is already pending, so this can't stack retries.
+    if (!connected && !reconnectTimer) {
+      log('Watchdog: disconnected with no reconnect pending — forcing reconnect');
+      scheduleReconnect('watchdog: no retry pending');
+    }
+  } catch (e) {
+    log('Watchdog tick failed:', e.message);
+  }
+}, HEALTH_CHECK_MS);
 
 // Community-totals flush. Disabled by default; turns on via
 // `claude-rpc community on`. Best-effort — flushCommunity swallows every
