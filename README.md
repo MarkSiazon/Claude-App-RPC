@@ -21,6 +21,7 @@ Your live model, project, current tool, tokens, and lifetime stats — in your D
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-hooks-d97757.svg)](https://claude.com/claude-code)
 [![Discord RPC](https://img.shields.io/badge/Discord-RPC-5865F2.svg?logo=discord&logoColor=white)](https://discord.com/developers/docs/topics/rpc)
 [![Release](https://img.shields.io/github/v/release/rar-file/claude-rpc?color=4c1)](https://github.com/rar-file/claude-rpc/releases/latest)
+[![npm downloads](https://img.shields.io/npm/dm/claude-rpc?color=cb3837&logo=npm&logoColor=white&label=downloads)](https://www.npmjs.com/package/claude-rpc)
 
 </div>
 
