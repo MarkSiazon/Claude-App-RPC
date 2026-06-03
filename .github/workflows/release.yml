@@ -160,7 +160,18 @@ jobs:
       # The package has a single runtime dep and no build step — `npm publish`
       # only needs the files listed in package.json's `files` field. No
       # `npm install` required before publishing.
+      #
+      # Idempotent: if this version was already published (e.g. a manual
+      # `npm publish` from a workstation before the tag was pushed), npm would
+      # otherwise 403 with "cannot publish over previously published versions"
+      # and turn the run red. Detect that case and skip instead of failing.
       - name: Publish
-        run: npm publish --provenance --access public
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "claude-rpc@$V" version >/dev/null 2>&1; then
+            echo "claude-rpc@$V is already on npm — skipping publish."
+            exit 0
+          fi
+          npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
