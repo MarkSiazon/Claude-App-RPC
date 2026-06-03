@@ -334,7 +334,7 @@ export function renderCard(aggregate, { range = 'year', generatedAt = new Date()
   <!-- ── credits ── -->
   <g transform="translate(${W - 60} ${H - 24})" text-anchor="end">
     <text font-family="JetBrains Mono, ui-monospace, monospace" font-size="10"
-          fill="${PALETTE.inkFaint}">${escapeXml(allTimeHours)}h all-time · github.com/rar-file/claude-rpc</text>
+          fill="${PALETTE.inkFaint}">${escapeXml(allTimeHours)}h all-time · claude-rpc.vercel.app</text>
   </g>
 </svg>`;
 }

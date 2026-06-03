@@ -17,6 +17,12 @@
   // anim-stagger style helper
   let _i = 0; const A = () => `style="--i:${_i++}"`;
 
+  // Landing-page CTA used by the finale share. The dashboard is served on
+  // localhost, so sharing `location.href` hands the recipient a dead link —
+  // the finale shares this public URL + a stats summary instead.
+  const LANDING = 'https://claude-rpc.vercel.app/?ref=wrapped';
+  let _shareText = '';   // built in the finale slide, consumed by wireFinale
+
   // ── build the story slides from the wrapped payload ──────────
   function buildSlides(d) {
     const out = [];
@@ -105,6 +111,11 @@
 
     // 11. finale summary
     const cell = (k, v, cls) => `<div><div class="cellk">${k}</div><div class="cellv ${cls || ''}">${v}</div></div>`;
+    // Summary that travels with the share — stats + the public install link,
+    // so anyone who receives it knows what it is and where to get it.
+    _shareText = `My year on Claude Code: ${fmtHours(d.activeMs)} across ${fmtNum(d.sessions)} sessions · `
+      + `${fmtNum(d.prompts)} prompts · ${fmtNum(d.tokens)} tokens · ${(d.longestStreak || 0)}d best streak.\n\n`
+      + `Made with claude-rpc → ${LANDING}`;
     S('ink', `
       <div class="summary">
         <div class="card pop" style="--i:0">
@@ -120,15 +131,15 @@
             ${cell('Lines', (d.linesNet >= 0 ? '+' : '−') + fmtNum(Math.abs(d.linesNet)), 'grass')}
             ${cell('Hotspot', d.hotspot ? esc(d.hotspot.name) : '—')}
           </div>
-          <div class="foot">made with claude-rpc · github.com/rar-file/claude-rpc</div>
+          <div class="foot">made with claude-rpc · claude-rpc.vercel.app</div>
         </div>
         <div class="actions">
           <button class="btn primary" id="w-replay">↺ replay</button>
           <a class="btn" id="w-poster" href="/api/card.svg?range=all" target="_blank">poster ↗</a>
-          <button class="btn" id="w-copy">copy link</button>
+          <button class="btn" id="w-share">share ↗</button>
         </div>
       </div>
-      <div class="hint">screenshot the card to share your wrapped</div>`, 9_000_000); // last slide: effectively no auto-advance
+      <div class="hint">screenshot the card, or tap share to spread your wrapped</div>`, 9_000_000); // last slide: effectively no auto-advance
 
     return out;
   }
@@ -220,11 +231,21 @@
     function wireFinale() {
       if (wired) return; wired = true;
       const r = document.getElementById('w-replay');
-      const c = document.getElementById('w-copy');
+      const c = document.getElementById('w-share');
       if (r) r.onclick = (e) => { e.stopPropagation(); go(0); };
       if (c) c.onclick = (e) => {
         e.stopPropagation();
-        navigator.clipboard?.writeText(location.href).then(() => { c.textContent = 'copied ✓'; setTimeout(() => c.textContent = 'copy link', 1500); }).catch(() => {});
+        const flash = (msg) => { c.textContent = msg; setTimeout(() => c.textContent = 'share ↗', 1600); };
+        // Native share sheet where available (mobile / modern browsers);
+        // fall back to copying the summary + install link to the clipboard.
+        if (navigator.share) {
+          navigator.share({ title: 'My Year on Claude Code', text: _shareText, url: LANDING })
+            .catch(() => {});
+        } else {
+          navigator.clipboard?.writeText(_shareText)
+            .then(() => flash('copied ✓'))
+            .catch(() => flash('copy failed'));
+        }
       };
     }
 
