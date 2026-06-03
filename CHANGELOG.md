@@ -2,6 +2,24 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.13.0] - 2026-06-04
+
+**Added**
+
+- **`npx claude-rpc setup` — a true one-command install.** Previously you had to `npm install -g` first, then `setup`, then `start`. Now a single `npx claude-rpc setup` does everything. Because npx runs from npm's throwaway `_npx` cache (which is deleted the moment npx exits), a hook wired to the PATH-resolved `claude-rpc` bin would dangle — so setup now detects npx (new `IS_NPX`) and self-promotes to a real global install before wiring anything.
+- **`setup` auto-starts the daemon.** No more separate `claude-rpc start` after setup — the card shows up immediately. In npx mode the daemon is launched from the freshly-promoted global bin (our own script tree is the ephemeral cache). Best-effort: a start hiccup never makes `setup` look failed. Manage it afterward with `claude-rpc start | stop | status`.
+- **Claude Wrapped finale now has a real Share button.** The old "copy link" copied the local `localhost:47474` dashboard URL — useless to anyone you shared it with. The new Share uses the native share sheet (mobile) and falls back to copying a stats summary plus the public install link.
+
+**Changed**
+
+- **The Discord presence button is now an install call-to-action.** The card on your profile is the project's main distribution surface, so the default button changed from a bare repo link labelled "Claude Code" to **"Get claude-rpc →"** pointing at the landing page (`?ref=discord` for attribution). Existing configs are migrated automatically; customized buttons are left untouched. When the cwd is a github repo, the auto "View on GitHub →" button still shows alongside it.
+- **Shareable artifacts point home.** Every poster / calendar / profile / session card footer now carries `claude-rpc.vercel.app`, so anyone who sees a shared image knows where to get it. The landing page and README lead with the `npx` one-liner.
+
+**Fixed**
+
+- **The MCP `get_today` tool showed the wrong day for anyone not on UTC.** The scanner *writes* `byDay` buckets keyed by local date (`dayKey`) and `format.js` reads them the same way, but the MCP "today" tool keyed by a UTC date slice — so once local and UTC dates diverged (e.g. evening in CEST), it surfaced the wrong or an empty bucket. Now keyed by the same local `dayKey`.
+- **CI `npm publish` no longer fails the release run.** The publish job 403'd on every release because the version was already published manually before the tag push. It now checks the registry first and skips cleanly when the version already exists.
+
 ## [0.12.1] - 2026-06-02
 
 **Added**
