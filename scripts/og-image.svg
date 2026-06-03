@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <style>
+      .disp { font-family: "Space Grotesk", "Inter Tight", system-ui, sans-serif; }
+      .mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", ui-monospace, monospace; }
+    </style>
+  </defs>
+
+  <!-- paper background + dotted grid -->
+  <rect width="1200" height="630" fill="#f4ede0"/>
+  <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
+    <circle cx="2" cy="2" r="1.6" fill="#2b2722" fill-opacity="0.05"/>
+  </pattern>
+  <rect width="1200" height="630" fill="url(#dots)"/>
+
+  <!-- terracotta top rule -->
+  <rect x="0" y="0" width="1200" height="10" fill="#d97757"/>
+
+  <!-- kicker -->
+  <text x="80" y="150" class="mono" font-size="22" font-weight="700" letter-spacing="6" fill="#b8552f">DISCORD RICH PRESENCE</text>
+
+  <!-- wordmark -->
+  <text x="78" y="270" class="disp" font-size="118" font-weight="700" letter-spacing="-3" fill="#2b2722">claude-rpc</text>
+
+  <!-- tagline -->
+  <text x="80" y="338" class="disp" font-size="40" font-weight="500" fill="#2b2722">Claude Code, live on Discord</text>
+  <text x="80" y="392" class="mono" font-size="24" fill="#6b6357">live model · project · tokens · lifetime stats — driven by hooks</text>
+
+  <!-- install command chip -->
+  <rect x="80" y="446" width="560" height="74" rx="4" fill="#2b2722"/>
+  <text x="108" y="493" class="mono" font-size="28" fill="#d97757">$</text>
+  <text x="138" y="493" class="mono" font-size="28" fill="#f4ede0">npx claude-rpc setup</text>
+
+  <!-- footer url -->
+  <text x="80" y="585" class="mono" font-size="22" font-weight="700" fill="#6b6357">claude-rpc.vercel.app</text>
+  <text x="1120" y="585" class="mono" font-size="22" fill="#9a9183" text-anchor="end">MIT · macOS · Windows · Linux</text>
+
+  <!-- presence-card motif, right side -->
+  <g transform="translate(815,150)">
+    <rect x="0" y="0" width="305" height="200" rx="8" fill="#ebe2d2" stroke="#2b2722" stroke-width="2.5"/>
+    <rect x="22" y="26" width="64" height="64" rx="10" fill="#d97757"/>
+    <circle cx="80" cy="84" r="11" fill="#5a7d4f" stroke="#ebe2d2" stroke-width="3"/>
+    <text x="104" y="44" class="mono" font-size="15" font-weight="700" fill="#2b2722">Claude Code</text>
+    <text x="104" y="68" class="mono" font-size="13" fill="#6b6357">Editing src/daemon.js</text>
+    <text x="104" y="88" class="mono" font-size="13" fill="#9a9183">claude-rpc · Opus 4.8</text>
+    <rect x="22" y="120" width="261" height="30" rx="4" fill="#f4ede0" stroke="#2b2722" stroke-width="1.5"/>
+    <text x="32" y="140" class="mono" font-size="12" fill="#6b6357">3.2h · 1.4M tokens · 12d streak</text>
+    <rect x="22" y="158" width="125" height="26" rx="4" fill="#5865F2"/>
+    <text x="84" y="176" class="mono" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Get claude-rpc</text>
+  </g>
+</svg>
