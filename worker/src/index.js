@@ -328,6 +328,17 @@ export function validateProfile(body) {
   return null;
 }
 
+// 32 hex chars of randomness for a one-time verification token. Uses the Web
+// Crypto global present in the Workers runtime; falls back to Math.random only
+// in the Node test environment (older Node has no global `crypto`).
+function randomHex() {
+  const g = globalThis.crypto;
+  if (g && typeof g.randomUUID === 'function') return g.randomUUID().replace(/-/g, '');
+  let s = '';
+  for (let i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
+  return s;
+}
+
 async function getProfile(env, id) {
   const raw = await env.TOTALS.get(PF_KEY(id));
   if (!raw) return null;
@@ -436,7 +447,7 @@ export async function handleVerifyStart(request, env) {
   if (!gh) return jsonError(400, 'githubUser invalid');
   if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
 
-  const token = 'vrf_' + crypto.randomUUID().replace(/-/g, '');
+  const token = 'vrf_' + randomHex();
   await env.TOTALS.put(VERIFY_KEY(body.instanceId),
     JSON.stringify({ githubUser: gh, token, ts: Date.now() }),
     { expirationTtl: VERIFY_TTL_SECONDS });
