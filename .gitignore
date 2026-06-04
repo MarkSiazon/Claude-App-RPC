@@ -34,3 +34,7 @@ NOTES.md
 .wrangler/
 
 .vercel
+.env*
+
+# launch board local creds + queue (never commit)
+tools/launch-board/.data/
