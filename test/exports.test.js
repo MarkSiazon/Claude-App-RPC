@@ -12,7 +12,7 @@ const { calendarSvg } = await import('../src/calendar.js');
 const { cardSvg } = await import('../src/card.js');
 const { sessionCardSvg } = await import('../src/session-card.js');
 const { postWebhook, desktopNotify } = await import('../src/notify.js');
-const { runDoctor } = await import('../src/doctor.js');
+const { runDoctor, fixPlan } = await import('../src/doctor.js');
 
 const fakeAgg = {
   activeMs: 100 * 3_600_000,
@@ -130,6 +130,13 @@ test('runDoctor: runs the full checklist and returns a 0|1 exit code', () => {
   try {
     const code = runDoctor();
     assert.ok(code === 0 || code === 1, 'returns a documented exit code');
+    // fixPlan reflects the run just performed: a deduped, ordered subset of the
+    // known repair kinds (used by `doctor --fix`).
+    const plan = fixPlan();
+    assert.ok(Array.isArray(plan));
+    const allowed = ['setup', 'rescan', 'daemon', 'discord'];
+    assert.ok(plan.every((k) => allowed.includes(k)), 'only known fix kinds');
+    assert.equal(new Set(plan).size, plan.length, 'deduped');
   } finally {
     console.log = realLog;
   }

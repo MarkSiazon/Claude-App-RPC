@@ -1291,22 +1291,44 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'privacy':   doPrivacy(); break;
     case 'community': await doCommunity(process.argv.slice(3)); break;
     case 'doctor': {
-      const { runDoctor } = await import('./doctor.js');
+      const { runDoctor, fixPlan } = await import('./doctor.js');
       const fix = process.argv.includes('--fix');
       const code = runDoctor();
       if (!fix) process.exit(code);
-      // --fix: re-run setup (re-seeds/migrates config, re-wires hooks — all
-      // idempotent) and restart the daemon to pick it up. Covers the common
-      // breakages doctor flags: missing/stale hooks, bricked config, dead daemon.
-      console.log(`\n  ${c.cyan}◆ --fix${c.reset} ${c.dim}— re-running setup and restarting the daemon${c.reset}`);
-      try {
-        await runInstall({ exePath: EXE_PATH || process.execPath });
-        console.log(`  ${c.green}✓${c.reset} config + hooks repaired`);
-      } catch (e) {
-        console.log(`  ${c.red}✗${c.reset} setup step failed: ${e.message}`);
+
+      // --fix: apply ONLY the repairs the checklist flagged, in dependency
+      // order, reporting each — instead of blindly re-running everything.
+      const plan = fixPlan();
+      if (plan.length === 0) {
+        console.log(`\n  ${c.green}◆ --fix${c.reset} ${c.dim}— nothing to repair; everything that can be auto-fixed already passes.${c.reset}`);
+        process.exit(code);
       }
-      restartDaemon();
-      console.log(`  ${c.green}✓${c.reset} daemon restarting — run ${c.cyan}claude-rpc doctor${c.reset} again in a few seconds to confirm.`);
+      console.log(`\n  ${c.cyan}◆ --fix${c.reset} ${c.dim}— applying ${plan.length} targeted repair${plan.length === 1 ? '' : 's'}: ${plan.join(', ')}${c.reset}`);
+
+      let restarted = false;
+      for (const kind of plan) {
+        try {
+          if (kind === 'setup') {
+            await runInstall({ exePath: EXE_PATH || process.execPath });
+            console.log(`  ${c.green}✓${c.reset} config + hooks repaired`);
+          } else if (kind === 'rescan') {
+            doScan(true);
+            console.log(`  ${c.green}✓${c.reset} aggregate rebuilt from transcripts`);
+          } else if (kind === 'daemon') {
+            restartDaemon();
+            restarted = true;
+            console.log(`  ${c.green}✓${c.reset} daemon (re)starting`);
+          } else if (kind === 'discord') {
+            console.log(`  ${c.yellow}!${c.reset} discord IPC is down — open the Discord ${c.bold}desktop${c.reset} app (RPC isn't exposed by the browser client). Not auto-fixable.`);
+          }
+        } catch (e) {
+          console.log(`  ${c.red}✗${c.reset} ${kind} step failed: ${e.message}`);
+        }
+      }
+      // A 'setup' rewire only takes effect once the daemon reloads, so ensure a
+      // restart even if the daemon wasn't itself flagged.
+      if (plan.includes('setup') && !restarted) restartDaemon();
+      console.log(`  ${c.dim}run ${c.cyan}claude-rpc doctor${c.reset}${c.dim} again in a few seconds to confirm.${c.reset}`);
       break; // let the restart timer fire before the process drains
     }
     case 'tail':

@@ -41,7 +41,21 @@ A small Node daemon that takes the lifecycle events Claude Code already fires an
 npx claude-rpc setup
 ```
 
-That installs `claude-rpc` globally, wires the hooks into Claude Code, and starts the daemon — no separate `start` step. Open Claude Code in any project and the card appears within a second. Something looks wrong? `claude-rpc doctor`.
+That installs `claude-rpc` globally, wires the hooks into Claude Code, and starts the daemon — no separate `start` step. Open Claude Code in any project and the card appears within a second. Something looks wrong? `claude-rpc doctor` (or `claude-rpc doctor --fix` to auto-repair).
+
+**Prefer a one-liner that figures it out for you?**
+
+```sh
+curl -fsSL https://claude-rpc.vercel.app/install | sh
+```
+
+Detects Node (installs the npm package) or falls back to the prebuilt Apple-Silicon binary, then runs `setup` for you.
+
+**Homebrew** (macOS / Linux):
+
+```sh
+brew install rar-file/claude-rpc/claude-rpc && claude-rpc setup
+```
 
 **Windows (no Node required)** — [grab the portable exe from the latest release](https://github.com/rar-file/claude-rpc/releases/latest), then:
 

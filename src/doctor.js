@@ -20,13 +20,33 @@ import { c, check as uiCheck } from './ui.js';
 
 const counters = { pass: 0, fail: 0, warn: 0 };
 
+// Structured, machine-readable record of every non-passing check that has a
+// known repair, so `doctor --fix` can apply ONLY what's actually broken
+// (targeted) instead of blindly re-running the whole setup. Each fixable check
+// passes a `fixKind` — the CLI maps those to concrete repair actions.
+//   'setup'   — re-seed/migrate config + re-wire hooks (runInstall)
+//   'daemon'  — (re)start the daemon / clear a stale pid
+//   'rescan'  — rebuild the aggregate from transcripts
+//   'discord' — not auto-fixable (user must open Discord desktop); advice only
+let findings = [];
+
 // Thin wrapper around the shared ui.check so we can keep counters local
 // to this module without exporting a stateful version from ui.js.
-function check(label, status, detail = '', hint = '') {
+function check(label, status, detail = '', hint = '', fixKind = null) {
   if      (status === 'pass') counters.pass++;
   else if (status === 'fail') counters.fail++;
   else if (status === 'warn') counters.warn++;
+  if (fixKind && status !== 'pass') findings.push({ label, status, fixKind });
   uiCheck(label, status, detail, hint);
+}
+
+// Deduped, ordered list of repairs the last runDoctor() identified. Consumed by
+// the CLI's `--fix` path. Order matters: config/hooks before daemon (the daemon
+// must restart to pick up rewired hooks), aggregate last.
+export function fixPlan() {
+  const order = ['setup', 'rescan', 'daemon', 'discord'];
+  const kinds = new Set(findings.filter((f) => f.fixKind).map((f) => f.fixKind));
+  return order.filter((k) => kinds.has(k));
 }
 
 function section(title) {
@@ -63,7 +83,7 @@ function checkMode() {
 function checkConfig() {
   if (!existsSync(CONFIG_PATH)) {
     check('config.json present', 'fail', CONFIG_PATH,
-      'run `claude-rpc setup` to seed a default config');
+      'run `claude-rpc setup` to seed a default config', 'setup');
     return null;
   }
   let cfg;
@@ -92,10 +112,10 @@ function checkConfig() {
     check('presence schema', 'pass', 'byStatus block present (v0.3.6+ shape)');
   } else if (hasRotation) {
     check('presence schema', 'warn', 'legacy rotation only — no byStatus block',
-      'run `claude-rpc setup` again to migrate config into the byStatus shape');
+      'run `claude-rpc setup` again to migrate config into the byStatus shape', 'setup');
   } else {
     check('presence schema', 'warn', 'no presence templates configured',
-      'either rotation or byStatus is needed for the card to render');
+      'either rotation or byStatus is needed for the card to render', 'setup');
   }
   return cfg;
 }
@@ -169,14 +189,14 @@ function checkHooks() {
       'all events wired against the current binary');
   } else if (missing.length === HOOK_EVENTS.length) {
     check('hooks registered', 'fail', 'no claude-rpc hooks found',
-      'run `claude-rpc setup` to register hooks');
+      'run `claude-rpc setup` to register hooks', 'setup');
   } else if (missing.length > 0) {
     check('hooks registered', 'warn', `missing: ${missing.join(', ')}`,
-      'run `claude-rpc setup` to add the missing events');
+      'run `claude-rpc setup` to add the missing events', 'setup');
   } else if (stale.length > 0) {
     check('hooks registered', 'warn',
       `${stale.length} pointing at an old binary path`,
-      'run `claude-rpc setup` to refresh hook commands against the current binary');
+      'run `claude-rpc setup` to refresh hook commands against the current binary', 'setup');
   }
 }
 
@@ -191,7 +211,7 @@ function checkCanonicalExe() {
     check('canonical exe installed', 'pass', `${CANONICAL_EXE} (${size})`);
   } else {
     check('canonical exe installed', 'fail', `missing: ${CANONICAL_EXE}`,
-      'run `claude-rpc setup` to copy this binary to the canonical location');
+      'run `claude-rpc setup` to copy this binary to the canonical location', 'setup');
   }
 }
 
@@ -202,13 +222,13 @@ function isAlive(pid) {
 function checkDaemon() {
   if (!existsSync(PID_PATH)) {
     check('daemon running', 'warn', 'no pid file',
-      'run `claude-rpc start` to launch the daemon');
+      'run `claude-rpc start` to launch the daemon', 'daemon');
     return false;
   }
   const pid = Number(readFileSync(PID_PATH, 'utf8'));
   if (!pid || !isAlive(pid)) {
     check('daemon running', 'fail', `stale pid file (${pid})`,
-      'run `claude-rpc start` — old daemon died without cleaning up');
+      'run `claude-rpc start` — old daemon died without cleaning up', 'daemon');
     return false;
   }
   check('daemon running', 'pass', `pid ${pid}`);
@@ -248,7 +268,7 @@ function checkDaemonLog() {
       `connected · ${sizeKB} KB log · last write ${ageMin.toFixed(1)} min ago`);
   } else if (ipc === 'down') {
     check('discord IPC connection', 'warn', 'daemon is reconnecting to Discord',
-      'is the discord desktop client running? rpc only works via desktop, not browser');
+      'is the discord desktop client running? rpc only works via desktop, not browser', 'discord');
   } else {
     check('discord IPC connection', 'warn', 'no connection activity in the log yet',
       'start the daemon with discord desktop running');
@@ -277,7 +297,7 @@ function checkState() {
 function checkAggregate() {
   if (!existsSync(AGGREGATE_PATH)) {
     check('aggregate built', 'warn', 'never scanned',
-      'run `claude-rpc scan` to build lifetime stats from your transcripts');
+      'run `claude-rpc scan` to build lifetime stats from your transcripts', 'rescan');
     return;
   }
   try {
@@ -288,7 +308,7 @@ function checkAggregate() {
       `${agg.sessions || 0} sessions · ${hours}h · refreshed ${ageMin.toFixed(0)} min ago`);
   } catch (e) {
     check('aggregate built', 'fail', `parse error: ${e.message}`,
-      'run `claude-rpc rescan` to rebuild the aggregate from scratch');
+      'run `claude-rpc rescan` to rebuild the aggregate from scratch', 'rescan');
   }
 }
 
@@ -332,7 +352,7 @@ function checkLiveSessions() {
 function checkDataDir() {
   if (!existsSync(USER_CONFIG_DIR)) {
     check('user config dir', 'warn', `${USER_CONFIG_DIR} missing`,
-      'run `claude-rpc setup` — this is created automatically');
+      'run `claude-rpc setup` — this is created automatically', 'setup');
     return;
   }
   check('user config dir', 'pass', USER_CONFIG_DIR);
@@ -341,6 +361,8 @@ function checkDataDir() {
 // ── public entry point ──────────────────────────────────────────────────
 
 export function runDoctor() {
+  counters.pass = 0; counters.fail = 0; counters.warn = 0;
+  findings = [];
   console.log(`${c.bold}${c.cyan}claude-rpc doctor${c.reset}  ${c.dim}— diagnostic checklist${c.reset}`);
 
   section('Runtime');
