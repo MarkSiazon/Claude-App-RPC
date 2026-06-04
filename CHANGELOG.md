@@ -2,6 +2,29 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.13.1] - 2026-06-04
+
+**Fixed**
+
+- **Concurrent hooks no longer lose counter updates.** Claude Code fires lifecycle hooks in bursts, and subagents / parallel sessions run several `claude-rpc hook` processes at once. Each did a read-modify-write of `state.json` with no cross-process lock, so the last writer won and the others' message / tool / token increments were silently dropped. Writes now serialize through an exclusive lock file (best-effort, with stale-lock reclaim), and each writer uses a per-PID temp file so the atomic rename can't clobber a sibling mid-write.
+- **The daemon could crash at startup when `config.json` didn't exist yet.** `fs.watch` on the missing config path threw `ENOENT` — exactly the case the config loader was already hardened against. The watcher is now guarded and attaches once the file appears.
+- **Streaks and "days since first" could be off by one around daylight-saving transitions.** The day math subtracted local-midnight timestamps, which span 23 or 25 hours across a DST change; it now uses DST-immune calendar day indices. The scanner also rejects malformed / implausible transcript timestamps before they can inflate lifetime totals.
+- **The "shipped" celebration false-fired on quoted mentions of git.** `echo "remember to git push"` or `git commit -m "prep for git push"` could trip the ship animation. Detection now tokenizes each shell segment and only fires when the segment's actual leading command is `git`/`gh` (handling env prefixes, `sudo`, binary paths, and git global flags like `-C`).
+- **A missing desktop-notify binary could crash the daemon.** `desktopNotify` spawned the OS notifier (`notify-send` etc.) without an `error` listener, so an absent binary surfaced as an uncaught async exception. It's now swallowed — the helper truly never throws.
+- **Project names with a segment literally named `C` were mangled** in the rare path-slug fallback (a Windows drive-letter filter was too broad).
+
+**Performance**
+
+- **The scanner stops reading whole transcripts when it doesn't need to.** Resolving a live session's cwd now reads only the file head instead of the entire multi-MB transcript; the live token count parses only the appended tail from a cached byte offset instead of re-reading the whole growing file on every 4-second daemon tick; and full parses iterate lines lazily rather than materializing a second copy of the file.
+- **The daemon resolves presence state once per tick** (idle / shipped / trigger / privacy overlays + live-token enrichment) instead of running the chain twice — removing wasted work and a path where the clear-vs-push decision and the rendered frame could disagree.
+
+**Infrastructure**
+
+- **Community-totals worker:** added a per-IP rate limit on the report endpoint (the per-instance limit alone was defeatable by rotating anonymous IDs) and removed an inaccurate code comment.
+- **Release CI** now gates the npm publish behind the binary build, asserts the pushed tag matches `package.json`, runs the worker's own test suite, and runs across Node 18 / 20 / 22.
+- **Dev tooling:** ESLint + Prettier configs, `jsconfig` / `npm run typecheck`, plus `CONTRIBUTING.md`, a code of conduct, and issue / PR templates.
+- **Landing page** loads its changelog live from the GitHub releases API (no more stale version stamps) and now sends security headers (CSP, `nosniff`, `Referrer-Policy`, `X-Frame-Options`).
+
 ## [0.13.0] - 2026-06-04
 
 **Added**
