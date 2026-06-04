@@ -1125,7 +1125,31 @@ function profileEnable(on) {
   userCfg.profile = next;
   writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
   console.log(`${c.green}✓${c.reset} leaderboard publishing ${on ? 'enabled' : 'disabled'}`);
-  if (on) console.log(`  ${c.dim}your stats publish on the next daemon flush. run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim} to earn the ✓.${c.reset}`);
+  if (on) {
+    console.log(`  ${c.dim}publish now with ${c.reset}${c.cyan}claude-rpc profile publish${c.reset}${c.dim} (or wait for the next daemon flush).${c.reset}`);
+    console.log(`  ${c.dim}earn the ✓ with ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim}.${c.reset}`);
+  }
+}
+
+// One-shot publish so you appear on the board immediately, instead of waiting
+// for the daemon's next flush.
+async function profilePublish() {
+  const cfg = loadConfig();
+  if (!lb.profileIsPublishable(cfg.profile || {})) {
+    return fail('enable the profile first', {
+      hint: 'claude-rpc profile set --handle <name> && claude-rpc profile on', code: EX_BAD_STATE,
+    });
+  }
+  const { flushProfile } = await import('./community.js');
+  console.log(`${c.dim}publishing @${cfg.profile.handle} to the board…${c.reset}`);
+  const r = await flushProfile(cfg);
+  if (r.ok) {
+    console.log(`${c.green}✓${c.reset} published — see it at ${c.cyan}https://claude-rpc.vercel.app/u/${encodeURIComponent(cfg.profile.handle)}${c.reset}`);
+  } else if (r.reason === 'rate-limited') {
+    console.log(`${c.yellow}!${c.reset} rate-limited — already published in the last minute; the board has you.`);
+  } else {
+    return fail(`publish failed: ${r.reason}${r.error ? ' (' + r.error + ')' : ''}`, { code: EX_SYS_ERROR });
+  }
 }
 
 // GitHub verification: ask the worker for a one-time token, publish it in a
@@ -1161,23 +1185,35 @@ async function profileVerify() {
     const token = start.json.token;
 
     const { publishGistFile } = await import('./gist.js');
-    console.log(`${c.dim}publishing a proof gist as @${profile.githubUser}…${c.reset}`);
-    await publishGistFile({
-      svg: `claude-rpc leaderboard verification for @${profile.githubUser}\n${token}\n`,
+    console.log(`${c.dim}publishing a public proof gist…${c.reset}`);
+    const gist = await publishGistFile({
+      svg: `claude-rpc leaderboard verification\n${token}\n`,
       filename: 'claude-rpc-verify.txt',
       description: 'claude-rpc profile verification',
       isPublic: true,
     });
 
-    console.log(`${c.dim}asking the server to confirm…${c.reset}`);
-    // Small delay so the gist is visible to GitHub's API before we check.
-    await new Promise((r) => setTimeout(r, 2500));
-    const check = await post('/verify/check', { instanceId: community.instanceId });
+    // Hand the worker the gist ID so it fetches that gist directly (no
+    // gist-list lag) and reads the real owner — instant, and the owner becomes
+    // the verified identity regardless of what --github was set to.
+    console.log(`${c.dim}confirming with the server…${c.reset}`);
+    const check = await post('/verify/check', { instanceId: community.instanceId, gistId: gist.id });
     if (check.json?.verified) {
-      console.log(`${c.green}✓${c.reset} verified as @${profile.githubUser} — you'll show the ✓ on the board.`);
+      const who = check.json.githubUser || gist.owner || profile.githubUser;
+      // Persist the authoritative owner so the local profile + future publishes
+      // match what got verified.
+      if (who && who !== profile.githubUser) {
+        const userCfg = readJson(CONFIG_PATH, {});
+        userCfg.profile = { ...(userCfg.profile || {}), githubUser: who };
+        writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+      }
+      console.log(`${c.green}✓${c.reset} verified as @${who} — you'll show the ✓ on the board.`);
+      if (who && profile.githubUser && who.toLowerCase() !== profile.githubUser.toLowerCase()) {
+        console.log(`  ${c.dim}(your gist is owned by @${who}, so the profile now uses that account.)${c.reset}`);
+      }
     } else {
-      console.log(`${c.yellow}!${c.reset} not confirmed yet: ${check.json?.error || check.status}`);
-      console.log(`  ${c.dim}the gist may take a moment to propagate — re-run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim} shortly.${c.reset}`);
+      console.log(`${c.yellow}!${c.reset} not confirmed: ${check.json?.error || check.status}`);
+      console.log(`  ${c.dim}make sure the gist is public, then re-run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim}.${c.reset}`);
     }
   } catch (e) {
     return fail(`verification failed: ${e.message}`, {
@@ -1193,8 +1229,9 @@ async function doProfile(argv) {
   if (sub === 'on') return profileEnable(true);
   if (sub === 'off') return profileEnable(false);
   if (sub === 'verify') return profileVerify();
+  if (sub === 'publish') return profilePublish();
   fail(`unknown profile subcommand: ${sub}`, {
-    hint: 'try: profile [status|set|on|off|verify]',
+    hint: 'try: profile [status|set|on|off|verify|publish]',
     code: EX_USER_ERROR,
   });
 }
@@ -1336,7 +1373,7 @@ function help() {
     ['public',    'Un-mark the current directory'],
     ['privacy',   'Show resolved visibility for the current directory'],
     ['community', 'Opt in/out of anonymous community totals (on|off|status|report)'],
-    ['profile',   'Public leaderboard identity — set handle/name/github (status|set|on|off)'],
+    ['profile',   'Public leaderboard identity (status|set|on|off|publish|verify)'],
     ['doctor',    'Run a diagnostic checklist — common-failure triage (--fix to auto-repair)'],
     ['tail',      'Tail the daemon log file'],
     ['daemon',    'Run daemon in foreground (debug)'],

@@ -2,6 +2,17 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.13.2] - 2026-06-05
+
+**Fixed**
+
+- **GitHub verification is now instant and foolproof.** It previously scanned GitHub's gist-*list* API (which lags for brand-new gists) for a token under a self-asserted username — so it perpetually missed, and silently failed if the gist landed under a different account than the one you set. Now the CLI hands the worker the gist ID it just created; the worker fetches **that gist directly** (no indexing lag) and reads its **real owner**, which becomes the verified identity. Whatever account `gh`/`GH_TOKEN` actually owns the gist is the one that gets the ✓ — no guessing, no waiting, works on the first try. The verification token is also reused across retries instead of regenerated.
+
+**Added**
+
+- **`claude-rpc profile publish`** — a one-shot publish so you appear on the leaderboard immediately, instead of waiting for the daemon's next flush.
+- A real **empty-state** on `/leaderboard` (a "be the first builder" panel with the exact commands) instead of a bare table row.
+
 ## [0.13.1] - 2026-06-04
 
 **Added**

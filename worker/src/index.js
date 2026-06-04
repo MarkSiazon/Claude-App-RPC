@@ -443,18 +443,30 @@ export async function handleVerifyStart(request, env) {
   let body;
   try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
   if (!isUuidish(body.instanceId)) return jsonError(400, 'instanceId must be a UUID');
-  const gh = normGithub(body.githubUser);
-  if (!gh) return jsonError(400, 'githubUser invalid');
   if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
 
-  const token = 'vrf_' + randomHex();
+  // Reuse an existing, unexpired pending token so retries are idempotent (KV
+  // auto-expires the key, so if it's present it's still valid). The optional
+  // githubUser is just a hint — the real account is taken from the gist owner
+  // at check time, so a wrong/missing hint can't block verification.
+  const existing = await env.TOTALS.get(VERIFY_KEY(body.instanceId));
+  let token;
+  if (existing) {
+    try { token = JSON.parse(existing).token; } catch { /* regenerate below */ }
+  }
+  if (!token) token = 'vrf_' + randomHex();
   await env.TOTALS.put(VERIFY_KEY(body.instanceId),
-    JSON.stringify({ githubUser: gh, token, ts: Date.now() }),
+    JSON.stringify({ githubUser: normGithub(body.githubUser) || null, token, ts: Date.now() }),
     { expirationTtl: VERIFY_TTL_SECONDS });
   return new Response(JSON.stringify({
     ok: true, token,
-    instructions: 'Create a PUBLIC gist whose content contains this token (any filename), then POST /verify/check.',
+    instructions: 'Create a PUBLIC gist whose content contains this token, then POST /verify/check with its gistId.',
   }), { headers: { ...CORS, 'Content-Type': 'application/json' } });
+}
+
+// Gist IDs are hex; sanitize before interpolating into the API URL.
+function safeGistId(id) {
+  return typeof id === 'string' && /^[0-9a-f]{6,64}$/i.test(id) ? id : null;
 }
 
 export async function handleVerifyCheck(request, env, fetchImpl = fetch) {
@@ -466,34 +478,53 @@ export async function handleVerifyCheck(request, env, fetchImpl = fetch) {
   let pending;
   try { pending = JSON.parse(raw); } catch { return jsonError(500, 'corrupt verification state'); }
 
-  // Scan the user's recent public gists for one containing the token.
-  let matched = false;
+  // Preferred path: the client hands us the gist ID it just created, so we
+  // fetch THAT gist directly — instant, no dependency on GitHub's laggy
+  // gist-LIST index — and read the real owner. The gist owner is the verified
+  // identity (the client proved control of it by writing our one-time token).
+  let matchedOwner = null;
   try {
-    const listRes = await fetchImpl(`${GH_API}/users/${pending.githubUser}/gists?per_page=20`, {
-      headers: { 'User-Agent': 'claude-rpc-worker', Accept: 'application/vnd.github+json' },
-    });
-    if (listRes.ok) {
-      const gists = await listRes.json();
-      for (const g of (Array.isArray(gists) ? gists.slice(0, 20) : [])) {
-        for (const f of Object.values(g.files || {})) {
-          if (!f || !f.raw_url) continue;
-          const rawRes = await fetchImpl(f.raw_url, { headers: { 'User-Agent': 'claude-rpc-worker' } });
-          if (rawRes.ok && (await rawRes.text()).includes(pending.token)) { matched = true; break; }
+    const gid = safeGistId(body.gistId);
+    if (gid) {
+      const res = await fetchImpl(`${GH_API}/gists/${gid}`, {
+        headers: { 'User-Agent': 'claude-rpc-worker', Accept: 'application/vnd.github+json' },
+      });
+      if (res.ok) {
+        const g = await res.json();
+        const owner = g.owner && g.owner.login;
+        const hasToken = Object.values(g.files || {}).some(
+          (f) => f && typeof f.content === 'string' && f.content.includes(pending.token),
+        );
+        if (owner && hasToken) matchedOwner = owner;
+      }
+    } else if (pending.githubUser) {
+      // Fallback (no gistId): scan the hinted user's public gists.
+      const listRes = await fetchImpl(`${GH_API}/users/${pending.githubUser}/gists?per_page=20`, {
+        headers: { 'User-Agent': 'claude-rpc-worker', Accept: 'application/vnd.github+json' },
+      });
+      if (listRes.ok) {
+        const gists = await listRes.json();
+        for (const g of (Array.isArray(gists) ? gists.slice(0, 20) : [])) {
+          for (const f of Object.values(g.files || {})) {
+            if (!f || !f.raw_url) continue;
+            const rr = await fetchImpl(f.raw_url, { headers: { 'User-Agent': 'claude-rpc-worker' } });
+            if (rr.ok && (await rr.text()).includes(pending.token)) { matchedOwner = pending.githubUser; break; }
+          }
+          if (matchedOwner) break;
         }
-        if (matched) break;
       }
     }
-  } catch { /* GitHub hiccup → treat as not-yet-verified */ }
+  } catch { /* GitHub hiccup → not-yet-verified */ }
 
-  if (!matched) return jsonError(422, 'token not found in any public gist yet');
+  if (!matchedOwner) return jsonError(422, 'token not found in the gist yet — pass the gistId, and make sure the gist is public');
 
   const prof = await getProfile(env, body.instanceId);
   if (!prof) return jsonError(409, 'create your profile first (POST /profile)');
   prof.verified = true;
-  prof.githubUser = pending.githubUser;
+  prof.githubUser = matchedOwner; // authoritative: whoever actually owns the gist
   await env.TOTALS.put(PF_KEY(body.instanceId), JSON.stringify(prof));
   try { await env.TOTALS.delete(VERIFY_KEY(body.instanceId)); } catch { /* best-effort */ }
-  return new Response(JSON.stringify({ ok: true, verified: true, githubUser: pending.githubUser }), {
+  return new Response(JSON.stringify({ ok: true, verified: true, githubUser: matchedOwner }), {
     headers: { ...CORS, 'Content-Type': 'application/json' },
   });
 }

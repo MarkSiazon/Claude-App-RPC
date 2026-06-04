@@ -403,6 +403,31 @@ test('handleVerifyCheck: verifies when the token appears in a public gist', asyn
   assert.equal(prof.verified, true);
 });
 
+test('handleVerifyCheck: instant via gistId, adopts the real gist owner', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put('pf:' + profileBody.instanceId,
+    JSON.stringify({ handle: 'archer', verified: false, tokens: 1 }));
+  // pending has a WRONG github hint — the gist owner must win.
+  await env.TOTALS.put('verify:' + profileBody.instanceId,
+    JSON.stringify({ githubUser: 'wrongguess', token: 'vrf_xyz', ts: Date.now() }));
+  const fakeFetch = async (url) => {
+    if (url.endsWith('/gists/abc123')) {
+      return { ok: true, json: async () => ({ owner: { login: 'RealOwner' }, files: { 'p.txt': { content: 'proof vrf_xyz here' } } }) };
+    }
+    return { ok: false };
+  };
+  const req = new Request('http://localhost/verify/check', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceId: profileBody.instanceId, gistId: 'abc123' }),
+  });
+  const res = await handleVerifyCheck(req, env, fakeFetch);
+  const j = await res.json();
+  assert.equal(j.verified, true);
+  assert.equal(j.githubUser, 'RealOwner'); // adopted from the gist, not the wrong hint
+  const prof = JSON.parse(env.TOTALS.store.get('pf:' + profileBody.instanceId).value);
+  assert.equal(prof.githubUser, 'RealOwner');
+});
+
 test('handleVerifyCheck: 404 when no pending verification', async () => {
   const env = makeEnv();
   const req = new Request('http://localhost/verify/check', {
