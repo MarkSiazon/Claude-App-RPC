@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>claude-rpc — profile</title>
+<meta name="description" content="A claude-rpc builder profile: Claude Code tokens, sessions, active hours and streak." />
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="claude-rpc — builder profile" />
+<meta property="og:description" content="Claude Code tokens, sessions, active hours and streak. Make yours: claude-rpc profile on" />
+<meta property="og:type" content="profile" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px); background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3); }
+  h1 { font-family: var(--font-disp); font-size: clamp(2rem, 6vw, 3rem); margin: 8px 0 4px; line-height: 1.05; }
+  .badge { color: var(--grass); font-weight: 700; margin-left: 8px; font-size: 0.6em; vertical-align: middle; }
+  .sub { color: var(--ink-mute); font-family: var(--font-mono); font-size: 0.9rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 36px 0; }
+  @media (max-width: 520px) { .grid { grid-template-columns: 1fr; } }
+  .stat { background: var(--paper-2); border: 1.5px solid var(--ink); box-shadow: var(--shadow); padding: 22px 22px; }
+  .stat .label { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-mute); }
+  .stat .num { font-family: var(--font-disp); font-weight: 700; font-size: clamp(2rem, 6vw, 2.8rem); line-height: 1; margin-top: 8px; letter-spacing: -0.02em; }
+  .cta { margin-top: 24px; font-family: var(--font-mono); background: var(--ink); color: var(--paper); padding: 14px 18px; display: inline-block; }
+  .cta .ps1 { color: var(--rust); }
+  .err { color: var(--ink-mute); margin-top: 28px; }
+  footer { border-top: 1.5px solid var(--ink); padding: 20px 24px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-mute); display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">builder profile</span>
+    <h1 id="name">loading&hellip;</h1>
+    <div class="sub" id="sub"></div>
+    <div class="grid" id="grid" hidden>
+      <div class="stat"><div class="label">tokens</div><div class="num" id="tokens">—</div></div>
+      <div class="stat"><div class="label">sessions</div><div class="num" id="sessions">—</div></div>
+      <div class="stat"><div class="label">active hours</div><div class="num" id="hours">—</div></div>
+      <div class="stat"><div class="label">day streak</div><div class="num" id="streak">—</div></div>
+    </div>
+    <div class="err" id="err" hidden></div>
+    <div class="cta" id="cta" hidden><span class="ps1">$</span> npx claude-rpc setup &amp;&amp; claude-rpc profile on</div>
+  </main>
+  <footer>
+    <a href="/">home</a>
+    <a href="/leaderboard">leaderboard</a>
+    <a href="https://github.com/rar-file/claude-rpc">github</a>
+  </footer>
+<script>
+  const WORKER = 'https://claude-rpc-totals.claude-rpc.workers.dev';
+  const fmt = (n) => { n = +n || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+    return String(Math.round(n)); };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+  // Handle from /u/<handle> (rewrite) or ?h=<handle>.
+  const m = location.pathname.match(/\/u\/([^/?#]+)/);
+  const handle = decodeURIComponent(m ? m[1] : (new URLSearchParams(location.search).get('h') || '')).toLowerCase();
+
+  async function load() {
+    if (!handle) { return showErr('No handle in the URL — try /u/<handle>.'); }
+    try {
+      const res = await fetch(`${WORKER}/profile?handle=${encodeURIComponent(handle)}`);
+      if (!res.ok) return showErr(`No profile for “${esc(handle)}” yet.`);
+      const { profile: p } = await res.json();
+      const name = p.displayName || ('@' + p.handle);
+      document.title = `${name} — claude-rpc`;
+      document.getElementById('name').innerHTML = esc(name) + (p.verified ? '<span class="badge" title="GitHub-verified">✓</span>' : '');
+      document.getElementById('sub').innerHTML = p.githubUser
+        ? `<a href="https://github.com/${esc(p.githubUser)}" rel="nofollow noopener">@${esc(p.githubUser)}</a>${p.verified ? ' · verified' : ''}`
+        : `@${esc(p.handle)}${p.verified ? '' : ' · unverified'}`;
+      document.getElementById('tokens').textContent = fmt(p.tokens);
+      document.getElementById('sessions').textContent = fmt(p.sessions);
+      document.getElementById('hours').textContent = (p.activeMs / 3600000).toFixed(1) + 'h';
+      document.getElementById('streak').textContent = (p.streak || 0) + 'd';
+      document.getElementById('grid').hidden = false;
+      document.getElementById('cta').hidden = false;
+    } catch (e) {
+      showErr('Profile unavailable — try again in a moment.');
+    }
+  }
+  function showErr(msg) {
+    document.getElementById('name').textContent = 'not found';
+    const el = document.getElementById('err'); el.textContent = msg; el.hidden = false;
+    document.getElementById('cta').hidden = false;
+  }
+  load();
+</script>
+</body>
+</html>

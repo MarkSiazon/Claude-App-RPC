@@ -7,7 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { validateReport, handleReport, handleBadge, handleJson, handleRef, handleRefs,
-  validateProfile, handleProfile, handleLeaderboard, handleVerifyStart, handleVerifyCheck } = await import('../src/index.js');
+  validateProfile, handleProfile, handleLeaderboard, handleVerifyStart, handleVerifyCheck,
+  handleProfileGet } = await import('../src/index.js');
 const worker = (await import('../src/index.js')).default;
 
 function makeKv() {
@@ -410,4 +411,15 @@ test('handleVerifyCheck: 404 when no pending verification', async () => {
   });
   const res = await handleVerifyCheck(req, env, async () => ({ ok: false }));
   assert.equal(res.status, 404);
+});
+
+test('handleProfileGet: returns a public profile by handle, 404 if unknown', async () => {
+  const env = makeEnv();
+  await handleProfile(profileRequest(profileBody), env);
+  const ok = await handleProfileGet(new URL('http://localhost/profile?handle=archer'), env);
+  assert.equal(ok.status, 200);
+  const j = await ok.json();
+  assert.equal(j.profile.handle, 'archer');
+  const miss = await handleProfileGet(new URL('http://localhost/profile?handle=nobody'), env);
+  assert.equal(miss.status, 404);
 });

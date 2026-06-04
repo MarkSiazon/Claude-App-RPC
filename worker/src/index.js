@@ -3,6 +3,7 @@
 // This is the entire server. Routes:
 //   POST /report         — opt-in anonymous counters from a CLI install
 //   POST /profile        — opt-in leaderboard profile upsert (validated deltas)
+//   GET  /profile?handle= — single public profile (powers /u/<handle>)
 //   GET  /leaderboard    — top-N profiles (verified-first ranking)
 //   POST /verify/start   — begin GitHub gist verification (issues a token)
 //   POST /verify/check   — confirm the token appears in a public gist → ✓
@@ -383,6 +384,19 @@ export async function handleProfile(request, env) {
   });
 }
 
+// Single public profile by handle → /u/<handle> pages. 404 if unknown.
+export async function handleProfileGet(url, env) {
+  const handle = normHandle(url.searchParams.get('handle') || '');
+  if (!handle) return jsonError(400, 'handle invalid');
+  const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+  if (!owner) return jsonError(404, 'no such profile');
+  const p = await getProfile(env, owner);
+  if (!p) return jsonError(404, 'no such profile');
+  return new Response(JSON.stringify({ schemaVersion: SCHEMA_VERSION, profile: publicProfile(p), ts: Date.now() }, null, 2), {
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
+  });
+}
+
 export async function handleLeaderboard(url, env) {
   const metric = (url.searchParams.get('metric') || 'tokens').toLowerCase();
   const allowed = new Set(['tokens', 'sessions', 'activems', 'streak']);
@@ -491,6 +505,9 @@ export default {
     }
     if (request.method === 'POST' && url.pathname === '/profile') {
       return handleProfile(request, env);
+    }
+    if (request.method === 'GET' && url.pathname === '/profile') {
+      return handleProfileGet(url, env);
     }
     if (request.method === 'GET' && url.pathname === '/leaderboard') {
       return handleLeaderboard(url, env);

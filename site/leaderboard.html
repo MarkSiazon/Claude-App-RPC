@@ -138,12 +138,13 @@
       }
       rows.innerHTML = board.map((r) => {
         const name = r.displayName || ('@' + r.handle);
+        const prof = `/u/${encodeURIComponent(r.handle)}`;
         const gh = r.githubUser
           ? ` <a class="handle" href="https://github.com/${esc(r.githubUser)}" rel="nofollow noopener">@${esc(r.githubUser)}</a>`
           : ` <span class="handle">@${esc(r.handle)}</span>`;
         const badge = r.verified ? '<span class="badge" title="GitHub-verified">✓</span>' : '';
         const cls = (r.verified ? '' : 'unverified') + (r.rank === 1 ? ' top1' : '');
-        return `<tr class="${cls.trim()}"><td class="rank">${r.rank}</td><td class="who">${esc(name)}${badge}${gh}</td><td class="val">${valueFor(r, metric)}</td></tr>`;
+        return `<tr class="${cls.trim()}"><td class="rank">${r.rank}</td><td class="who"><a href="${prof}" style="color:inherit">${esc(name)}</a>${badge}${gh}</td><td class="val">${valueFor(r, metric)}</td></tr>`;
       }).join('');
       document.getElementById('updated').textContent = `${board.length} builder${board.length === 1 ? '' : 's'} · live`;
     } catch (e) {
