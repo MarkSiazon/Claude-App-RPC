@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/rar-file/claude-rpc/blob/main/SECURITY.md
+    about: Found a security issue? Please follow the disclosure process in SECURITY.md instead of opening a public issue.
+  - name: Question / discussion
+    url: https://github.com/rar-file/claude-rpc/issues
+    about: Open a regular issue for questions — happy to help.

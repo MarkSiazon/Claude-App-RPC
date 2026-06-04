@@ -97,8 +97,9 @@ test('PostToolUse Bash: git push trips the just-shipped marker', () => {
   const s = readState();
   assert.ok(s.justShipped, 'justShipped timestamp populated');
   assert.equal(s.justShippedKind, 'push');
-  // subject may be empty in CI shallow clones; type is what we assert.
-  assert.equal(typeof s.justShippedSubject, typeof '' || typeof null);
+  // subject may be empty/absent in CI shallow clones; we only assert it's a
+  // string or null (never some other type).
+  assert.ok(s.justShippedSubject === null || typeof s.justShippedSubject === 'string');
 });
 
 test('PostToolUse Bash: git commit also trips the marker', () => {

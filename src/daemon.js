@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { writeFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { Client } from '@xhayper/discord-rpc';
 import { readState } from './state.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
@@ -412,12 +413,43 @@ function watchFiles() {
       stateTimer = setTimeout(pushPresence, 250);
     });
   }
-  watch(CONFIG_PATH, () => {
-    log('Config changed — reloading');
-    config = loadConfigWithLog();
-    lastPayloadHash = '';
-    pushPresence();
-  });
+  // config.json may not exist yet on a fresh install where the daemon starts
+  // before `setup` seeds it (or if the user deletes it). watch() on a missing
+  // path throws ENOENT synchronously, which would crash startup — exactly the
+  // failure loadConfig was hardened against. Guard it, and if the file is
+  // absent, poll for its creation and attach the watcher once it lands.
+  const watchConfig = () => {
+    watch(CONFIG_PATH, () => {
+      log('Config changed — reloading');
+      config = loadConfigWithLog();
+      lastPayloadHash = '';
+      pushPresence();
+    });
+  };
+  if (existsSync(CONFIG_PATH)) {
+    watchConfig();
+  } else {
+    let configTimer = null;
+    const dir = dirname(CONFIG_PATH);
+    if (existsSync(dir)) {
+      const dirWatcher = watch(dir, () => {
+        if (!existsSync(CONFIG_PATH)) return;
+        clearTimeout(configTimer);
+        configTimer = setTimeout(() => {
+          try {
+            dirWatcher.close();
+          } catch {
+            /* already closed */
+          }
+          log('Config appeared — reloading');
+          config = loadConfigWithLog();
+          lastPayloadHash = '';
+          watchConfig();
+          pushPresence();
+        }, 250);
+      });
+    }
+  }
   if (existsSync(AGGREGATE_PATH)) {
     let aggTimer = null;
     watch(AGGREGATE_PATH, () => {

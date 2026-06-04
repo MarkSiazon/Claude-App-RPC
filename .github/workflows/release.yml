@@ -15,21 +15,33 @@ permissions:
 
 jobs:
   test:
-    # Single-platform smoke run. The codebase is platform-neutral except for
-    # the SEA build step (which the `build` job covers per-OS), so testing
-    # once on Linux is sufficient to gate the build matrix and the publish
-    # jobs below.
-    name: Test
+    # Single-platform run, but across the full supported Node range (engines
+    # says >=18) so the compatibility claim is actually verified. The codebase
+    # is platform-neutral except for the SEA build step (which the `build` job
+    # covers per-OS), so testing once per Node version on Linux is enough to
+    # gate the build matrix and the publish jobs below.
+    name: Test (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['18', '20', '22']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
       - name: Install deps
         run: npm ci || npm install
       - name: Run tests
         run: npm test
+      # The Cloudflare Worker is the only public-facing telemetry surface, so
+      # its tests must gate releases too. It's a separate package with its own
+      # lockfile; run them here rather than leaving them unverified in CI.
+      - name: Run worker tests
+        run: |
+          npm --prefix worker ci || npm --prefix worker install
+          npm --prefix worker test
 
   build:
     name: Build (${{ matrix.os }})
@@ -141,9 +153,10 @@ jobs:
 
   publish-npm:
     name: Publish to npm
-    # Gated behind `test` so a broken commit can't ship to npm. Runs in
-    # parallel with the binary `build` matrix.
-    needs: test
+    # Gated behind BOTH test and build: a green test with a red binary build
+    # would otherwise ship an npm release with no matching .dmg/.exe in the
+    # GitHub Release the site links to. Wait for the binaries to succeed first.
+    needs: [test, build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -156,6 +169,17 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org/'
+
+      # Guard against a tag/package.json mismatch: pushing tag v0.13.1 while
+      # package.json still says 0.13.0 would otherwise publish 0.13.0 under a
+      # release labelled v0.13.1. Fail loudly instead.
+      - name: Assert tag matches package.json version
+        run: |
+          PKG_V="v$(node -p "require('./package.json').version")"
+          if [ "$PKG_V" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json ($PKG_V)"
+            exit 1
+          fi
 
       # The package has a single runtime dep and no build step — `npm publish`
       # only needs the files listed in package.json's `files` field. No

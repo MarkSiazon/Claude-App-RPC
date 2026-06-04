@@ -89,7 +89,13 @@ export function toolList() {
   }));
 }
 
-// Dispatch a tools/call by name. Reads a fresh aggregate per call (cheap).
+/**
+ * Dispatch a tools/call by name. Reads a fresh aggregate per call (cheap).
+ * @param {string} name - Tool name (a key of TOOLS).
+ * @param {() => object} [getAgg] - Aggregate provider; defaults to readAggregate (injectable for tests).
+ * @returns {string} The tool's text result.
+ * @throws {Error} If the tool name is unknown.
+ */
 export function callTool(name, getAgg = readAggregate) {
   const t = TOOLS[name];
   if (!t) throw new Error(`unknown tool: ${name}`);
@@ -97,7 +103,14 @@ export function callTool(name, getAgg = readAggregate) {
   return t.handler(agg);
 }
 
-// ── stdio JSON-RPC transport (newline-delimited) ──────────────────────────
+/**
+ * stdio JSON-RPC transport (newline-delimited). Wires the MCP protocol methods
+ * (initialize, tools/list, tools/call, ping) to the tool handlers.
+ * @param {{input?: NodeJS.ReadableStream, output?: {write: (s: string) => void}}} [io]
+ *   Streams to read requests from / write responses to. Defaults to process stdio;
+ *   injectable for tests.
+ * @returns {void}
+ */
 export function runMcpServer({ input = process.stdin, output = process.stdout } = {}) {
   let buf = '';
   const send = (msg) => output.write(JSON.stringify(msg) + '\n');

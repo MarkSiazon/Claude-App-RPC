@@ -1,0 +1,11 @@
+node_modules
+dist
+dashboard
+worker
+site
+tools
+launch
+package-lock.json
+*.min.js
+*.svg
+CHANGELOG.md

@@ -288,14 +288,15 @@ Exit codes: `0` ok · `1` user error · `2` system error · `3` wrong state. `--
 ## development
 
 ```sh
-npm test                  # 200+ tests, ~1.7s
+npm test                  # 270+ tests, ~2s
+npm run lint              # eslint over src + test
 npm run start             # run daemon in foreground
 npm run serve             # web dashboard against your real data
 npm run dashboard         # Electron settings GUI (dev mode)
 npm run build:exe         # SEA single-file binary for the current OS
 ```
 
-Tests are `node --test` with zero deps. The CI pipeline ([release.yml](.github/workflows/release.yml)) gates the matrix build and the npm publish behind the test job. Every public export of `src/*.js` is exercised at least once.
+Tests are `node --test` with zero deps. The CI pipeline ([release.yml](.github/workflows/release.yml)) runs the suite (plus the Cloudflare Worker's own tests) across Node 18/20/22 and gates the matrix build and the npm publish behind it. Every pure/logic module in `src/*.js` is unit-tested, including the MCP transport and the SVG renderers; the long-running daemon, the TUI, and the CLI dispatcher are covered by integration and manual smoke testing rather than unit tests.
 
 ## license
 

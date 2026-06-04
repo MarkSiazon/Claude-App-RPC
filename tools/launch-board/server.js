@@ -13,6 +13,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { networkInterfaces } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import { verify, postTweet } from './x.js';
 
 const DIR = dirname(fileURLToPath(import.meta.url));
@@ -20,11 +21,58 @@ const DATA = join(DIR, '.data');
 const CREDS = join(DATA, 'creds.json');
 const QUEUE = join(DATA, 'queue.json');
 const PORT = process.env.PORT || 8787;
-// Bind all interfaces by default so the board is reachable over a Tailscale /
-// LAN address, not just localhost. Override with HOST=127.0.0.1 to restrict.
-// NOTE: there's no auth on this board — anyone who can reach HOST:PORT can post
-// to your X account. Keep it on a trusted network (a tailnet is fine).
-const HOST = process.env.HOST || '0.0.0.0';
+// Bind to loopback by default — this board can post to your X account, so it
+// must NOT be reachable from the LAN/tailnet unless you say so. Set
+// HOST=0.0.0.0 (or a specific interface IP) to opt into a non-loopback bind;
+// when you do, the token below is your only gate, so keep it secret.
+const HOST = process.env.HOST || '127.0.0.1';
+// True only when the operator explicitly chose a non-loopback bind. Loopback
+// literals stay locked to localhost; anything else widens the Host allowlist.
+const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
+const NON_LOOPBACK_BIND = !LOOPBACK.has(HOST);
+
+// Shared secret for mutating routes. Generated fresh each startup unless you
+// pin one via LAUNCH_BOARD_TOKEN (useful so post.js / a bookmark survives a
+// restart). The served page embeds it automatically, so the browser UX is
+// unchanged; out-of-band callers must send it as `X-Auth-Token` or `?token=`.
+const TOKEN = process.env.LAUNCH_BOARD_TOKEN || randomBytes(24).toString('hex');
+
+// Host-header allowlist to defeat DNS-rebinding: a malicious page can point a
+// hostname it controls at 127.0.0.1, but it can't forge the Host header to a
+// value we accept. Always allow loopback names; when bound non-loopback also
+// allow this machine's own LAN/Tailscale IPv4s (and the configured HOST).
+function allowedHosts() {
+  const hosts = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+  if (NON_LOOPBACK_BIND) {
+    hosts.add(HOST);
+    for (const n of Object.values(networkInterfaces()).flat()) {
+      if (n && n.family === 'IPv4' && !n.internal) hosts.add(n.address);
+    }
+  }
+  return hosts;
+}
+const ALLOWED_HOSTS = allowedHosts();
+
+// Strip the :port and compare the bare hostname against the allowlist.
+function hostOk(req) {
+  const raw = req.headers.host || '';
+  // IPv6 literals look like "[::1]:8787"; keep the bracketed part intact.
+  const hostname = raw.startsWith('[')
+    ? raw.slice(0, raw.indexOf(']') + 1)
+    : raw.split(':')[0];
+  return ALLOWED_HOSTS.has(hostname);
+}
+
+// Constant-time-ish token compare for mutating routes. Reads the token from
+// the X-Auth-Token header or a ?token= query param.
+function tokenOk(req) {
+  const url = new URL(req.url, 'http://localhost');
+  const got = req.headers['x-auth-token'] || url.searchParams.get('token') || '';
+  if (got.length !== TOKEN.length) return false;
+  let diff = 0;
+  for (let i = 0; i < TOKEN.length; i++) diff |= got.charCodeAt(i) ^ TOKEN.charCodeAt(i);
+  return diff === 0;
+}
 
 const readJson = (p, fb) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return fb; } };
 const writeJson = (p, v) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, JSON.stringify(v, null, 2)); };
@@ -90,8 +138,9 @@ a{color:var(--rust3)}
 </div>
 <script>
 const $=id=>document.getElementById(id);
+const TOKEN=%%TOKEN%%;
 function cnt(){const n=$('text').value.length;const c=$('count');c.textContent=n+' / 280';c.className='count'+(n>280?' over':'');}
-async function api(p,b){const r=await fetch(p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});return r.json();}
+async function api(p,b){const r=await fetch(p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json','X-Auth-Token':TOKEN},body:b?JSON.stringify(b):undefined});return r.json();}
 async function refresh(){const s=await api('/api/state');
   $('who').innerHTML=s.connected?'<span class="ok">● @'+s.handle+'</span>':'<span class="bad">● not connected</span>';
   $('connectForm').classList.toggle('hide',s.connected);
@@ -112,8 +161,12 @@ async function postId(id){$('postStatus').textContent='posting…';const r=await
 refresh();
 </script></body></html>`;
 
+// Serve the page with the live token baked into the client JS so the browser
+// UX is unchanged. JSON.stringify keeps it a safe quoted literal.
+const renderPage = () => PAGE.replace('%%TOKEN%%', JSON.stringify(TOKEN));
+
 const routes = {
-  'GET /': (req, res) => send(res, 200, PAGE, 'text/html'),
+  'GET /': (req, res) => send(res, 200, renderPage(), 'text/html'),
   'GET /api/state': (req, res) => {
     const c = loadCreds();
     send(res, 200, { connected: !!(c && c.handle), handle: c?.handle || null, queue: loadQueue() });
@@ -145,18 +198,36 @@ const routes = {
   },
 };
 
+// Mutating == anything that can draft/queue/post. These require the token.
+const MUTATING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+
 createServer(async (req, res) => {
+  // 1. Host-header allowlist (DNS-rebinding defense) — applies to every route.
+  if (!hostOk(req)) return send(res, 403, { ok: false, error: 'forbidden host' });
+  // 2. Token gate on mutating routes. Read-only GETs of the page/state stay
+  //    open on the (loopback-by-default) bind.
+  if (MUTATING.has(req.method) && !tokenOk(req)) {
+    return send(res, 401, { ok: false, error: 'missing or invalid token (X-Auth-Token)' });
+  }
   const key = `${req.method} ${req.url.split('?')[0]}`;
   const handler = routes[key];
   if (handler) { try { await handler(req, res); } catch (e) { send(res, 500, { ok: false, error: e.message }); } }
   else send(res, 404, { ok: false, error: 'not found' });
 }).listen(PORT, HOST, () => {
   console.log(`launch board listening on ${HOST}:${PORT}`);
-  const addrs = Object.values(networkInterfaces()).flat()
-    .filter((n) => n && n.family === 'IPv4' && !n.internal);
-  console.log(`  local:     http://localhost:${PORT}`);
-  for (const a of addrs) {
-    const tailscale = a.address.startsWith('100.') ? '   ← Tailscale' : '';
-    console.log(`  network:   http://${a.address}:${PORT}${tailscale}`);
+  const url = `http://localhost:${PORT}/?token=${TOKEN}`;
+  console.log(`  open:      ${url}`);
+  console.log(`  token:     ${TOKEN}`);
+  if (process.env.LAUNCH_BOARD_TOKEN) console.log('             (pinned via LAUNCH_BOARD_TOKEN)');
+  if (NON_LOOPBACK_BIND) {
+    console.log(`  bind:      ${HOST} (non-loopback — reachable off-box; token required to post)`);
+    const addrs = Object.values(networkInterfaces()).flat()
+      .filter((n) => n && n.family === 'IPv4' && !n.internal);
+    for (const a of addrs) {
+      const tailscale = a.address.startsWith('100.') ? '   ← Tailscale' : '';
+      console.log(`  network:   http://${a.address}:${PORT}/?token=${TOKEN}${tailscale}`);
+    }
+  } else {
+    console.log('  bind:      127.0.0.1 (loopback only — set HOST=0.0.0.0 to expose on LAN/Tailscale)');
   }
 });

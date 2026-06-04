@@ -17,11 +17,25 @@ Single KV namespace bound as `TOTALS`:
 | `total:sessions`     | running sum of `sessionsDelta` across all opt-ins | none   |
 | `total:tokens`       | running sum of `tokensDelta` across all opt-ins   | none   |
 | `seen:<instanceId>`  | last-seen metadata (`ts`, `version`, `osFamily`)  | 30 days |
-| `rate:<instanceId>`  | rate-limiter marker                              | 60s     |
+| `rate:<instanceId>`  | per-instance rate-limiter marker                 | 60s     |
+| `rate:ip:<ip>:<win>` | per-IP fixed-window report counter               | 60s     |
 
-No IP addresses, paths, prompts, models, costs, or repos are accepted.
-The validator in `validateReport` strictly checks the schema below and
-rejects anything else.
+No IP addresses, paths, prompts, models, costs, or repos are *persisted as
+analytics*. The per-IP rate-limiter does derive a short-lived KV key from
+`CF-Connecting-IP` purely for abuse mitigation; it carries only a count and
+expires within a minute. The validator in `validateReport` strictly checks
+the schema below and rejects anything else.
+
+### Trust model
+
+These totals are **unauthenticated and best-effort**. Anyone can `POST /report`,
+so the numbers are a community vanity metric, not an audited figure. We defend
+against casual abuse with per-report magnitude caps (`MAX_DELTA_*`), a
+per-instance rate limit, and a per-IP fixed-window limit (20 reports/IP/minute),
+but a determined actor can still inflate the counters. The increment itself is a
+best-effort KV read-modify-write (no atomic increment), so under concurrency a
+report can rarely be lost; true atomicity would require Durable Objects. Treat
+the totals as approximate.
 
 ## Schema
 

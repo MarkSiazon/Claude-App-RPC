@@ -15,7 +15,7 @@
   'XML': '#0060ac', 'Protobuf': '#888', 'LaTeX': '#3D6117', 'Text': '#888',
   'reStructuredText': '#888', 'Lockfile': '#444', 'Gradle': '#02303a',
   'Crystal': '#000100', 'Nim': '#ffc200', 'V': '#4f87c4', 'Objective-C': '#438eff',
-  'Objective-C++': '#6866fb', 'Sass': '#a53b70', 'Less': '#1d365d', 'Vue': '#41b883',
+  'Objective-C++': '#6866fb', 'Sass': '#a53b70', 'Less': '#1d365d',
   'Scala': '#c22d40', 'Groovy': '#4298b8', 'Interface Builder': '#888', 'Env': '#888',
   'Config': '#888', 'Git': '#f1502f',
 };

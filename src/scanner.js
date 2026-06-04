@@ -35,6 +35,33 @@ function hourKey(ts) {
   return new Date(ts).getHours();
 }
 
+// Reject malformed or implausible transcript timestamps before they poison
+// firstTs/lastTs (which drive wallMs) and the day/week/hour buckets. A NaN from
+// a bad string, a year-0 epoch artifact, or a far-future entry from a skewed
+// clock would otherwise inflate lifetime totals. Floor: before Claude Code
+// could plausibly exist. Ceiling: now + a generous clock-skew margin.
+const TS_FLOOR = Date.UTC(2020, 0, 1);
+const TS_SKEW_MS = 48 * 60 * 60 * 1000;
+function parseTs(raw) {
+  if (!raw) return null;
+  const t = Date.parse(raw);
+  if (!Number.isFinite(t)) return null;
+  if (t < TS_FLOOR || t > Date.now() + TS_SKEW_MS) return null;
+  return t;
+}
+
+// Calendar day index (whole days since the Unix epoch) anchored at UTC noon.
+// Subtracting two of these always yields an exact number of calendar days —
+// immune to DST, where subtracting two local-midnight Dates gives a 23h or 25h
+// span that Math.floor/Math.round can turn into an off-by-one day.
+function dayNum(y, mZeroBased, d) {
+  return Math.floor(Date.UTC(y, mZeroBased, d, 12) / 86_400_000);
+}
+function dayKeyNum(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return dayNum(y, m - 1, d);
+}
+
 const EDITING_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit']);
 
 // First non-env token of a shell command. `FOO=bar git status` → `git`.
@@ -207,7 +234,7 @@ export function parseTranscript(filePath) {
       summary.cwd = r.cwd;
       summary.project = cleanProjectName(basename(r.cwd));
     }
-    const ts = r.timestamp ? new Date(r.timestamp).getTime() : null;
+    const ts = parseTs(r.timestamp);
     const day = ts ? dayKey(ts) : null;
     const week = ts ? weekKey(ts) : null;
     const hour = ts ? hourKey(ts) : null;
@@ -681,11 +708,12 @@ function aggregateFrom(cache) {
     }
     agg.bestDay = best;
 
-    // Days since first.
-    const firstDay = new Date(days[0] + 'T00:00:00');
+    // Days since first — computed on DST-immune calendar day indices.
+    const now = new Date();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    agg.daysSinceFirst = Math.floor((today - firstDay) / 86_400_000) + 1;
+    const todayNum = dayNum(now.getFullYear(), now.getMonth(), now.getDate());
+    agg.daysSinceFirst = todayNum - dayKeyNum(days[0]) + 1;
 
     // Current streak: walk back from today.
     const has = (offset) => {
@@ -704,9 +732,7 @@ function aggregateFrom(cache) {
     let prev = null;
     for (const k of days) {
       if (prev) {
-        const d1 = new Date(prev + 'T00:00:00');
-        const d2 = new Date(k + 'T00:00:00');
-        const diff = Math.round((d2 - d1) / 86_400_000);
+        const diff = dayKeyNum(k) - dayKeyNum(prev);
         run = diff === 1 ? run + 1 : 1;
       } else {
         run = 1;

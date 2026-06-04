@@ -31,7 +31,7 @@ function readGitInfo(cwd) {
   // origin URL → github URL + repo name.
   try {
     const cfg = readFileSync(join(gitDir, 'config'), 'utf8');
-    const m = cfg.match(/\[remote\s+"origin"\][^\[]*?url\s*=\s*([^\r\n]+)/i);
+    const m = cfg.match(/\[remote\s+"origin"\][^[]*?url\s*=\s*([^\r\n]+)/i);
     if (m) {
       const raw = m[1].trim();
       const ssh = raw.match(/^git@github\.com:([^\s]+?)(?:\.git)?$/i);

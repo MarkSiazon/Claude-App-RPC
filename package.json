@@ -31,14 +31,23 @@
     "prep:dashboard": "node ./scripts/prep-dashboard.js",
     "dist:mac": "npm run build:exe && npm run prep:dashboard && npm --prefix dashboard run dist:mac",
     "dist:win": "npm run build:exe && npm run prep:dashboard && npm --prefix dashboard run dist:win",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "lint": "eslint src test",
+    "format": "prettier --write \"src/**/*.js\" \"test/**/*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\"",
+    "typecheck": "tsc -p jsconfig.json"
   },
   "dependencies": {
     "@xhayper/discord-rpc": "^1.2.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "esbuild": "^0.24.0",
-    "postject": "^1.0.0-alpha.6"
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "postject": "^1.0.0-alpha.6",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=18"

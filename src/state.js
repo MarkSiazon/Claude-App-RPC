@@ -1,5 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname, basename } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  renameSync,
+  openSync,
+  closeSync,
+  unlinkSync,
+  statSync,
+} from 'node:fs';
+import { basename } from 'node:path';
 import { STATE_PATH, STATE_DIR } from './paths.js';
 
 const DEFAULT_STATE = {
@@ -46,6 +56,81 @@ function ensureDir() {
   if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
 }
 
+// Claude Code fires lifecycle hooks in rapid bursts, and concurrent sessions /
+// subagents mean several `claude-rpc hook` processes can run at once. Each does
+// a read-modify-write of state.json; without a cross-process lock the last
+// writer wins and the others' increments (messages, tools, tokens, file lists)
+// are silently lost. The atomic tmp+rename in writeState only protects readers
+// from torn files — it does nothing for lost updates. So updateState/resetState
+// serialize through an exclusive lock file. The lock is strictly best-effort:
+// if we can't get it within LOCK_MAX_WAIT_MS we proceed anyway (a slightly racy
+// write is better than a dropped hook), and a stale lock from a crashed process
+// is reclaimed after LOCK_STALE_MS.
+const LOCK_PATH = STATE_PATH + '.lock';
+const LOCK_STALE_MS = 2000;
+const LOCK_RETRY_MS = 4;
+const LOCK_MAX_WAIT_MS = 1000;
+
+// Synchronous sleep — hooks are short-lived sync processes, so a blocking spin
+// with a real wait (no busy-loop) is the right tool. Atomics.wait on a throwaway
+// SharedArrayBuffer parks the thread without burning CPU.
+function sleepSync(ms) {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    /* SharedArrayBuffer unavailable — fall through, caller just retries sooner */
+  }
+}
+
+function acquireLock() {
+  const deadline = Date.now() + LOCK_MAX_WAIT_MS;
+  for (;;) {
+    try {
+      // 'wx' fails if the file exists — that's our mutex.
+      return openSync(LOCK_PATH, 'wx');
+    } catch (err) {
+      if (err.code !== 'EEXIST') return null; // unexpected (perms, etc.) — go lockless
+      try {
+        if (Date.now() - statSync(LOCK_PATH).mtimeMs > LOCK_STALE_MS) {
+          try {
+            unlinkSync(LOCK_PATH);
+          } catch {
+            /* someone else reclaimed it first */
+          }
+          continue;
+        }
+      } catch {
+        /* lock vanished between open and stat — retry immediately */
+      }
+      if (Date.now() >= deadline) return null; // give up, proceed best-effort
+      sleepSync(LOCK_RETRY_MS);
+    }
+  }
+}
+
+function releaseLock(fd) {
+  if (fd === null) return;
+  try {
+    closeSync(fd);
+  } catch {
+    /* already closed */
+  }
+  try {
+    unlinkSync(LOCK_PATH);
+  } catch {
+    /* already removed */
+  }
+}
+
+function withLock(fn) {
+  const fd = acquireLock();
+  try {
+    return fn();
+  } finally {
+    releaseLock(fd);
+  }
+}
+
 export function readState() {
   ensureDir();
   if (!existsSync(STATE_PATH)) return { ...DEFAULT_STATE };
@@ -59,22 +144,29 @@ export function readState() {
 
 export function writeState(next) {
   ensureDir();
-  const tmp = STATE_PATH + '.tmp';
+  // Per-process tmp name: two processes writing the shared STATE_PATH + '.tmp'
+  // would clobber each other's tmp before rename. The pid suffix keeps the
+  // atomic-rename guarantee intact even on the best-effort lockless path.
+  const tmp = `${STATE_PATH}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2));
   renameSync(tmp, STATE_PATH);
 }
 
 export function updateState(mutator) {
-  const current = readState();
-  const next = mutator({ ...current }) ?? current;
-  writeState(next);
-  return next;
+  return withLock(() => {
+    const current = readState();
+    const next = mutator({ ...current }) ?? current;
+    writeState(next);
+    return next;
+  });
 }
 
 export function resetState(seed = {}) {
-  const fresh = { ...DEFAULT_STATE, sessionStart: Date.now(), lastActivity: Date.now(), ...seed };
-  writeState(fresh);
-  return fresh;
+  return withLock(() => {
+    const fresh = { ...DEFAULT_STATE, sessionStart: Date.now(), lastActivity: Date.now(), ...seed };
+    writeState(fresh);
+    return fresh;
+  });
 }
 
 export function pushUnique(arr, value, max = 50) {

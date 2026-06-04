@@ -108,6 +108,41 @@ test('handleReport: rate-limits a second report from the same instance', async (
   assert.equal(total, '2');
 });
 
+test('handleReport: IP-scoped limiter blocks rotated instanceIds past the window cap', async () => {
+  const env = makeEnv();
+  const ip = '203.0.113.7';
+  const mk = (body) => new Request('http://localhost/report', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip },
+    body: JSON.stringify(body),
+  });
+  // Rotate a fresh UUID each time so the per-instance limiter never fires;
+  // only the IP limiter (20/window) should stop us.
+  let accepted = 0;
+  let blocked = 0;
+  for (let i = 0; i < 25; i++) {
+    const id = `${String(i).padStart(8, '0')}-2222-3333-4444-555555555555`;
+    const res = await handleReport(mk({ ...validBody, instanceId: id }), env);
+    if (res.status === 200) accepted++;
+    else if (res.status === 429) { blocked++; assert.match((await res.json()).error, /ip/); }
+  }
+  assert.equal(accepted, 20, 'exactly IP_RATE_MAX reports accepted in the window');
+  assert.equal(blocked, 5, 'the rest are 429-ed by the IP limiter');
+});
+
+test('handleReport: missing CF-Connecting-IP still bounds volume via the shared bucket', async () => {
+  const env = makeEnv();
+  // No CF-Connecting-IP header (as the existing in-memory tests send). The
+  // first report must still succeed, but rotated UUIDs are bounded too.
+  let accepted = 0;
+  for (let i = 0; i < 25; i++) {
+    const id = `${String(i).padStart(8, '0')}-9999-3333-4444-555555555555`;
+    const res = await handleReport(reportRequest({ ...validBody, instanceId: id }), env);
+    if (res.status === 200) accepted++;
+  }
+  assert.equal(accepted, 20, 'headerless reports share one bucket capped at IP_RATE_MAX');
+});
+
 test('handleReport: rejects invalid JSON with 400', async () => {
   const env = makeEnv();
   const req = new Request('http://localhost/report', {

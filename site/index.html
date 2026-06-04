@@ -734,7 +734,7 @@
     text-transform: uppercase; letter-spacing: 0.08em;
   }
   .final-cta::after {
-    content: "v0.3.8";
+    content: "v0.13.0";
     position: absolute; bottom: 18px; right: 22px;
     font-family: var(--font-mono); font-size: 0.78rem;
     color: var(--ink-faint);
@@ -793,14 +793,14 @@
 <!-- ─────────────────────────────────────────────────── TICKER -->
 <div class="ticker-bar">
   <div class="ticker-track">
-    <span class="h">★</span><span>shipped v0.3.8 — self-healing hook paths</span>
+    <span class="h">★</span><span>shipped v0.13.0 — one-command npx setup + auto-start</span>
     <span class="h">★</span><span>presence.byStatus is the new default</span>
     <span class="h">★</span><span>built solo by archer in weekends</span>
     <span class="h">★</span><span>MIT licensed — fork it, ship it</span>
     <span class="h">★</span><span>node SEA single-file binary — no install required</span>
     <span class="g">★</span><span>discord rich presence for claude code</span>
     <!-- duplicated for seamless loop -->
-    <span class="h">★</span><span>shipped v0.3.8 — self-healing hook paths</span>
+    <span class="h">★</span><span>shipped v0.13.0 — one-command npx setup + auto-start</span>
     <span class="h">★</span><span>presence.byStatus is the new default</span>
     <span class="h">★</span><span>built solo by archer in weekends</span>
     <span class="h">★</span><span>MIT licensed — fork it, ship it</span>
@@ -815,7 +815,7 @@
   <div class="brand">
     <span class="brand-mark"><img src="https://cdn.qualit.ly/clawd-working-building.gif" alt="clawd character" /></span>
     <span class="name">claude-rpc</span>
-    <span class="vstamp" id="nav-version">v0.3.8</span>
+    <span class="vstamp" id="nav-version">v0.13.0</span>
   </div>
   <div class="nav-links">
     <a href="#download">download</a>
@@ -861,7 +861,7 @@
     </div>
     <p class="install-note">one command — installs globally, wires Claude Code's hooks, and starts the daemon. No Node? <a href="#download">grab the desktop app ↓</a></p>
     <div class="hero-meta">
-      <span><span class="ok">●</span> <span id="latest-tag">v0.3.8</span></span>
+      <span><span class="ok">●</span> <span id="latest-tag">v0.13.0</span></span>
       <span class="dot">·</span>
       <span>MIT</span>
       <span class="dot">·</span>
@@ -946,7 +946,7 @@
 
   <div class="preview-wrap">
     <div>
-      <span class="sticker tilt-r">v0.3.6 · presence.byStatus</span>
+      <span class="sticker tilt-r">v0.13.0 · presence.byStatus</span>
       <div class="status-tabs" id="status-tabs">
         <span class="status-tab active" data-status="working">working</span>
         <span class="status-tab" data-status="thinking">thinking</span>
@@ -1178,14 +1178,13 @@
       <div class="ttl">changelog</div>
       <div class="meta" id="changelog-meta">latest first · <a href="https://github.com/rar-file/claude-rpc/releases">all releases →</a></div>
     </div>
-    <ul>
-      <li><span class="v">v0.3.8</span> <span class="note">self-healing hooks + state on packaged-default launch — fixes broken close detection after standalone-exe upgrades.</span></li>
-      <li><span class="v">v0.3.7</span> <span class="note">auto-migrate existing configs into the v0.3.6 byStatus shape on upgrade.</span></li>
-      <li><span class="v">v0.3.6</span> <span class="note">status-driven presence templates (<code>presence.byStatus</code>) + 9 new template vars (fileLang, gitBranch, …).</span></li>
-      <li><span class="v">v0.3.5</span> <span class="note">canonical install path; SessionEnd treated as authoritative close signal.</span></li>
-      <li><span class="v">v0.3.0</span> <span class="note">cross-platform desktop app, .dmg + .exe, auto-update.</span></li>
-      <li><span class="v">v0.2.0</span> <span class="note">enriched data, redesigned web dashboard, full-settings GUI.</span></li>
-      <li><span class="v">v0.1.0</span> <span class="note">initial commit. discord rich presence works end-to-end.</span></li>
+    <ul id="changelog-list">
+      <li><span class="v">v0.13.0</span> <span class="note">one-command <code>npx claude-rpc setup</code> — installs, wires hooks, and auto-starts the daemon; native Share button in Claude Wrapped.</span></li>
+      <li><span class="v">v0.12.1</span> <span class="note"><code>claude-rpc mcp install</code> — one-command MCP setup, idempotent, scope flags.</span></li>
+      <li><span class="v">v0.12.0</span> <span class="note">fixed token/cost totals inflated ~2–3× by duplicate usage accounting (now counted once per message id).</span></li>
+      <li><span class="v">v0.11.0</span> <span class="note">Claude Wrapped — a fully-animated year-in-review at <code>/wrapped</code>.</span></li>
+      <li><span class="v">v0.10.0</span> <span class="note">ten features: MCP server, webhooks, desktop notifications, goals, statusline, session-card, calendar, budgets, triggers, <code>doctor --fix</code>.</span></li>
+      <li><span class="v">v0.9.0</span> <span class="note">embeddable GitHub profile stat card, session-duration milestones, model split.</span></li>
     </ul>
   </div>
 </section>
@@ -1221,6 +1220,7 @@
     </div>
   </div>
   <div class="right">
+    <a href="/examples/">example cards</a>
     <a href="https://github.com/rar-file/claude-rpc">source</a>
     <a href="https://github.com/rar-file/claude-rpc/releases">releases</a>
     <a href="https://github.com/rar-file/claude-rpc/issues">issues</a>
@@ -1295,37 +1295,93 @@
     const mb = n / (1024 * 1024);
     return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(n / 1024).toFixed(0)} KB`;
   }
-  async function loadLatest() {
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+  // First non-empty, non-heading line of a release body, trimmed to a short summary.
+  function summarizeBody(body) {
+    if (!body) return '';
+    const line = body
+      .split(/\r?\n/)
+      .map(s => s.trim())
+      .find(s => s && !/^#{1,6}\s/.test(s) && !/^\*\*[A-Za-z].*\*\*$/.test(s));
+    if (!line) return '';
+    // strip leading markdown list / bold markers, collapse inline emphasis
+    let s = line.replace(/^[-*]\s+/, '').replace(/\*\*/g, '').replace(/`/g, '');
+    if (s.length > 160) s = s.slice(0, 157).replace(/\s+\S*$/, '') + '…';
+    return s;
+  }
+  function renderChangelog(releases) {
+    const ul = document.getElementById('changelog-list');
+    if (!ul || !Array.isArray(releases) || !releases.length) return;
+    const items = releases
+      .filter(r => r && r.tag_name)
+      .slice(0, 6)
+      .map(r => {
+        const li = document.createElement('li');
+        const v = document.createElement('span');
+        v.className = 'v';
+        v.textContent = r.tag_name;
+        const note = document.createElement('span');
+        note.className = 'note';
+        const summary = summarizeBody(r.body) || (r.name && r.name !== r.tag_name ? r.name : '');
+        const date = fmtDate(r.published_at);
+        note.textContent = summary
+          ? (date ? `${summary} · ${date}` : summary)
+          : (date ? `released ${date}` : 'see release notes →');
+        li.appendChild(v);
+        li.appendChild(document.createTextNode(' '));
+        li.appendChild(note);
+        return li;
+      });
+    if (!items.length) return;
+    ul.replaceChildren(...items); // replace the hardcoded fallback <li>s
+  }
+  function applyAssets(data) {
+    if (!data) return;
+    const assets = data.assets || [];
+    const pick = (re) => assets.find(a => re.test(a.name));
+    const winSetup    = pick(/-setup\.exe$/i);
+    const winPortable = pick(/-portable\.exe$/i);
+    const macDmg      = pick(/\.dmg$/i);
+
+    if (data.tag_name) {
+      document.getElementById('latest-tag').textContent = data.tag_name;
+      document.getElementById('nav-version').textContent = data.tag_name;
+    }
+    if (winSetup) {
+      document.getElementById('dl-win-primary').href = winSetup.browser_download_url;
+      document.getElementById('size-win').textContent = fmtBytes(winSetup.size);
+    }
+    if (winPortable) document.getElementById('dl-win-portable').href = winPortable.browser_download_url;
+    if (macDmg) {
+      document.getElementById('dl-mac-primary').href = macDmg.browser_download_url;
+      document.getElementById('size-mac').textContent = fmtBytes(macDmg.size);
+    }
+    if (os === 'win' && winSetup) cta.href = winSetup.browser_download_url;
+    else if (os === 'mac' && macDmg) cta.href = macDmg.browser_download_url;
+  }
+  // Single fetch of the releases list — drives the latest-tag/download links
+  // AND the changelog, so we don't hit the API twice. Falls back gracefully:
+  // hardcoded version stamps + <li>s stay in place if this fails or is empty.
+  async function loadReleases() {
     try {
-      const r = await fetch('https://api.github.com/repos/rar-file/claude-rpc/releases/latest', {
+      const r = await fetch('https://api.github.com/repos/rar-file/claude-rpc/releases?per_page=6', {
         headers: { 'Accept': 'application/vnd.github+json' },
       });
       if (!r.ok) return;
-      const data = await r.json();
-      const assets = data.assets || [];
-      const pick = (re) => assets.find(a => re.test(a.name));
-      const winSetup    = pick(/-setup\.exe$/i);
-      const winPortable = pick(/-portable\.exe$/i);
-      const macDmg      = pick(/\.dmg$/i);
-
-      if (data.tag_name) {
-        document.getElementById('latest-tag').textContent = data.tag_name;
-        document.getElementById('nav-version').textContent = data.tag_name;
-      }
-      if (winSetup) {
-        document.getElementById('dl-win-primary').href = winSetup.browser_download_url;
-        document.getElementById('size-win').textContent = fmtBytes(winSetup.size);
-      }
-      if (winPortable) document.getElementById('dl-win-portable').href = winPortable.browser_download_url;
-      if (macDmg) {
-        document.getElementById('dl-mac-primary').href = macDmg.browser_download_url;
-        document.getElementById('size-mac').textContent = fmtBytes(macDmg.size);
-      }
-      if (os === 'win' && winSetup) cta.href = winSetup.browser_download_url;
-      else if (os === 'mac' && macDmg) cta.href = macDmg.browser_download_url;
+      const list = await r.json();
+      if (!Array.isArray(list) || !list.length) return;
+      // newest published, non-draft release for the download/version surfaces
+      const latest = list.find(x => !x.draft) || list[0];
+      applyAssets(latest);
+      renderChangelog(list);
     } catch (_) {}
   }
-  loadLatest();
+  loadReleases();
 
   // ─── discord card cycler ────────────────────────────────────────────────
   const STATES = {

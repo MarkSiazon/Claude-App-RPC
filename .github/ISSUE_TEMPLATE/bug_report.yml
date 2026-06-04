@@ -1,0 +1,67 @@
+name: Bug report
+description: Something isn't working the way the docs say it should.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! Before filing, please run `claude-rpc doctor` —
+        it diagnoses most setup issues and its output is the single most useful
+        thing you can paste below.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead?
+      placeholder: The Discord card never appears after `claude-rpc setup`...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. npx claude-rpc setup
+        2. open Claude Code in a project
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`claude-rpc doctor` output"
+      description: Paste the full output. Redact anything you consider sensitive.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: claude-rpc version
+      description: Output of `claude-rpc --version`.
+      placeholder: "0.13.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "Output of `node --version`. (N/A if you use the portable Windows exe.)"
+      placeholder: "v20.x"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Daemon log (optional)
+      description: "Relevant lines from `claude-rpc tail`, if any."
+      render: text
