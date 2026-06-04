@@ -1,7 +1,11 @@
 // claude-rpc community-totals worker.
 //
-// This is the entire server. Three routes:
-//   POST /report         — opt-in counters from a CLI install
+// This is the entire server. Routes:
+//   POST /report         — opt-in anonymous counters from a CLI install
+//   POST /profile        — opt-in leaderboard profile upsert (validated deltas)
+//   GET  /leaderboard    — top-N profiles (verified-first ranking)
+//   POST /verify/start   — begin GitHub gist verification (issues a token)
+//   POST /verify/check   — confirm the token appears in a public gist → ✓
 //   GET  /sessions.svg   — shields-style badge for the README
 //   GET  /tokens.svg     — same, for tokens
 //   GET  /total.json     — JSON for arbitrary consumers / dashboards
@@ -263,6 +267,212 @@ export async function handleJson(env) {
   });
 }
 
+// ── Leaderboard / public profiles ────────────────────────────────────────
+//
+// Hybrid trust model: anyone may publish a profile under a self-chosen handle;
+// linking a GitHub identity (proven via a public gist) earns a verified ✓ and
+// ranks first. You CANNOT make self-reported usage fraud-proof — there's no
+// oracle for "real" token counts — so the integrity is defense-in-depth:
+//   · the board sums SERVER-VALIDATED deltas, never a client-asserted total
+//   · per-report plausibility caps (MAX_DELTA_*) bound how fast a profile grows
+//   · per-IP + per-instance rate limits bound volume
+//   · unverified entries are capped for ranking AND rank below every verified
+//     one, so an unverified profile can't top the board with fake numbers
+//   · verification ties the ✓ to a real GitHub account → attributable/ban-able
+// Stored in KV (ranking is over the opted-in set, which is small + cached):
+//   pf:<instanceId>   profile JSON (server-accumulated stats + identity)
+//   handle:<handle>   → owning instanceId (uniqueness)
+//   verify:<id>       pending {githubUser, token}, 1h TTL
+const MAX_DELTA_ACTIVE_MS   = 7 * 24 * 60 * 60 * 1000; // 7 days of active time per report
+const MAX_STREAK            = 3650;                    // clamp absurd streak claims
+const UNVERIFIED_TOKENS_CAP = 1_000_000_000;           // unverified ranking ceiling
+const VERIFY_TTL_SECONDS    = 60 * 60;
+const BOARD_MAX             = 100;
+const GH_API                = 'https://api.github.com';
+const PF_KEY     = (id) => `pf:${id}`;
+const HANDLE_KEY = (h)  => `handle:${h}`;
+const VERIFY_KEY = (id) => `verify:${id}`;
+
+// Server-side identity normalizers. Mirrors src/leaderboard.js; the worker is a
+// separate package so it can't import that module — keep the rules in sync.
+function normHandle(input) {
+  if (typeof input !== 'string') return null;
+  const h = input.trim().toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '');
+  return h.length >= 2 && h.length <= 32 ? h : null;
+}
+function normGithub(input) {
+  if (typeof input !== 'string' || !input) return null;
+  return /^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(input) ? input : null;
+}
+function cleanName(input) {
+  if (typeof input !== 'string') return null;
+  const n = [...input].filter((ch) => { const c = ch.charCodeAt(0); return c >= 32 && c !== 127; }).join('').trim().slice(0, 40);
+  return n || null;
+}
+
+export function validateProfile(body) {
+  if (!body || typeof body !== 'object') return 'body must be an object';
+  if (!isUuidish(body.instanceId)) return 'instanceId must be a UUID';
+  if (!normHandle(body.handle)) return 'handle invalid';
+  const sd = Number(body.sessionsDelta || 0);
+  const td = Number(body.tokensDelta || 0);
+  const ad = Number(body.activeMsDelta || 0);
+  if (!Number.isFinite(sd) || sd < 0 || sd > MAX_DELTA_SESSIONS) return 'sessionsDelta out of range';
+  if (!Number.isFinite(td) || td < 0 || td > MAX_DELTA_TOKENS) return 'tokensDelta out of range';
+  if (!Number.isFinite(ad) || ad < 0 || ad > MAX_DELTA_ACTIVE_MS) return 'activeMsDelta out of range';
+  if (typeof body.version !== 'string' || body.version.length > 32) return 'version missing or too long';
+  if (typeof body.osFamily !== 'string' || !/^(linux|darwin|win32)$/.test(body.osFamily)) return 'osFamily invalid';
+  if (body.githubUser != null && !normGithub(body.githubUser)) return 'githubUser invalid';
+  return null;
+}
+
+async function getProfile(env, id) {
+  const raw = await env.TOTALS.get(PF_KEY(id));
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function publicProfile(p) {
+  return {
+    handle: p.handle, displayName: p.displayName || null, githubUser: p.githubUser || null,
+    verified: !!p.verified, tokens: p.tokens || 0, sessions: p.sessions || 0,
+    activeMs: p.activeMs || 0, streak: p.streak || 0,
+  };
+}
+
+export async function handleProfile(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
+  const why = validateProfile(body);
+  if (why) return jsonError(400, why);
+
+  if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
+  if (!(await rateOk(env, body.instanceId)))     return jsonError(429, 'rate limited');
+
+  const handle = normHandle(body.handle);
+  // Handle uniqueness: a handle belongs to exactly one instanceId.
+  const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+  if (owner && owner !== body.instanceId) return jsonError(409, 'handle taken');
+
+  const now = Date.now();
+  const prev = (await getProfile(env, body.instanceId))
+    || { tokens: 0, sessions: 0, activeMs: 0, verified: false, createdAt: now };
+  // Release a previously-held handle if this instance is renaming.
+  if (prev.handle && prev.handle !== handle) {
+    try { await env.TOTALS.delete(HANDLE_KEY(prev.handle)); } catch { /* best-effort */ }
+  }
+
+  const next = {
+    handle,
+    displayName: cleanName(body.displayName) || prev.displayName || null,
+    githubUser:  normGithub(body.githubUser) || prev.githubUser  || null,
+    verified:    !!prev.verified, // only the verify flow flips this — never the client
+    tokens:      (prev.tokens   || 0) + Number(body.tokensDelta   || 0),
+    sessions:    (prev.sessions || 0) + Number(body.sessionsDelta || 0),
+    activeMs:    (prev.activeMs || 0) + Number(body.activeMsDelta || 0),
+    streak:      Math.min(MAX_STREAK, Math.max(0, Math.floor(Number(body.streak) || 0))),
+    createdAt:   prev.createdAt || now,
+    updatedAt:   now,
+  };
+  await env.TOTALS.put(PF_KEY(body.instanceId), JSON.stringify(next));
+  await env.TOTALS.put(HANDLE_KEY(handle), body.instanceId);
+
+  return new Response(JSON.stringify({ ok: true, profile: publicProfile(next) }), {
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+}
+
+export async function handleLeaderboard(url, env) {
+  const metric = (url.searchParams.get('metric') || 'tokens').toLowerCase();
+  const allowed = new Set(['tokens', 'sessions', 'activems', 'streak']);
+  const key = allowed.has(metric) ? metric.replace('activems', 'activeMs') : 'tokens';
+  const limit = Math.min(BOARD_MAX, Math.max(1, Math.floor(Number(url.searchParams.get('limit')) || 50)));
+
+  const rows = [];
+  try {
+    const { keys } = await env.TOTALS.list({ prefix: 'pf:' });
+    for (const { name } of keys) {
+      const p = await getProfile(env, name.slice(3));
+      if (p && p.handle) rows.push(publicProfile(p));
+    }
+  } catch { /* list unsupported / empty → [] */ }
+
+  // Hybrid ranking: verified first, then by metric. Unverified token counts are
+  // capped for ranking so a fake entry can't top the board.
+  const valueOf = (r) => {
+    const v = r[key] || 0;
+    return r.verified ? v : (key === 'tokens' ? Math.min(v, UNVERIFIED_TOKENS_CAP) : v);
+  };
+  rows.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (valueOf(b) - valueOf(a)));
+  const top = rows.slice(0, limit).map((r, i) => ({ rank: i + 1, ...r }));
+
+  return new Response(JSON.stringify({
+    schemaVersion: SCHEMA_VERSION, metric: key, count: top.length, leaderboard: top, ts: Date.now(),
+  }, null, 2), {
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
+  });
+}
+
+export async function handleVerifyStart(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
+  if (!isUuidish(body.instanceId)) return jsonError(400, 'instanceId must be a UUID');
+  const gh = normGithub(body.githubUser);
+  if (!gh) return jsonError(400, 'githubUser invalid');
+  if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
+
+  const token = 'vrf_' + crypto.randomUUID().replace(/-/g, '');
+  await env.TOTALS.put(VERIFY_KEY(body.instanceId),
+    JSON.stringify({ githubUser: gh, token, ts: Date.now() }),
+    { expirationTtl: VERIFY_TTL_SECONDS });
+  return new Response(JSON.stringify({
+    ok: true, token,
+    instructions: 'Create a PUBLIC gist whose content contains this token (any filename), then POST /verify/check.',
+  }), { headers: { ...CORS, 'Content-Type': 'application/json' } });
+}
+
+export async function handleVerifyCheck(request, env, fetchImpl = fetch) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
+  if (!isUuidish(body.instanceId)) return jsonError(400, 'instanceId must be a UUID');
+  const raw = await env.TOTALS.get(VERIFY_KEY(body.instanceId));
+  if (!raw) return jsonError(404, 'no pending verification — call /verify/start first');
+  let pending;
+  try { pending = JSON.parse(raw); } catch { return jsonError(500, 'corrupt verification state'); }
+
+  // Scan the user's recent public gists for one containing the token.
+  let matched = false;
+  try {
+    const listRes = await fetchImpl(`${GH_API}/users/${pending.githubUser}/gists?per_page=20`, {
+      headers: { 'User-Agent': 'claude-rpc-worker', Accept: 'application/vnd.github+json' },
+    });
+    if (listRes.ok) {
+      const gists = await listRes.json();
+      for (const g of (Array.isArray(gists) ? gists.slice(0, 20) : [])) {
+        for (const f of Object.values(g.files || {})) {
+          if (!f || !f.raw_url) continue;
+          const rawRes = await fetchImpl(f.raw_url, { headers: { 'User-Agent': 'claude-rpc-worker' } });
+          if (rawRes.ok && (await rawRes.text()).includes(pending.token)) { matched = true; break; }
+        }
+        if (matched) break;
+      }
+    }
+  } catch { /* GitHub hiccup → treat as not-yet-verified */ }
+
+  if (!matched) return jsonError(422, 'token not found in any public gist yet');
+
+  const prof = await getProfile(env, body.instanceId);
+  if (!prof) return jsonError(409, 'create your profile first (POST /profile)');
+  prof.verified = true;
+  prof.githubUser = pending.githubUser;
+  await env.TOTALS.put(PF_KEY(body.instanceId), JSON.stringify(prof));
+  try { await env.TOTALS.delete(VERIFY_KEY(body.instanceId)); } catch { /* best-effort */ }
+  return new Response(JSON.stringify({ ok: true, verified: true, githubUser: pending.githubUser }), {
+    headers: { ...CORS, 'Content-Type': 'application/json' },
+  });
+}
+
 function jsonError(status, message) {
   return new Response(JSON.stringify({ ok: false, error: message }), {
     status,
@@ -278,6 +488,18 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/report') {
       return handleReport(request, env);
+    }
+    if (request.method === 'POST' && url.pathname === '/profile') {
+      return handleProfile(request, env);
+    }
+    if (request.method === 'GET' && url.pathname === '/leaderboard') {
+      return handleLeaderboard(url, env);
+    }
+    if (request.method === 'POST' && url.pathname === '/verify/start') {
+      return handleVerifyStart(request, env);
+    }
+    if (request.method === 'POST' && url.pathname === '/verify/check') {
+      return handleVerifyCheck(request, env);
     }
     if (request.method === 'GET' && url.pathname === '/sessions.svg') {
       return handleBadge('sessions', env);

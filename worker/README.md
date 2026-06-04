@@ -8,6 +8,27 @@ and serves running totals as shields-style SVG badges. Powers the
 The source lives in this repo so the privacy story is auditable: there is
 no telemetry endpoint anywhere else.
 
+## Leaderboard / public profiles (opt-in)
+
+A second, separate opt-in (`claude-rpc profile`) publishes a public profile to
+a leaderboard. Endpoints:
+
+- `POST /profile` — upsert a profile (handle, display name, optional GitHub user)
+  plus **server-validated** usage deltas. The board only ever sums deltas the
+  worker accepted — never a client-asserted total.
+- `GET /leaderboard?metric=tokens|sessions|activeMs|streak&limit=N` — top-N.
+- `POST /verify/start` / `POST /verify/check` — GitHub verification via a public
+  gist (the worker confirms a one-time token appears in one of the user's gists,
+  then sets the verified ✓).
+
+**Trust model (hybrid).** Self-reported usage can't be made fraud-*proof* — there
+is no oracle for real token counts — so integrity is defense-in-depth:
+per-report plausibility caps (`MAX_DELTA_*`), per-IP + per-instance rate limits,
+**verified profiles rank above every unverified one**, and unverified token
+counts are capped for ranking so a fake entry can't top the board. Verification
+ties the ✓ to a real, attributable GitHub account. The board is best-effort and
+unauthenticated by design.
+
 ## What it stores
 
 Single KV namespace bound as `TOTALS`:

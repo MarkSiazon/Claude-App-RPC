@@ -6,7 +6,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { validateReport, handleReport, handleBadge, handleJson, handleRef, handleRefs } = await import('../src/index.js');
+const { validateReport, handleReport, handleBadge, handleJson, handleRef, handleRefs,
+  validateProfile, handleProfile, handleLeaderboard, handleVerifyStart, handleVerifyCheck } = await import('../src/index.js');
 const worker = (await import('../src/index.js')).default;
 
 function makeKv() {
@@ -17,6 +18,7 @@ function makeKv() {
     async put(k, v, opts = {}) {
       store.set(k, { value: String(v), ttl: opts.expirationTtl || null });
     },
+    async delete(k) { store.delete(k); },
     async list({ prefix = '' } = {}) {
       const keys = [...store.keys()].filter((k) => k.startsWith(prefix)).map((name) => ({ name }));
       return { keys, list_complete: true };
@@ -283,5 +285,129 @@ test('default export: unknown route → 404', async () => {
 test('default export: wrong method on /report → 404', async () => {
   const env = makeEnv();
   const res = await worker.fetch(new Request('http://localhost/report', { method: 'GET' }), env);
+  assert.equal(res.status, 404);
+});
+
+// ── leaderboard / profiles ─────────────────────────────────────────────
+
+const profileBody = {
+  instanceId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+  handle: 'archer',
+  displayName: 'Archer',
+  sessionsDelta: 3,
+  tokensDelta: 1000,
+  activeMsDelta: 60000,
+  streak: 5,
+  version: '0.13.1',
+  osFamily: 'linux',
+};
+
+function profileRequest(body) {
+  return new Request('http://localhost/profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+test('validateProfile: accepts a well-formed profile', () => {
+  assert.equal(validateProfile(profileBody), null);
+});
+
+test('validateProfile: rejects bad handle / github / deltas / id', () => {
+  assert.match(validateProfile({ ...profileBody, handle: '!' }), /handle/);
+  assert.match(validateProfile({ ...profileBody, githubUser: '-bad' }), /githubUser/);
+  assert.match(validateProfile({ ...profileBody, tokensDelta: -1 }), /tokensDelta/);
+  assert.match(validateProfile({ ...profileBody, instanceId: 'x' }), /instanceId/);
+});
+
+test('handleProfile: upserts and accumulates server-side deltas', async () => {
+  const env = makeEnv();
+  let res = await handleProfile(profileRequest(profileBody), env);
+  assert.equal(res.status, 200);
+  let j = await res.json();
+  assert.equal(j.profile.tokens, 1000);
+  assert.equal(j.profile.verified, false);
+  // clear the per-instance rate marker so a second report from the same
+  // instance is accepted, and confirm deltas accumulate server-side.
+  env.TOTALS.store.delete('rate:' + profileBody.instanceId);
+  res = await handleProfile(profileRequest({ ...profileBody, tokensDelta: 500, sessionsDelta: 1 }), env);
+  j = await res.json();
+  assert.equal(j.profile.tokens, 1500);
+  assert.equal(j.profile.sessions, 4);
+});
+
+test('handleProfile: a client cannot self-assert verified=true', async () => {
+  const env = makeEnv();
+  const res = await handleProfile(profileRequest({ ...profileBody, verified: true }), env);
+  const j = await res.json();
+  assert.equal(j.profile.verified, false);
+});
+
+test('handleProfile: handle uniqueness is enforced (409)', async () => {
+  const env = makeEnv();
+  await handleProfile(profileRequest(profileBody), env);
+  const res = await handleProfile(
+    profileRequest({ ...profileBody, instanceId: '99999999-8888-7777-6666-555555555555' }),
+    env,
+  );
+  assert.equal(res.status, 409);
+});
+
+test('handleLeaderboard: verified ranks first, then by metric', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put('pf:11111111-1111-1111-1111-111111111111',
+    JSON.stringify({ handle: 'whale', verified: false, tokens: 9_999_999_999, sessions: 1 }));
+  await env.TOTALS.put('pf:22222222-2222-2222-2222-222222222222',
+    JSON.stringify({ handle: 'realdev', verified: true, tokens: 5000, sessions: 10 }));
+  const res = await handleLeaderboard(new URL('http://localhost/leaderboard?metric=tokens'), env);
+  const j = await res.json();
+  assert.equal(j.leaderboard[0].handle, 'realdev'); // verified wins despite far fewer tokens
+  assert.equal(j.leaderboard[0].rank, 1);
+  assert.equal(j.leaderboard[1].handle, 'whale');
+});
+
+test('handleVerifyStart: issues a vrf_ token for a valid github user', async () => {
+  const env = makeEnv();
+  const req = new Request('http://localhost/verify/start', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceId: profileBody.instanceId, githubUser: 'octocat' }),
+  });
+  const res = await handleVerifyStart(req, env);
+  const j = await res.json();
+  assert.equal(j.ok, true);
+  assert.match(j.token, /^vrf_/);
+});
+
+test('handleVerifyCheck: verifies when the token appears in a public gist', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put('pf:' + profileBody.instanceId,
+    JSON.stringify({ handle: 'archer', verified: false, tokens: 1 }));
+  await env.TOTALS.put('verify:' + profileBody.instanceId,
+    JSON.stringify({ githubUser: 'octocat', token: 'vrf_abc123', ts: Date.now() }));
+  const fakeFetch = async (url) => {
+    if (url.includes('/gists')) {
+      return { ok: true, json: async () => ([{ files: { 'a.txt': { raw_url: 'https://raw/x' } } }]) };
+    }
+    return { ok: true, text: async () => 'my proof token vrf_abc123 here' };
+  };
+  const req = new Request('http://localhost/verify/check', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceId: profileBody.instanceId }),
+  });
+  const res = await handleVerifyCheck(req, env, fakeFetch);
+  const j = await res.json();
+  assert.equal(j.verified, true);
+  const prof = JSON.parse(env.TOTALS.store.get('pf:' + profileBody.instanceId).value);
+  assert.equal(prof.verified, true);
+});
+
+test('handleVerifyCheck: 404 when no pending verification', async () => {
+  const env = makeEnv();
+  const req = new Request('http://localhost/verify/check', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instanceId: profileBody.instanceId }),
+  });
+  const res = await handleVerifyCheck(req, env, async () => ({ ok: false }));
   assert.equal(res.status, 404);
 });
