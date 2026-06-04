@@ -81,6 +81,14 @@ export const DEFAULT_CONFIG = {
     filename: "claude.svg",
     public: true,
   },
+  // Share nudges (v0.13). After you cross a genuine milestone (a streak
+  // record, a round number of sessions/hours), CLI commands like `today`
+  // print a single one-liner suggesting how to share it. Conservative by
+  // design — only the biggest NEW milestone, shown once. Set enabled:false
+  // to silence entirely. See src/nudge.js.
+  nudges: {
+    enabled: true,
+  },
   // Community totals. On by default for fresh installs — `setup` mints an
   // anonymous instanceId (UUID v4) into the freshly-seeded config so the
   // daemon starts batching deltas immediately. Existing users upgrading

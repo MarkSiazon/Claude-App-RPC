@@ -18,6 +18,7 @@ import { runHookCli } from './hook.js';
 import { install as runInstall, uninstall as runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, mcpServerCommand } from './install.js';
 import { startTui } from './tui.js';
 import { generateInsights } from './insights.js';
+import { maybeNudge } from './nudge.js';
 import { badgeSvg } from './badge.js';
 import { fmtCost } from './pricing.js';
 import { addPrivateCwd, removePrivateCwd, listPrivateCwds, resolveVisibility } from './privacy.js';
@@ -457,6 +458,13 @@ function showToday() {
   if (aggregate?.byHour && Object.keys(aggregate.byHour).length) {
     box('when you code · hour of day', renderHourHistogram(aggregate.byHour, { peakHour: vars.peakHourNum }), 40);
     console.log('');
+  }
+
+  // Share nudge — only on a TTY (keeps piped/scripted output clean) and only
+  // when a new milestone was crossed. maybeNudge marks it shown internally.
+  if (process.stdout.isTTY) {
+    const nudge = maybeNudge(aggregate, config);
+    if (nudge) console.log(`  ${c.dim}↗ share${c.reset}  ${nudge}\n`);
   }
 }
 
