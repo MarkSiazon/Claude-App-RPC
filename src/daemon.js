@@ -611,18 +611,30 @@ setInterval(() => {
 // pile up locally until the next successful flush. Cadence is config-
 // driven (`community.flushIntervalMin`, default 30 min).
 async function runCommunityFlush() {
-  if (!config.community?.enabled) return;
+  // Both flushes self-guard (return {ok:false, reason:'disabled'} when their
+  // opt-in is off), so run whichever is enabled. The profile flush is
+  // independent of community totals but reuses the same anonymous instanceId.
+  if (!config.community?.enabled && !config.profile?.enabled) return;
   try {
-    const { flushCommunity } = await import('./community.js');
-    const result = await flushCommunity(config);
-    if (result.ok && result.delta) {
-      log(`community: flushed +${result.delta.sessions} sessions, +${result.delta.tokens} tokens`);
-    } else if (!result.ok && result.reason !== 'rate-limited' && result.reason !== 'no-delta') {
-      // Don't spam the log for routine "nothing to send" cases.
-      log(`community: ${result.reason}${result.error ? ' (' + result.error + ')' : ''}`);
+    const { flushCommunity, flushProfile } = await import('./community.js');
+    if (config.community?.enabled) {
+      const result = await flushCommunity(config);
+      if (result.ok && result.delta) {
+        log(`community: flushed +${result.delta.sessions} sessions, +${result.delta.tokens} tokens`);
+      } else if (!result.ok && result.reason !== 'rate-limited' && result.reason !== 'no-delta') {
+        log(`community: ${result.reason}${result.error ? ' (' + result.error + ')' : ''}`);
+      }
+    }
+    if (config.profile?.enabled) {
+      const pr = await flushProfile(config);
+      if (pr.ok && pr.delta) {
+        log(`profile: published @${config.profile.handle} (+${pr.delta.tokens} tokens)`);
+      } else if (!pr.ok && pr.reason !== 'rate-limited' && pr.reason !== 'disabled') {
+        log(`profile: ${pr.reason}${pr.error ? ' (' + pr.error + ')' : ''}`);
+      }
     }
   } catch (e) {
-    log('community flush threw:', e.message);
+    log('community/profile flush threw:', e.message);
   }
 }
 const communityFlushMs = Math.max(60_000, (config.community?.flushIntervalMin || 30) * 60 * 1000);

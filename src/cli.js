@@ -25,7 +25,7 @@ import { addPrivateCwd, removePrivateCwd, listPrivateCwds, resolveVisibility } f
 import { loadConfig, hasUserConfig } from './config.js';
 import * as lb from './leaderboard.js';
 import { VERSION } from './version.js';
-import { fail, EX_USER_ERROR, EX_BAD_STATE } from './ui.js';
+import { fail, EX_USER_ERROR, EX_BAD_STATE, EX_SYS_ERROR } from './ui.js';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { basename } from 'node:path';
@@ -1112,20 +1112,89 @@ function profileEnable(on) {
     });
   }
   next.enabled = on;
+  // Publishing reuses the anonymous community instanceId as the profile's row
+  // key. Mint one if the user never opted into community totals, so a
+  // profile-only user can still publish.
+  if (on) {
+    const community = { ...(userCfg.community || {}) };
+    if (!community.instanceId) {
+      community.instanceId = randomUUID();
+      userCfg.community = community;
+    }
+  }
   userCfg.profile = next;
   writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
   console.log(`${c.green}✓${c.reset} leaderboard publishing ${on ? 'enabled' : 'disabled'}`);
-  if (on) console.log(`  ${c.dim}your stats publish on the next daemon flush. link & verify GitHub for the ✓.${c.reset}`);
+  if (on) console.log(`  ${c.dim}your stats publish on the next daemon flush. run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim} to earn the ✓.${c.reset}`);
 }
 
-function doProfile(argv) {
+// GitHub verification: ask the worker for a one-time token, publish it in a
+// public gist (reusing the gist helper), then have the worker confirm it.
+async function profileVerify() {
+  const cfg = loadConfig();
+  const profile = cfg.profile || {};
+  const community = cfg.community || {};
+  if (!profile.githubUser) {
+    return fail('set a GitHub username first', {
+      hint: 'claude-rpc profile set --github <user>', code: EX_BAD_STATE,
+    });
+  }
+  if (!community.instanceId) {
+    return fail('enable the profile first', { hint: 'claude-rpc profile on', code: EX_BAD_STATE });
+  }
+  const endpoint = (community.endpoint || '').replace(/\/+$/, '');
+  if (!endpoint) return fail('no community endpoint configured', { code: EX_BAD_STATE });
+
+  const post = async (path, body) => {
+    const res = await fetch(endpoint + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, json: await res.json().catch(() => ({})) };
+  };
+
+  try {
+    console.log(`${c.dim}requesting a verification token…${c.reset}`);
+    const start = await post('/verify/start', { instanceId: community.instanceId, githubUser: profile.githubUser });
+    if (!start.json?.token) return fail(`verify/start failed: ${start.json?.error || start.status}`, { code: EX_SYS_ERROR });
+    const token = start.json.token;
+
+    const { publishGistFile } = await import('./gist.js');
+    console.log(`${c.dim}publishing a proof gist as @${profile.githubUser}…${c.reset}`);
+    await publishGistFile({
+      svg: `claude-rpc leaderboard verification for @${profile.githubUser}\n${token}\n`,
+      filename: 'claude-rpc-verify.txt',
+      description: 'claude-rpc profile verification',
+      isPublic: true,
+    });
+
+    console.log(`${c.dim}asking the server to confirm…${c.reset}`);
+    // Small delay so the gist is visible to GitHub's API before we check.
+    await new Promise((r) => setTimeout(r, 2500));
+    const check = await post('/verify/check', { instanceId: community.instanceId });
+    if (check.json?.verified) {
+      console.log(`${c.green}✓${c.reset} verified as @${profile.githubUser} — you'll show the ✓ on the board.`);
+    } else {
+      console.log(`${c.yellow}!${c.reset} not confirmed yet: ${check.json?.error || check.status}`);
+      console.log(`  ${c.dim}the gist may take a moment to propagate — re-run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim} shortly.${c.reset}`);
+    }
+  } catch (e) {
+    return fail(`verification failed: ${e.message}`, {
+      hint: 'needs `gh` logged in or GH_TOKEN with gist scope', code: EX_SYS_ERROR,
+    });
+  }
+}
+
+async function doProfile(argv) {
   const sub = (argv[0] || 'status').toLowerCase();
   if (sub === 'status' || sub === '') return profileStatus();
   if (sub === 'set') return profileSet(argv.slice(1));
   if (sub === 'on') return profileEnable(true);
   if (sub === 'off') return profileEnable(false);
+  if (sub === 'verify') return profileVerify();
   fail(`unknown profile subcommand: ${sub}`, {
-    hint: 'try: profile [status|set|on|off]',
+    hint: 'try: profile [status|set|on|off|verify]',
     code: EX_USER_ERROR,
   });
 }
@@ -1375,7 +1444,7 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'public':    doPublic(); break;
     case 'privacy':   doPrivacy(); break;
     case 'community': await doCommunity(process.argv.slice(3)); break;
-    case 'profile':   doProfile(process.argv.slice(3)); break;
+    case 'profile':   await doProfile(process.argv.slice(3)); break;
     case 'doctor': {
       const { runDoctor, fixPlan } = await import('./doctor.js');
       const fix = process.argv.includes('--fix');

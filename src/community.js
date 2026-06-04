@@ -23,8 +23,10 @@ import { join, dirname } from 'node:path';
 import { platform } from 'node:os';
 import { AGGREGATE_PATH, STATE_DIR } from './paths.js';
 import { VERSION } from './version.js';
+import { profileIsPublishable } from './leaderboard.js';
 
 const CURSOR_PATH = join(STATE_DIR, 'community-cursor.json');
+const PROFILE_CURSOR_PATH = join(STATE_DIR, 'profile-cursor.json');
 
 export function readCursor(path = CURSOR_PATH) {
   if (!existsSync(path)) return { sessions: 0, tokens: 0, ts: 0 };
@@ -69,6 +71,93 @@ export function buildPayload(aggregate, cursor, { instanceId, now = Date.now() }
     osFamily: osFamily(),
     ts: now,
   };
+}
+
+// ── leaderboard profile flush ──────────────────────────────────────────
+// Publishes the opt-in public profile (identity + server-validated usage
+// deltas) to the worker's /profile endpoint. Reuses the anonymous community
+// instanceId as the profile's row key, and its own cursor (which also tracks
+// activeMs). Same three guarantees as flushCommunity: never throws, sends only
+// the documented fields, never advances the cursor on a failed flush.
+
+function totalTokens(aggregate) {
+  return (aggregate?.inputTokens || 0)
+    + (aggregate?.outputTokens || 0)
+    + (aggregate?.cacheReadTokens || 0)
+    + (aggregate?.cacheWriteTokens || 0);
+}
+
+export function readProfileCursor(path = PROFILE_CURSOR_PATH) {
+  const base = { sessions: 0, tokens: 0, activeMs: 0, ts: 0 };
+  if (!existsSync(path)) return base;
+  try { return { ...base, ...JSON.parse(readFileSync(path, 'utf8')) }; }
+  catch { return base; }
+}
+
+export function buildProfilePayload(aggregate, profileCfg, cursor, { instanceId, now = Date.now() }) {
+  const sessions = aggregate?.sessions || 0;
+  const tokens = totalTokens(aggregate);
+  const activeMs = aggregate?.activeMs || 0;
+  return {
+    instanceId,
+    handle: profileCfg.handle,
+    displayName: profileCfg.displayName || null,
+    githubUser: profileCfg.githubUser || null,
+    sessionsDelta: Math.max(0, sessions - (cursor.sessions || 0)),
+    tokensDelta:   Math.max(0, tokens   - (cursor.tokens   || 0)),
+    activeMsDelta: Math.max(0, activeMs  - (cursor.activeMs || 0)),
+    streak: aggregate?.streak || 0,
+    version: VERSION,
+    osFamily: osFamily(),
+    ts: now,
+  };
+}
+
+export async function flushProfile(cfg, {
+  aggregatePath = AGGREGATE_PATH,
+  cursorPath = PROFILE_CURSOR_PATH,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const profile = cfg?.profile || {};
+  const community = cfg?.community || {};
+  if (!profileIsPublishable(profile)) return { ok: false, reason: 'disabled' };
+  const instanceId = community.instanceId;
+  if (!instanceId) return { ok: false, reason: 'no-instance-id' };
+  if (!community.endpoint) return { ok: false, reason: 'no-endpoint' };
+  if (!existsSync(aggregatePath)) return { ok: false, reason: 'no-aggregate' };
+
+  let aggregate;
+  try { aggregate = JSON.parse(readFileSync(aggregatePath, 'utf8')); }
+  catch { return { ok: false, reason: 'unreadable-aggregate' }; }
+
+  const cursor = readProfileCursor(cursorPath);
+  const payload = buildProfilePayload(aggregate, profile, cursor, { instanceId });
+
+  const url = community.endpoint.replace(/\/+$/, '') + '/profile';
+  let res;
+  try {
+    res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    return { ok: false, reason: 'network', error: e.message };
+  }
+  if (!res.ok) {
+    if (res.status === 429) return { ok: false, reason: 'rate-limited' };
+    return { ok: false, reason: `http-${res.status}` };
+  }
+
+  // Advance the cursor only on acceptance (same reasoning as flushCommunity).
+  writeCursor({
+    sessions: (cursor.sessions || 0) + payload.sessionsDelta,
+    tokens:   (cursor.tokens   || 0) + payload.tokensDelta,
+    activeMs: (cursor.activeMs || 0) + payload.activeMsDelta,
+    ts: payload.ts,
+  }, cursorPath);
+
+  return { ok: true, delta: { sessions: payload.sessionsDelta, tokens: payload.tokensDelta, activeMs: payload.activeMsDelta } };
 }
 
 // Single best-effort flush. Returns { ok, reason, delta? } — never throws.

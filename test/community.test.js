@@ -9,7 +9,8 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } from 'no
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const { buildPayload, osFamily, readCursor, writeCursor, flushCommunity } =
+const { buildPayload, osFamily, readCursor, writeCursor, flushCommunity,
+  buildProfilePayload, flushProfile, readProfileCursor } =
   await import('../src/community.js');
 
 const VALID_ID = '12345678-1234-4abc-abcd-1234567890ab';
@@ -208,5 +209,55 @@ test('flushCommunity: strips trailing slashes from the endpoint', async () => {
       { aggregatePath: paths.aggregatePath, cursorPath: paths.cursorPath, fetchImpl: fakeFetch({}, calls) },
     );
     assert.equal(calls[0].url, 'https://example.test/report');
+  } finally { paths.cleanup(); }
+});
+
+// ── leaderboard profile flush ──────────────────────────────────────────
+
+test('buildProfilePayload: deltas (incl activeMs) + identity fields', () => {
+  const agg = { sessions: 10, inputTokens: 1000, outputTokens: 500, cacheReadTokens: 0, cacheWriteTokens: 0, activeMs: 7200, streak: 9 };
+  const cur = { sessions: 4, tokens: 200, activeMs: 1200 };
+  const profileCfg = { handle: 'archer', displayName: 'Archer', githubUser: 'RARcodes', enabled: true };
+  const p = buildProfilePayload(agg, profileCfg, cur, { instanceId: VALID_ID, now: 5 });
+  assert.equal(p.sessionsDelta, 6);
+  assert.equal(p.tokensDelta, 1300);   // 1500 - 200
+  assert.equal(p.activeMsDelta, 6000); // 7200 - 1200
+  assert.equal(p.streak, 9);
+  assert.equal(p.handle, 'archer');
+  assert.equal(p.githubUser, 'RARcodes');
+  assert.equal(p.instanceId, VALID_ID);
+});
+
+test('flushProfile: disabled unless publishable (enabled + valid handle)', async () => {
+  const r1 = await flushProfile({ profile: { enabled: false, handle: 'archer' }, community: { instanceId: VALID_ID, endpoint: 'https://x.test' } });
+  assert.equal(r1.reason, 'disabled');
+  const r2 = await flushProfile({ profile: { enabled: true, handle: 'A' }, community: { instanceId: VALID_ID, endpoint: 'https://x.test' } });
+  assert.equal(r2.reason, 'disabled'); // invalid handle → not publishable
+});
+
+test('flushProfile: needs an instanceId', async () => {
+  const r = await flushProfile({ profile: { enabled: true, handle: 'archer' }, community: { endpoint: 'https://x.test' } });
+  assert.equal(r.reason, 'no-instance-id');
+});
+
+test('flushProfile: POSTs to /profile and advances the cursor on success', async () => {
+  const paths = makeTempPaths();
+  try {
+    writeFileSync(paths.aggregatePath, JSON.stringify({ sessions: 5, inputTokens: 1000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, activeMs: 3600, streak: 2 }));
+    const calls = [];
+    const cfg = {
+      profile: { enabled: true, handle: 'archer', displayName: 'Archer', githubUser: 'RARcodes' },
+      community: { instanceId: VALID_ID, endpoint: 'https://example.test' },
+    };
+    const r = await flushProfile(cfg, { aggregatePath: paths.aggregatePath, cursorPath: paths.cursorPath, fetchImpl: fakeFetch({ body: '{"ok":true,"profile":{}}' }, calls) });
+    assert.equal(r.ok, true);
+    assert.equal(calls[0].url, 'https://example.test/profile');
+    const sent = JSON.parse(calls[0].init.body);
+    assert.equal(sent.handle, 'archer');
+    assert.equal(sent.tokensDelta, 1000);
+    // cursor advanced
+    const cur = readProfileCursor(paths.cursorPath);
+    assert.equal(cur.tokens, 1000);
+    assert.equal(cur.activeMs, 3600);
   } finally { paths.cleanup(); }
 });
