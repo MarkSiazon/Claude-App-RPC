@@ -4,6 +4,12 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 
 ## [0.13.1] - 2026-06-04
 
+**Added**
+
+- **Easier install.** A one-liner `curl -fsSL https://claude-rpc.vercel.app/install | sh` (detects Node → npm, or falls back to the prebuilt Apple-Silicon binary, then runs `setup`), plus a Homebrew formula (`brew install rar-file/claude-rpc/claude-rpc`).
+- **`claude-rpc doctor --fix` is now targeted.** It applies only the repairs the checklist actually flagged — re-wire hooks, rebuild the aggregate, (re)start the daemon — in dependency order, reporting each, instead of blindly re-running setup. Discord-desktop issues are surfaced as advice (not auto-fixable).
+- **Public leaderboard + profiles (opt-in).** `claude-rpc profile [set|on|off|verify]` publishes a public profile (handle, name, optional GitHub) to a leaderboard at [`/leaderboard`](https://claude-rpc.vercel.app/leaderboard), with shareable `/u/<handle>` pages. **Hybrid trust model:** anyone can appear, but a GitHub-verified profile (proved via a public gist) earns a ✓ and ranks first; unverified entries are capped and greyed. The worker accepts only server-validated deltas with plausibility caps + per-IP/per-instance rate limits — self-reported usage can't be made fraud-proof, so the design makes cheating bounded and attributable. Off by default; nothing publishes until you opt in.
+
 **Fixed**
 
 - **Concurrent hooks no longer lose counter updates.** Claude Code fires lifecycle hooks in bursts, and subagents / parallel sessions run several `claude-rpc hook` processes at once. Each did a read-modify-write of `state.json` with no cross-process lock, so the last writer won and the others' message / tool / token increments were silently dropped. Writes now serialize through an exclusive lock file (best-effort, with stale-lock reclaim), and each writer uses a per-PID temp file so the atomic rename can't clobber a sibling mid-write.
