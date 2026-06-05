@@ -2,7 +2,7 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.13.6] - 2026-06-06
 
 **Security**
 
