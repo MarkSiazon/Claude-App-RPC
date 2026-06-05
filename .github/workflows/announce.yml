@@ -36,7 +36,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.gen.outputs.version }}
+          REPO: ${{ github.repository }}
         run: |
+          # Each kit supersedes the last, so close any still-open launch-kit
+          # issues first — otherwise every release stacks another disposable
+          # draft on the tracker. Exact-prefix match on the title so we never
+          # touch hand-written issues that merely contain "launch kit".
+          gh issue list --state open --limit 100 --json number,title \
+            -q '.[] | select(.title | startswith("🚀 Launch kit:")) | .number' \
+            | while read -r n; do
+            [ -n "$n" ] && gh issue close "$n" --reason "not planned" \
+              --comment "Superseded by the v${VERSION} launch kit." || true
+          done
+
           gh issue create \
             --title "🚀 Launch kit: v${VERSION}" \
             --body-file launchkit.md \
