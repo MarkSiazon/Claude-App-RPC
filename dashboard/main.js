@@ -580,8 +580,12 @@ ipcMain.handle('start-serve', async () => {
 });
 
 ipcMain.handle('open-external', async (_, url) => {
-  if (!url) return { ok: false };
-  shell.openExternal(url);
+  // Only ever hand web URLs to the OS — a compromised renderer must not be
+  // able to launch file:// / app-protocol handlers through this channel.
+  let parsed;
+  try { parsed = new URL(String(url)); } catch { return { ok: false }; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return { ok: false };
+  shell.openExternal(parsed.href);
   return { ok: true };
 });
 

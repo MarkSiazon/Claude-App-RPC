@@ -30,6 +30,12 @@
   let churnSeries = [];   // [{ d: Date, add, rem }] — for the churn-sparkline tooltip
 
   // ── Utilities ───────────────────────────────────────────
+  // Escape before any innerHTML interpolation: project/file/command/model
+  // names come from the aggregate, i.e. ultimately from directory and file
+  // names on disk — a repo named `<img onerror=…>` must render, not run.
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
   const fmtH = (ms) => {
     if (!ms) return '0h';
     const h = ms / 3_600_000;
@@ -232,10 +238,10 @@
       if (r.onClick) tr.classList.add('clickable');
       const ico = r.color ? '<span class="ico" style="background:' + r.color + '"></span>' : '';
       const nameHtml = opts.mono
-        ? '<code style="font-family: JetBrains Mono, monospace; font-size: 12px;">' + ico + r.name + '</code>'
-        : ico + r.name;
+        ? '<code style="font-family: JetBrains Mono, monospace; font-size: 12px;">' + ico + esc(r.name) + '</code>'
+        : ico + esc(r.name);
       tr.innerHTML = '<td class="name">' + nameHtml + '</td>' +
-                     '<td class="val">' + r.val + (r.unit ? '<span class="u">' + r.unit + '</span>' : '') + '</td>';
+                     '<td class="val">' + esc(r.val) + (r.unit ? '<span class="u">' + esc(r.unit) + '</span>' : '') + '</td>';
       if (r.onClick) tr.addEventListener('click', r.onClick);
       tbl.appendChild(tr);
     });
@@ -276,7 +282,7 @@
       const w = Math.max(2, (cost / total) * 100);
       const row = document.createElement('div');
       row.className = 'cost-bar';
-      row.innerHTML = '<span class="name">' + model + '</span>' +
+      row.innerHTML = '<span class="name">' + esc(model) + '</span>' +
         '<span class="track"><span class="fill" style="width:' + w.toFixed(0) + '%"></span></span>' +
         '<span class="val">' + fmtCost(cost) + '</span>';
       bars.appendChild(row);
@@ -303,7 +309,7 @@
       const row = document.createElement('div');
       row.className = 'row';
       row.innerHTML = '<span class="swatch" style="background:' + (LANGS[name] || '#888') + '"></span>' +
-        '<span class="name">' + name + '</span>' +
+        '<span class="name">' + esc(name) + '</span>' +
         '<span class="val">' + fmtN(v.edits) + ' edits · ' + fmtN(v.files) + ' files</span>';
       list.appendChild(row);
     }
@@ -337,7 +343,7 @@
       const isCurrent = i === onAir;
       li.className = isCurrent ? 'current' : f.passes ? 'live' : 'skip';
       const summary = f.passes ? ((f.details || '—') + (f.state ? ' · ' + f.state : '')) : (f.details || '—');
-      li.innerHTML = '<span class="pip"></span><span class="frame-text">' + summary + '</span>';
+      li.innerHTML = '<span class="pip"></span><span class="frame-text">' + esc(summary) + '</span>';
       ul.appendChild(li);
     });
   }

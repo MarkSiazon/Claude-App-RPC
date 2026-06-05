@@ -370,7 +370,9 @@ async function pushPresence() {
 // socket so we only force a reconnect when the connection is actually gone.
 function isConnectionError(e) {
   const code = (e && e.code) || '';
-  if (['EPIPE', 'ECONNRESET', 'ENOENT', 'ECONNREFUSED', 'ERR_STREAM_WRITE_AFTER_END'].includes(code)) return true;
+  // ETIMEDOUT: request() now deadlines nonce replies — a half-open pipe that
+  // acks writes but never answers is a dead transport, so reconnect.
+  if (['EPIPE', 'ECONNRESET', 'ENOENT', 'ECONNREFUSED', 'ETIMEDOUT', 'ERR_STREAM_WRITE_AFTER_END'].includes(code)) return true;
   const m = String((e && e.message) || '').toLowerCase();
   return /closed|reset|broken pipe|not connected|disconnect|write after end|socket|econnreset|epipe|connection/.test(m);
 }

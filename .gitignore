@@ -27,8 +27,9 @@ desktop.ini
 .env.local
 config.local.json
 
-# Polish-pass scratchpad (audit findings, not part of the repo)
+# Local audit scratchpads (findings, not part of the repo)
 NOTES.md
+.repo-scan/
 
 # Wrangler dev state (worker/) — caches, miniflare, build output
 .wrangler/

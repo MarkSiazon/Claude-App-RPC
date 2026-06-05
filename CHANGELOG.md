@@ -2,6 +2,22 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+**Security**
+
+- **Dashboard tables escape HTML.** Project, file, bash-command, web-domain, model, language, and subagent names are interpolated into the local dashboard via `innerHTML` — and they ultimately come from directory/file names on disk, so a repo named like an HTML tag could inject markup into the stats page. All such values now pass through an escape helper before rendering. (The year-in-review page already escaped consistently.)
+- **The local stats server rejects non-local `Host` headers.** Binding to `127.0.0.1` blocks the LAN but not DNS rebinding: a malicious website could point its own hostname at `127.0.0.1`, become "same-origin" with the dashboard, and read your full aggregate via `/api/export.json`. Requests whose `Host` isn't `localhost`/`127.0.0.1`/`::1` now get a 403.
+- **The Electron dashboard only opens web URLs.** The `open-external` IPC channel passed any renderer-supplied string to `shell.openExternal`; it now parses the URL and allows only `http:`/`https:`.
+- **Worker: `/verify/check` is rate-limited and its gist scan is bounded.** The endpoint triggers outbound GitHub fetches (up to ~21 on the no-gistId fallback) with no rate limit, making the worker an unauthenticated outbound-request amplifier. It now shares the per-IP limiter with `/verify/start`, and the fallback scan is capped at 10 raw-file fetches.
+- **Worker: `/leaderboard` bounds its KV fan-out.** The handler listed every `pf:` key (instanceIds are mintable, so unbounded) and did one KV read per profile — past ~1000 profiles a single request would blow the Workers subrequest cap. The list is now capped at 500 profiles per request.
+
+**Fixed**
+
+- **A torn-down Discord connection no longer strands in-flight presence updates.** `destroy()` cleared pending requests without rejecting them, so a `setActivity` awaited at the moment the watchdog bounced the client hung forever. Requests also gained a 10s reply deadline: a half-open pipe that acks writes but never answers previously froze presence on a stale frame with no self-heal — a timeout now surfaces as a connection error and forces a reconnect.
+- **`releaseLock` can no longer delete a sibling's reclaimed lock.** If a state-write held the lock past the 2s staleness window and another process reclaimed it, the first writer's release would unlink the new owner's lock by path, collapsing mutual exclusion for a third writer. Release now verifies inode ownership before unlinking.
+- **`cleanDisplayName`'s control-character regex is written in escaped form.** The source contained literal control bytes (0x00–0x1F) inside the regex class — functionally correct, but invisible in terminals and diffs, where it rendered as `[ -]` and read as "strip spaces and dashes" (it fooled two automated reviews into reporting a bug that wasn't there). Now written as `\u0000-\u001f\u007f` escapes, with regression tests pinning that spaces and punctuation survive.
+
 ## [0.13.5] - 2026-06-05
 
 **Changed**

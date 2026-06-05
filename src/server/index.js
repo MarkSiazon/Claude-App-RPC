@@ -30,7 +30,20 @@ function parseUrl(rawUrl) {
   return { path: url.pathname, query: Object.fromEntries(url.searchParams) };
 }
 
+// Loopback-only Host allowlist. Binding to 127.0.0.1 blocks the LAN, but not
+// DNS rebinding: a malicious page can point its own hostname at 127.0.0.1 and
+// become "same-origin" with this server, then read /api/export.json. Rejecting
+// non-local Host headers closes that — browsers always send the page's host.
+function isLocalHost(host) {
+  const h = String(host || '').replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '::1';
+}
+
 const server = createServer((req, res) => {
+  if (!isLocalHost(req.headers.host)) {
+    res.writeHead(403, JSON_HEADERS).end(JSON.stringify({ error: 'forbidden' }));
+    return;
+  }
   const { path, query } = parseUrl(req.url);
   const key = `${req.method} ${path}`;
 

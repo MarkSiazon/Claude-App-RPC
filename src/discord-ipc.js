@@ -228,7 +228,11 @@ export class Client extends EventEmitter {
   }
 
   // Send a command frame and resolve when the nonce-matched reply arrives.
-  request(cmd, args) {
+  // Times out after 10s: on a half-open pipe Discord can ack the socket write
+  // but never send the nonce reply, and without a deadline that await would
+  // hang forever — freezing the daemon's presence on a stale frame, with the
+  // watchdog blind because `connected` still reads true.
+  request(cmd, args, timeoutMs = 10_000) {
     return new Promise((resolve, reject) => {
       if (!this.socket) {
         const err = new Error('Not connected');
@@ -237,7 +241,14 @@ export class Client extends EventEmitter {
         return;
       }
       const nonce = randomUUID();
-      this._pending.set(nonce, { resolve, reject });
+      const timer = setTimeout(() => {
+        this._pending.delete(nonce);
+        const err = new Error(`No reply to ${cmd} within ${timeoutMs}ms`);
+        err.code = 'ETIMEDOUT';
+        reject(err);
+      }, timeoutMs);
+      if (timer.unref) timer.unref();
+      this._pending.set(nonce, { resolve, reject, timer });
       this._send(OP_FRAME, { cmd, args, nonce });
     });
   }
@@ -272,7 +283,8 @@ export class Client extends EventEmitter {
 
     // Nonce-matched response to a request() (e.g. SET_ACTIVITY).
     if (msg.nonce && this._pending.has(msg.nonce)) {
-      const { resolve, reject } = this._pending.get(msg.nonce);
+      const { resolve, reject, timer } = this._pending.get(msg.nonce);
+      clearTimeout(timer);
       this._pending.delete(msg.nonce);
       if (msg.evt === 'ERROR') {
         const err = new Error(msg.data?.message || 'Discord RPC error');
@@ -297,7 +309,8 @@ export class Client extends EventEmitter {
   _onClose(reason) {
     const wasConnected = this._connected || !!this.socket;
     // Fail any in-flight requests so awaiters don't hang forever.
-    for (const { reject } of this._pending.values()) {
+    for (const { reject, timer } of this._pending.values()) {
+      clearTimeout(timer);
       const err = new Error(typeof reason === 'string' ? reason : 'Connection closed');
       err.code = 'ECONNRESET';
       reject(err);
@@ -329,6 +342,15 @@ export class Client extends EventEmitter {
     // Best-effort close; don't emit 'disconnected' on an explicit teardown
     // (the daemon calls destroy() itself and manages its own reconnect).
     this._readyResolve = this._readyReject = null;
+    // Reject in-flight requests (mirrors _onClose) — a pushPresence parked on
+    // `await setActivity` when the watchdog tears the client down must settle,
+    // not leak as a forever-pending promise.
+    for (const { reject, timer } of this._pending.values()) {
+      clearTimeout(timer);
+      const err = new Error('Client destroyed');
+      err.code = 'ECONNRESET';
+      reject(err);
+    }
     this._pending.clear();
     this._teardownSocket();
     this._connected = false;

@@ -430,7 +430,11 @@ export async function handleLeaderboard(url, env) {
 
   const rows = [];
   try {
-    const { keys } = await env.TOTALS.list({ prefix: 'pf:' });
+    // Bound the fan-out: every listed key costs a KV get, instanceIds are
+    // attacker-mintable, and Workers cap subrequests at 1000 per request —
+    // an uncapped list() (default 1000 keys) would blow that budget and
+    // 500 sequential gets is already the practical ceiling per hit.
+    const { keys } = await env.TOTALS.list({ prefix: 'pf:', limit: 500 });
     for (const { name } of keys) {
       const p = await getProfile(env, name.slice(3));
       if (p && p.handle) rows.push(publicProfile(p));
@@ -487,6 +491,10 @@ export async function handleVerifyCheck(request, env, fetchImpl = fetch) {
   let body;
   try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
   if (!isUuidish(body.instanceId)) return jsonError(400, 'instanceId must be a UUID');
+  // Every check fans out to GitHub (up to a handful of fetches on the
+  // fallback path) — rate-limit it like /verify/start so an unauthenticated
+  // caller can't use the worker as an outbound-request amplifier.
+  if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
   const raw = await env.TOTALS.get(VERIFY_KEY(body.instanceId));
   if (!raw) return jsonError(404, 'no pending verification — call /verify/start first');
   let pending;
@@ -518,13 +526,14 @@ export async function handleVerifyCheck(request, env, fetchImpl = fetch) {
       });
       if (listRes.ok) {
         const gists = await listRes.json();
+        let rawFetches = 0; // hard cap on outbound fetches — gists can have many files
         for (const g of (Array.isArray(gists) ? gists.slice(0, 20) : [])) {
           for (const f of Object.values(g.files || {})) {
-            if (!f || !f.raw_url) continue;
+            if (!f || !f.raw_url || ++rawFetches > 10) continue;
             const rr = await fetchImpl(f.raw_url, { headers: { 'User-Agent': 'claude-rpc-worker' } });
             if (rr.ok && (await rr.text()).includes(pending.token)) { matchedOwner = pending.githubUser; break; }
           }
-          if (matchedOwner) break;
+          if (matchedOwner || rawFetches > 10) break;
         }
       }
     }

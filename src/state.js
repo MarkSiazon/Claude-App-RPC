@@ -8,6 +8,7 @@ import {
   closeSync,
   unlinkSync,
   statSync,
+  fstatSync,
 } from 'node:fs';
 import { basename } from 'node:path';
 import { STATE_PATH, STATE_DIR } from './paths.js';
@@ -110,11 +111,24 @@ function acquireLock() {
 
 function releaseLock(fd) {
   if (fd === null) return;
+  // Only unlink the lock if the path still points at OUR lock file. If this
+  // process somehow held it past LOCK_STALE_MS, a sibling has reclaimed the
+  // path (unlink + fresh 'wx' create); deleting that by path would collapse
+  // mutual exclusion for a third writer. Inode equality proves ownership.
+  let ours;
+  try {
+    const a = fstatSync(fd);
+    const b = statSync(LOCK_PATH);
+    ours = a.ino === b.ino && a.dev === b.dev;
+  } catch {
+    ours = false; // lock already gone — nothing to unlink
+  }
   try {
     closeSync(fd);
   } catch {
     /* already closed */
   }
+  if (!ours) return;
   try {
     unlinkSync(LOCK_PATH);
   } catch {
