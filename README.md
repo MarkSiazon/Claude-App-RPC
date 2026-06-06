@@ -7,7 +7,7 @@
 
 # claude-rpc
 
-**Discord Rich Presence for [Claude Code](https://claude.com/claude-code).**
+**Discord Rich Presence (RPC) for [Claude Code](https://claude.com/claude-code).**
 Your live model, project, current tool, tokens, and lifetime stats — in your Discord profile. Driven by the hooks Claude Code already fires. Zero polling between sessions.
 
 **→ [claude-rpc.vercel.app](https://claude-rpc.vercel.app)** — what it looks like, in one page.

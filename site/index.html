@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — discord rich presence for claude code</title>
-<meta name="description" content="A tiny Node daemon that puts your live Claude Code session — model, project, current tool, tokens, lifetime stats — into your Discord profile. Built by one person on weekends." />
+<title>claude-rpc — Discord Rich Presence (RPC) for Claude Code</title>
+<meta name="description" content="Open-source Discord Rich Presence (RPC) for Claude Code. A tiny Node daemon puts your live session — model, project, current tool, tokens, lifetime stats — into your Discord profile. Free on GitHub and npm; one-command install." />
 
 <link rel="canonical" href="https://claude-rpc.vercel.app/" />
 <meta name="keywords" content="claude code, discord rich presence, discord rpc, claude code hooks, anthropic, developer stats, cli, coding stats, claude wrapped" />
@@ -32,15 +32,35 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "claude-rpc",
-  "description": "Discord Rich Presence for Claude Code — live model, project, tokens, and lifetime stats driven by Claude Code's hooks.",
+  "alternateName": ["Claude Code Discord RPC", "Claude Discord Rich Presence"],
+  "description": "Discord Rich Presence (RPC) for Claude Code — live model, project, tokens, and lifetime stats driven by Claude Code's hooks. Open source on GitHub.",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Windows, Linux",
   "url": "https://claude-rpc.vercel.app/",
   "downloadUrl": "https://www.npmjs.com/package/claude-rpc",
   "softwareHelp": "https://github.com/rar-file/claude-rpc#readme",
   "license": "https://github.com/rar-file/claude-rpc/blob/main/LICENSE",
-  "author": { "@type": "Person", "name": "Archer Simmons" },
+  "softwareVersion": "0.13.7",
+  "dateModified": "2026-06-06",
+  "sameAs": [
+    "https://github.com/rar-file/claude-rpc",
+    "https://www.npmjs.com/package/claude-rpc"
+  ],
+  "author": { "@type": "Person", "name": "Archer Simmons", "url": "https://github.com/rar-file" },
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareSourceCode",
+  "name": "claude-rpc — Claude Code Discord Rich Presence",
+  "description": "GitHub repository for claude-rpc, the open-source Discord Rich Presence (RPC) integration for Claude Code.",
+  "codeRepository": "https://github.com/rar-file/claude-rpc",
+  "programmingLanguage": "JavaScript",
+  "runtimePlatform": "Node.js 18+",
+  "license": "https://github.com/rar-file/claude-rpc/blob/main/LICENSE",
+  "author": { "@type": "Person", "name": "Archer Simmons", "url": "https://github.com/rar-file" }
 }
 </script>
 
@@ -840,8 +860,8 @@
     </h1>
     <p class="lead">
       A small Node daemon that takes the lifecycle events <code>claude code</code>
-      already fires — and pipes them into the discord rich-presence card on your
-      profile. Your friends see what you're building, your future self gets
+      already fires — and pipes them into the Discord Rich Presence (RPC) card on
+      your profile. Your friends see what you're building, your future self gets
       lifetime stats. Zero polling between sessions.
     </p>
     <div class="cta-row">
@@ -852,7 +872,7 @@
       </a>
       <a class="btn cream" href="https://github.com/rar-file/claude-rpc">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2.2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.4 3.6 1.1.1-.8.4-1.4.8-1.7-2.7-.3-5.5-1.3-5.5-6 0-1.3.5-2.4 1.2-3.3-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.9 1.2 2 1.2 3.3 0 4.7-2.8 5.7-5.5 6 .4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .3"/></svg>
-        source
+        source on github
       </a>
     </div>
     <div class="copy-box" title="click to copy">
