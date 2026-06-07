@@ -487,7 +487,24 @@ export async function handleLeaderboard(url, env) {
     // Ranking is by score, not by lexicographic KV key order, so an attacker
     // cannot crowd out real users by minting low-sorting instanceIds.
     const index = await getBoardIndex(env);
-    rows = Object.values(index).filter((e) => e && e.handle);
+    const entries = Object.entries(index).filter(([, e]) => e && e.handle);
+
+    // Repair duplicate handles: two concurrent publishes with the same handle
+    // can both pass handleProfile's pre-write owner check (KV has no CAS),
+    // leaving two index entries that share one handle. handle:<h> is
+    // authoritative — resolve ownership only for handles that actually
+    // collide, so the extra KV reads stay at zero in the normal case.
+    const byHandle = new Map();
+    for (const [id, e] of entries) {
+      if (!byHandle.has(e.handle)) byHandle.set(e.handle, []);
+      byHandle.get(e.handle).push([id, e]);
+    }
+    for (const [handle, claims] of byHandle) {
+      if (claims.length === 1) { rows.push(claims[0][1]); continue; }
+      const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+      const kept = claims.find(([id]) => id === owner);
+      if (kept) rows.push(kept[1]);
+    }
   } catch { /* empty → [] */ }
 
   // Hybrid ranking: verified first, then by metric. Unverified token counts are
@@ -497,7 +514,8 @@ export async function handleLeaderboard(url, env) {
     return r.verified ? v : (key === 'tokens' ? Math.min(v, UNVERIFIED_TOKENS_CAP) : v);
   };
   rows.sort((a, b) => (Number(b.verified) - Number(a.verified)) || (valueOf(b) - valueOf(a)));
-  const top = rows.slice(0, limit).map((r, i) => ({ rank: i + 1, ...r }));
+  // publicProfile strips index-internal fields (updatedAt) from the response.
+  const top = rows.slice(0, limit).map((r, i) => ({ rank: i + 1, ...publicProfile(r) }));
 
   return new Response(JSON.stringify({
     schemaVersion: SCHEMA_VERSION, metric: key, count: top.length, leaderboard: top, ts: Date.now(),

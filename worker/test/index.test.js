@@ -403,6 +403,26 @@ test('handleLeaderboard: score-based ranking is immune to low-sorting instanceId
   assert.equal(j.leaderboard[0].rank, 1);
 });
 
+test('handleLeaderboard: duplicate handles resolve to the authoritative handle: owner', async () => {
+  // Regression for the non-atomic check-then-write race in handleProfile
+  // (issue #13): both writers land in board:index with the same handle.
+  const env = makeEnv();
+  await env.TOTALS.put('board:index', JSON.stringify({
+    '11111111-1111-1111-1111-111111111111': { handle: 'dupe', verified: false, tokens: 100, sessions: 1, activeMs: 0, streak: 0, displayName: null, githubUser: null },
+    '22222222-2222-2222-2222-222222222222': { handle: 'dupe', verified: false, tokens: 999, sessions: 9, activeMs: 0, streak: 0, displayName: null, githubUser: null },
+    '33333333-3333-3333-3333-333333333333': { handle: 'solo', verified: false, tokens: 5, sessions: 1, activeMs: 0, streak: 0, displayName: null, githubUser: null },
+  }));
+  // handle:<h> says instance 2222… owns 'dupe' (it wrote last).
+  await env.TOTALS.put('handle:dupe', '22222222-2222-2222-2222-222222222222');
+  const res = await handleLeaderboard(new URL('http://localhost/leaderboard'), env);
+  const j = await res.json();
+  const dupes = j.leaderboard.filter((r) => r.handle === 'dupe');
+  assert.equal(dupes.length, 1, 'exactly one row for the contested handle');
+  assert.equal(dupes[0].tokens, 999, 'the authoritative owner row survives');
+  assert.ok(j.leaderboard.some((r) => r.handle === 'solo'), 'uncontested rows unaffected');
+  assert.ok(!('updatedAt' in j.leaderboard[0]), 'index-internal fields not leaked');
+});
+
 test('pruneBoardIndex: drops stale unverified entries, keeps verified and fresh ones', () => {
   const now = Date.now();
   const STALE = now - 91 * 24 * 60 * 60 * 1000; // older than the 90-day pf: TTL
