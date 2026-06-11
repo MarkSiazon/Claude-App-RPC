@@ -70,6 +70,9 @@ export const STATE_DIR = join(tmpdir(), 'claude-rpc');
 export const STATE_PATH = join(STATE_DIR, 'state.json');
 export const PID_PATH = join(STATE_DIR, 'daemon.pid');
 export const LOG_PATH = join(STATE_DIR, 'daemon.log');
+// Presence snooze marker (`claude-rpc pause`). Lives in the tmp state dir on
+// purpose — a reboot clearing a forgotten pause is the right failure mode.
+export const PAUSE_PATH = join(STATE_DIR, 'pause.json');
 export const DATA_DIR = join(homedir(), '.claude-rpc');
 export const AGGREGATE_PATH = join(DATA_DIR, 'aggregate.json');
 export const SCAN_CACHE_PATH = join(DATA_DIR, 'scan-cache.json');

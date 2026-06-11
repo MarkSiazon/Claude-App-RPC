@@ -7,14 +7,43 @@
 // The detached-HEAD case (HEAD contains a raw SHA, not `ref: refs/heads/...`)
 // returns an empty branch — template `requires` will hide the branch frame.
 
-import { readFileSync, existsSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { basename, join, isAbsolute } from 'node:path';
 
 const TTL_MS = 5 * 60 * 1000;
 const cache = new Map(); // cwd → { ts, github, branch, repo }
 
 function fresh(entry) {
   return entry && (Date.now() - entry.ts) < TTL_MS;
+}
+
+// Resolve a cwd's `.git` to the directory that actually holds HEAD etc.
+// Usually `.git` IS that directory, but in a linked worktree or a submodule
+// it's a one-line FILE — "gitdir: <path>" — pointing at the real location
+// (e.g. <main>/.git/worktrees/<name>). Treating the file as a directory made
+// every read below fail silently, so worktrees lost branch/repo/GitHub-button
+// detection entirely.
+function resolveGitDir(cwd) {
+  const dotGit = join(cwd, '.git');
+  let st;
+  try { st = statSync(dotGit); } catch { return null; }
+  if (st.isDirectory()) return dotGit;
+  try {
+    const m = readFileSync(dotGit, 'utf8').match(/^gitdir:\s*(.+?)\s*$/m);
+    if (!m) return null;
+    return isAbsolute(m[1]) ? m[1] : join(cwd, m[1]);
+  } catch { return null; }
+}
+
+// The COMMON git dir — where `config` lives. For a linked worktree the
+// per-worktree gitdir holds a `commondir` file with a (usually relative)
+// path back to the main `.git`; everywhere else the gitdir is its own
+// common dir (main repos, submodules).
+function commonGitDir(gitDir) {
+  try {
+    const rel = readFileSync(join(gitDir, 'commondir'), 'utf8').trim();
+    return isAbsolute(rel) ? rel : join(gitDir, rel);
+  } catch { return gitDir; }
 }
 
 function readGitInfo(cwd) {
@@ -25,12 +54,12 @@ function readGitInfo(cwd) {
   // find a github origin.
   out.repo = basename(cwd) || '';
 
-  const gitDir = join(cwd, '.git');
-  if (!existsSync(gitDir)) return out;
+  const gitDir = resolveGitDir(cwd);
+  if (!gitDir) return out;
 
   // origin URL → github URL + repo name.
   try {
-    const cfg = readFileSync(join(gitDir, 'config'), 'utf8');
+    const cfg = readFileSync(join(commonGitDir(gitDir), 'config'), 'utf8');
     const m = cfg.match(/\[remote\s+"origin"\][^[]*?url\s*=\s*([^\r\n]+)/i);
     if (m) {
       const raw = m[1].trim();
@@ -84,8 +113,11 @@ export function detectGitRepo(cwd)   { return lookup(cwd).repo; }
 // just made a new one.
 export function detectLastCommitSubject(cwd, max = 80) {
   if (!cwd) return '';
-  const gitDir = join(cwd, '.git');
-  if (!existsSync(gitDir)) return '';
+  // Follow a worktree/submodule `.git` file to the real gitdir —
+  // COMMIT_EDITMSG and logs/HEAD are per-worktree, so the resolved
+  // dir (not the common dir) is the right place for both.
+  const gitDir = resolveGitDir(cwd);
+  if (!gitDir) return '';
 
   // COMMIT_EDITMSG: the editor buffer from the most recent `git commit`.
   // First non-blank, non-comment line is the subject.

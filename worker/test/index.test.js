@@ -330,7 +330,7 @@ test('handleProfile: SETS absolute totals (idempotent, not accumulated)', async 
   assert.equal(j.profile.tokens, 1000);
   assert.equal(j.profile.verified, false);
   // A later report SETS the latest absolute totals (no double-counting).
-  env.TOTALS.store.delete('rate:' + profileBody.instanceId);
+  env.TOTALS.store.delete('rate:profile:' + profileBody.instanceId);
   res = await handleProfile(profileRequest({ ...profileBody, tokens: 2000, sessions: 9 }), env);
   j = await res.json();
   assert.equal(j.profile.tokens, 2000);
@@ -589,4 +589,57 @@ test('handleProfileGet: returns a public profile by handle, 404 if unknown', asy
   assert.equal(j.profile.handle, 'archer');
   const miss = await handleProfileGet(new URL('http://localhost/profile?handle=nobody'), env);
   assert.equal(miss.status, 404);
+});
+
+// ── Per-endpoint rate scoping (the silent profile-flush 429) ─────────────
+
+test('a /report does not rate-limit the same instance\'s /profile publish', async () => {
+  // The daemon flushes community totals then the profile back-to-back with
+  // one instanceId. A shared rate key meant the profile publish ALWAYS 429'd
+  // whenever community had a delta.
+  const env = makeEnv();
+  const id = profileBody.instanceId;
+  const r1 = await handleReport(reportRequest({ ...validBody, instanceId: id }), env);
+  assert.equal(r1.status, 200);
+  const r2 = await handleProfile(profileRequest({ ...profileBody, instanceId: id }), env);
+  assert.equal(r2.status, 200, 'profile publish proceeds on its own rate key');
+  // Each endpoint still limits itself.
+  const r3 = await handleProfile(profileRequest({ ...profileBody, instanceId: id }), env);
+  assert.equal(r3.status, 429, 'second profile publish within the window is limited');
+});
+
+// ── Orphaned-handle release (expired squatter) ───────────────────────────
+
+test('an expired profile\'s handle is released to a new claimant', async () => {
+  const env = makeEnv();
+  const squatter = 'aaaaaaaa-0000-0000-0000-000000000001';
+  const claimant = 'bbbbbbbb-0000-0000-0000-000000000002';
+  let res = await handleProfile(profileRequest({ ...profileBody, instanceId: squatter }), env);
+  assert.equal(res.status, 200);
+  // Simulate the unverified pf: row's 90-day TTL firing (handle:<h> had no
+  // TTL, so the mapping outlives the profile).
+  env.TOTALS.store.delete('pf:' + squatter);
+  res = await handleProfile(profileRequest({ ...profileBody, instanceId: claimant }), env);
+  assert.equal(res.status, 200, 'orphaned handle is released, not 409');
+  assert.equal(await env.TOTALS.get('handle:' + profileBody.handle), claimant);
+});
+
+test('a LIVE profile\'s handle still 409s for another instance', async () => {
+  const env = makeEnv();
+  const ownerId = 'aaaaaaaa-0000-0000-0000-000000000003';
+  await handleProfile(profileRequest({ ...profileBody, instanceId: ownerId }), env);
+  const res = await handleProfile(profileRequest(
+    { ...profileBody, instanceId: 'bbbbbbbb-0000-0000-0000-000000000004' }), env);
+  assert.equal(res.status, 409);
+});
+
+test('handleProfileGet: cleans up the orphaned handle mapping on 404', async () => {
+  const env = makeEnv();
+  const id = 'aaaaaaaa-0000-0000-0000-000000000005';
+  await handleProfile(profileRequest({ ...profileBody, instanceId: id }), env);
+  env.TOTALS.store.delete('pf:' + id); // simulate TTL expiry
+  const url = new URL('http://localhost/profile?handle=' + profileBody.handle);
+  const res = await handleProfileGet(url, env);
+  assert.equal(res.status, 404);
+  assert.equal(await env.TOTALS.get('handle:' + profileBody.handle), null, 'mapping dropped');
 });

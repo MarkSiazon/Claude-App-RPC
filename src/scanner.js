@@ -208,11 +208,8 @@ function readHead(path, maxBytes = 65536) {
   }
 }
 
-// Parse a single transcript JSONL into a per-file summary.
-export function parseTranscript(filePath) {
-  const raw = readFileSync(filePath, 'utf8');
-  const lines = iterLines(raw);
-  const summary = {
+function blankTranscriptSummary() {
+  return {
     sessionId: null,
     project: null,
     cwd: null,
@@ -244,18 +241,31 @@ export function parseTranscript(filePath) {
     modelsUsed: {},       // raw model id → assistant turns
     byModel: {},          // pricing key → { turns, tokens, cost } (model split)
   };
-  const fileSet = new Set();
-  // Claude Code splits one assistant message (a single message.id) across
-  // several JSONL lines — one per content block (thinking / text / tool_use)
-  // — and repeats the SAME `usage` object on every line. Token/cost/turn
-  // counting must happen once per message.id, or a 3-block turn is counted 3×
-  // (this was the source of wildly inflated token + cost totals). Content
-  // blocks themselves are distinct per line, so those stay counted per line.
-  const usageCountedIds = new Set();
+}
+
+// Sliding window for assistant message-id dedup (see parseChunkInto). Blocks
+// of one message land on ADJACENT lines, so a small window catches every real
+// split while staying cheap to persist in the scan cache.
+const RECENT_IDS_MAX = 200;
+
+// Parse complete JSONL lines into `summary`, mutating it in place. `pstate`
+// carries the cross-chunk bookkeeping that incremental (append-only) parsing
+// needs to behave exactly like a full parse:
+//   recentIds — recently counted assistant message.ids. Claude Code splits
+//               one assistant message (a single message.id) across several
+//               JSONL lines — one per content block — repeating the SAME
+//               `usage` object on every line. Token/cost/turn counting must
+//               happen once per message.id, or a 3-block turn counts 3×.
+//               Content blocks themselves are distinct per line, so those
+//               stay counted per line.
+//   lastRec   — the previous chunk's final timestamped record, so the
+//               active-time gap across a chunk boundary still accrues.
+function parseChunkInto(text, summary, pstate) {
+  const fileSet = new Set(summary.files || []);
   // Records in their original order, retaining timestamps for per-day bucketing.
   const records = [];
 
-  for (const line of lines) {
+  for (const line of iterLines(text)) {
     if (!line) continue;
     const r = safeJson(line);
     if (!r) continue;
@@ -277,10 +287,13 @@ export function parseTranscript(filePath) {
       const turnModel = r.message?.model || summary.model;
       const u = r.message?.usage;
       // Count usage/cost/turn only the first time we see this message.id (see
-      // usageCountedIds note above). No id (rare/legacy) → count it.
+      // the pstate.recentIds note above). No id (rare/legacy) → count it.
       const msgId = r.message?.id;
-      const firstSeen = !msgId || !usageCountedIds.has(msgId);
-      if (msgId) usageCountedIds.add(msgId);
+      const firstSeen = !msgId || !pstate.recentIds.includes(msgId);
+      if (msgId && firstSeen) {
+        pstate.recentIds.push(msgId);
+        if (pstate.recentIds.length > RECENT_IDS_MAX) pstate.recentIds.shift();
+      }
       // Per-model split bucket, keyed by pricing key so cost/tokens/turns align.
       const mkey = turnModel ? pricingKeyFor(turnModel) : null;
       const mb = mkey ? (summary.byModel[mkey] ||= { turns: 0, tokens: 0, cost: 0 }) : null;
@@ -373,24 +386,84 @@ export function parseTranscript(filePath) {
   summary.files = Array.from(fileSet);
   if (records.length) {
     records.sort((a, b) => a.ts - b.ts);
-    summary.firstTs = records[0].ts;
-    summary.lastTs = records[records.length - 1].ts;
-    let active = 0;
-    for (let i = 1; i < records.length; i++) {
-      const prev = records[i - 1];
-      const gap = records[i].ts - prev.ts;
-      if (gap > 0 && gap < ACTIVE_GAP_CAP_MS) {
-        active += gap;
-        // Charge the gap's active time to the day/week/hour of the earlier record.
-        if (prev.day)  (summary.byDay[prev.day]   ||= blankDay()).activeMs += gap;
-        if (prev.week) (summary.byWeek[prev.week] ||= blankDay()).activeMs += gap;
-        if (prev.hour !== null && prev.hour !== undefined) {
-          (summary.byHour[prev.hour] ||= blankDay()).activeMs += gap;
+    if (!summary.firstTs || records[0].ts < summary.firstTs) summary.firstTs = records[0].ts;
+    const chunkLast = records[records.length - 1].ts;
+    if (!summary.lastTs || chunkLast > summary.lastTs) summary.lastTs = chunkLast;
+    // Charge each gap's active time to the day/week/hour of the earlier
+    // record. The first record's "earlier" is the previous chunk's last.
+    let prev = pstate.lastRec;
+    for (const rec of records) {
+      if (prev) {
+        const gap = rec.ts - prev.ts;
+        if (gap > 0 && gap < ACTIVE_GAP_CAP_MS) {
+          summary.activeMs += gap;
+          if (prev.day)  (summary.byDay[prev.day]   ||= blankDay()).activeMs += gap;
+          if (prev.week) (summary.byWeek[prev.week] ||= blankDay()).activeMs += gap;
+          if (prev.hour !== null && prev.hour !== undefined) {
+            (summary.byHour[prev.hour] ||= blankDay()).activeMs += gap;
+          }
         }
       }
+      prev = rec;
     }
-    summary.activeMs = active;
+    pstate.lastRec = prev;
   }
+}
+
+// Parse a single transcript JSONL into a per-file summary.
+//
+// With a prior cache entry (`prev`), parses only the bytes appended since the
+// last scan — transcripts are append-only, and an active session's multi-MB
+// file otherwise gets fully re-read every rescan tick. The entry carries
+// `_offset` (bytes consumed through the last complete line) and `_parse`
+// (the cross-chunk bookkeeping for parseChunkInto); anything that breaks the
+// append assumption (file shrank, entry predates these fields, `_offset`
+// null) falls back to a from-scratch parse.
+export function parseTranscript(filePath, prev = null) {
+  const st = statSync(filePath);
+  const canAppend = !!(prev && prev._parse && typeof prev._offset === 'number'
+    && st.size >= prev._offset);
+  const summary = canAppend ? structuredClone(prev) : blankTranscriptSummary();
+  const pstate = canAppend
+    ? { recentIds: (prev._parse.recentIds || []).slice(), lastRec: prev._parse.lastRec || null }
+    : { recentIds: [], lastRec: null };
+  const startOffset = canAppend ? prev._offset : 0;
+
+  let text = '';
+  const len = st.size - startOffset;
+  if (len > 0) {
+    let fd;
+    try {
+      fd = openSync(filePath, 'r');
+      const buf = Buffer.allocUnsafe(len);
+      const n = readSync(fd, buf, 0, len, startOffset);
+      text = buf.toString('utf8', 0, n);
+    } finally {
+      if (fd !== undefined) {
+        try { closeSync(fd); } catch { /* already closed */ }
+      }
+    }
+  }
+
+  // Consume through the last newline; \n is single-byte ASCII so the boundary
+  // is exact even with multi-byte content in the lines.
+  const lastNl = text.lastIndexOf('\n');
+  const complete = lastNl === -1 ? '' : text.slice(0, lastNl + 1);
+  const remainder = lastNl === -1 ? text : text.slice(lastNl + 1);
+  parseChunkInto(complete, summary, pstate);
+  let offset = startOffset + Buffer.byteLength(complete, 'utf8');
+  if (remainder.trim()) {
+    if (safeJson(remainder) !== null) {
+      // A complete final line that just isn't newline-terminated (fully
+      // written file). Count it, but mark the entry non-appendable — if more
+      // bytes ever land we can't tell whether they extend this line.
+      parseChunkInto(remainder, summary, pstate);
+      offset = null;
+    }
+    // else: a partial line mid-write — leave it for the next (append) read.
+  }
+  summary._offset = offset;
+  summary._parse = { recentIds: pstate.recentIds, lastRec: pstate.lastRec };
   return summary;
 }
 
@@ -426,12 +499,25 @@ function isSubagentPath(p) {
   return /[\\/]subagents[\\/]/.test(p);
 }
 
+// The daemon runs for weeks; these per-transcript caches would otherwise grow
+// one entry per file ever observed. LRU with a generous cap — the hot set is
+// the handful of live sessions, so an eviction just costs one re-read.
+const CACHE_MAX_ENTRIES = 512;
+function lruTouch(map, key, value) {
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  if (map.size > CACHE_MAX_ENTRIES) map.delete(map.keys().next().value);
+}
+
 // Pull the real cwd from the head of a transcript so live sessions can show
 // "my-app" instead of the slugified directory name.
 const cwdCache = new Map(); // path → { mtime, cwd }
 function readTranscriptCwd(path, mtimeMs) {
   const cached = cwdCache.get(path);
-  if (cached && cached.mtime === mtimeMs) return cached.cwd;
+  if (cached && cached.mtime === mtimeMs) {
+    lruTouch(cwdCache, path, cached);
+    return cached.cwd;
+  }
   let cwd = null;
   try {
     let seen = 0;
@@ -442,7 +528,7 @@ function readTranscriptCwd(path, mtimeMs) {
       if (r?.cwd) { cwd = r.cwd; break; }
     }
   } catch { /* transcript head unreadable — cwd stays null, project name falls back to slug */ }
-  cwdCache.set(path, { mtime: mtimeMs, cwd });
+  lruTouch(cwdCache, path, { mtime: mtimeMs, cwd });
   return cwd;
 }
 
@@ -480,7 +566,10 @@ export function readSessionTokens(path) {
   let st;
   try { st = statSync(path); } catch { return null; }
   const cached = sessionTokenCache.get(path);
-  if (cached && cached.mtime === st.mtimeMs) return cached.tokens;
+  if (cached && cached.mtime === st.mtimeMs) {
+    lruTouch(sessionTokenCache, path, cached);
+    return cached.tokens;
+  }
 
   // Transcripts are append-only JSONL. If the file only grew since the last
   // read, parse just the appended tail from the cached byte offset instead of
@@ -519,7 +608,7 @@ export function readSessionTokens(path) {
     }
   }
 
-  sessionTokenCache.set(path, { mtime: st.mtimeMs, size: st.size, offset: newOffset, tokens });
+  lruTouch(sessionTokenCache, path, { mtime: st.mtimeMs, size: st.size, offset: newOffset, tokens });
   return tokens;
 }
 
@@ -941,7 +1030,9 @@ export function scan({ projectsDir, projectsDirs, onProgress, force = false, ext
       continue;
     }
     try {
-      const summary = parseTranscript(fp);
+      // Hand the prior entry to parseTranscript so an active session's
+      // growing transcript parses only its appended tail (force = from scratch).
+      const summary = parseTranscript(fp, force ? null : cache.files[fp]);
       summary._sig = sig;
       summary.isSubagent = isSubagentPath(fp);
       cache.files[fp] = summary;
@@ -965,7 +1056,21 @@ export function scan({ projectsDir, projectsDirs, onProgress, force = false, ext
       removed += 1;
     }
   }
-  writeCache(cache);
+  const changed = scanned > 0 || removed > 0;
+  if (changed) {
+    writeCache(cache);
+  } else {
+    // Nothing parsed, nothing removed — the cache on disk is byte-identical,
+    // so skip rewriting it (it can be tens of MB) AND skip the aggregate
+    // recompute, UNLESS the local day has rolled since the aggregate was
+    // generated: streak / daysSinceFirst / hotspot-aging are derived from
+    // "today" and go stale at midnight even with no new data.
+    const existing = readAggregate();
+    if (existing && existing._v === CACHE_VERSION
+        && dayKey(existing.generatedAt || 0) === dayKey(Date.now())) {
+      return { aggregate: existing, scanned, skipped, removed, total: transcripts.length, dirs };
+    }
+  }
   const aggregate = aggregateFrom(cache);
   writeAggregate(aggregate);
   return { aggregate, scanned, skipped, removed, total: transcripts.length, dirs };

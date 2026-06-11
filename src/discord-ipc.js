@@ -133,6 +133,16 @@ export function formatActivity(activity = {}, pid) {
     if (activity.smallImageText) a.assets.small_text = activity.smallImageText;
   }
 
+  // Party — renders natively as "(2 of 4)" on the card. Same field names
+  // @xhayper used (partyId / partySize / partyMax); size requires both ends.
+  if (activity.partyId || (activity.partySize != null && activity.partyMax != null)) {
+    a.party = {};
+    if (activity.partyId) a.party.id = activity.partyId;
+    if (activity.partySize != null && activity.partyMax != null) {
+      a.party.size = [activity.partySize, activity.partyMax];
+    }
+  }
+
   if (activity.buttons?.length) a.buttons = activity.buttons;
 
   return { pid: pid ?? process?.pid ?? 0, activity: a };

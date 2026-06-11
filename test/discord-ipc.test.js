@@ -277,3 +277,20 @@ test('in-flight setActivity rejects if the connection drops', async (t) => {
   await client.login();
   await assert.rejects(() => client.user.setActivity({ details: 'x' }));
 });
+
+// ── Party size (concurrent sessions) ─────────────────────────────────────
+test('formatActivity maps party fields to Discord party shape', () => {
+  const { activity } = formatActivity({
+    details: 'x',
+    partyId: 'claude-rpc',
+    partySize: 2,
+    partyMax: 3,
+  });
+  assert.deepEqual(activity.party, { id: 'claude-rpc', size: [2, 3] });
+});
+
+test('formatActivity omits party when size is one-ended or absent', () => {
+  assert.equal('party' in formatActivity({ details: 'x' }).activity, false);
+  // size needs both ends; a lone partySize is dropped (no id either → no party)
+  assert.equal('party' in formatActivity({ details: 'x', partySize: 2 }).activity, false);
+});

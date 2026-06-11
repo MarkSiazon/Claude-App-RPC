@@ -233,3 +233,80 @@ test('parseTranscript: usage counted once per message.id across split lines', ()
   assert.equal(mk.tokens, 150, 'in+out once');
   rmSync(dir, { recursive: true });
 });
+
+// ── Incremental (append-only) re-parse ───────────────────────────────────
+
+test('parseTranscript: append-parse from a prior entry matches a full re-parse', () => {
+  const first = [
+    { type: 'user', sessionId: 's1', cwd: '/tmp/proj', timestamp: '2026-05-22T10:00:00Z',
+      message: { content: 'go' } },
+    { type: 'assistant', timestamp: '2026-05-22T10:00:30Z',
+      message: { id: 'msg_1', model: 'claude-opus-4-7',
+        usage: { input_tokens: 100, output_tokens: 50 },
+        content: [{ type: 'tool_use', name: 'Edit', input: { file_path: '/x.js', old_string: 'a', new_string: 'b\nc' } }] } },
+  ];
+  const appended = [
+    // Same message id continues across the boundary — usage must not double-count.
+    { type: 'assistant', timestamp: '2026-05-22T10:00:31Z',
+      message: { id: 'msg_1', model: 'claude-opus-4-7',
+        usage: { input_tokens: 100, output_tokens: 50 },
+        content: [{ type: 'text', text: 'done' }] } },
+    { type: 'user', sessionId: 's1', cwd: '/tmp/proj', timestamp: '2026-05-22T10:02:00Z',
+      message: { content: 'more' } },
+    { type: 'assistant', timestamp: '2026-05-22T10:02:30Z',
+      message: { id: 'msg_2', model: 'claude-opus-4-7',
+        usage: { input_tokens: 40, output_tokens: 60 },
+        content: [{ type: 'tool_use', name: 'Bash', input: { command: 'npm test' } }] } },
+  ];
+  const { dir, path } = makeTranscript(first);
+  const prev = parseTranscript(path);
+  assert.equal(typeof prev._offset, 'number', 'entry records its consumed-byte offset');
+
+  appendFileSync(path, appended.map((r) => JSON.stringify(r) + '\n').join(''));
+  const incremental = parseTranscript(path, prev);
+  const full = parseTranscript(path); // from-scratch reference
+
+  for (const k of ['inputTokens', 'outputTokens', 'userMessages', 'toolCalls',
+                   'activeMs', 'firstTs', 'lastTs', 'linesAdded', 'linesRemoved']) {
+    assert.deepEqual(incremental[k], full[k], `${k} matches full re-parse`);
+  }
+  assert.deepEqual(incremental.byDay, full.byDay, 'per-day buckets match');
+  assert.deepEqual(incremental.byModel, full.byModel, 'model split matches (msg_1 deduped across the boundary)');
+  assert.deepEqual(incremental.fileEdits, full.fileEdits);
+  assert.equal(incremental.bashCommands.npm, 1);
+  rmSync(dir, { recursive: true });
+});
+
+test('parseTranscript: a shrunk file falls back to a full re-parse', () => {
+  const { dir, path } = makeTranscript([
+    { type: 'assistant', timestamp: '2026-05-22T10:00:00Z',
+      message: { model: 'm', usage: { input_tokens: 100, output_tokens: 0 }, content: [] } },
+    { type: 'assistant', timestamp: '2026-05-22T10:00:10Z',
+      message: { model: 'm', usage: { input_tokens: 200, output_tokens: 0 }, content: [] } },
+  ]);
+  const prev = parseTranscript(path);
+  // Rewrite shorter (e.g. transcript replaced) — prev._offset > new size.
+  writeFileSync(path, JSON.stringify(
+    { type: 'assistant', timestamp: '2026-05-22T11:00:00Z',
+      message: { model: 'm', usage: { input_tokens: 7, output_tokens: 0 }, content: [] } }) + '\n');
+  const s = parseTranscript(path, prev);
+  assert.equal(s.inputTokens, 7, 'parsed from scratch, not stacked on the stale entry');
+  rmSync(dir, { recursive: true });
+});
+
+test('parseTranscript: trailing partial line is left for the next read', () => {
+  const { dir, path } = makeTranscript([
+    { type: 'assistant', timestamp: '2026-05-22T10:00:00Z',
+      message: { model: 'm', usage: { input_tokens: 10, output_tokens: 0 }, content: [] } },
+  ]);
+  // Simulate a mid-write line: no trailing newline, not valid JSON.
+  appendFileSync(path, '{"type":"assistant","message":{"usage":{"input_to');
+  const prev = parseTranscript(path);
+  assert.equal(prev.inputTokens, 10, 'partial line not counted');
+  assert.equal(typeof prev._offset, 'number', 'still appendable');
+  // Writer finishes the line; the append-parse picks up the whole record.
+  appendFileSync(path, 'kens":5,"output_tokens":0}}}\n');
+  const s = parseTranscript(path, prev);
+  assert.equal(s.inputTokens, 15, 'completed line counted exactly once');
+  rmSync(dir, { recursive: true });
+});

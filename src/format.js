@@ -81,11 +81,17 @@ function plural(n, sing, plur) {
   return `${fmtNum(n)} ${word}`;
 }
 
-// claude-opus-4-7 → Opus 4.7 · claude-sonnet-4-6-20250514 → Sonnet 4.6
+// claude-opus-4-7 → Opus 4.7 · claude-sonnet-4-6-20250514 → Sonnet 4.6 ·
+// claude-fable-5 → Fable 5 (no minor version). Version digits are capped at
+// two so a trailing date stamp ("…-5-20260301") can't be read as a minor.
 function humanModel(id) {
   if (!id || typeof id !== 'string') return 'Claude';
-  const m = id.match(/(opus|sonnet|haiku)[^\d]*(\d+)[-.](\d+)/i);
-  if (m) return `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}.${m[3]}`;
+  const m = id.match(/(opus|sonnet|haiku|fable)[^\d]*(\d{1,2})(?!\d)(?:[-.](\d{1,2})(?!\d))?/i);
+  if (m) {
+    const name = `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()}`;
+    return m[3] ? `${name} ${m[2]}.${m[3]}` : `${name} ${m[2]}`;
+  }
+  if (/fable/i.test(id)) return 'Fable';
   if (/opus/i.test(id)) return 'Opus';
   if (/sonnet/i.test(id)) return 'Sonnet';
   if (/haiku/i.test(id)) return 'Haiku';
@@ -841,13 +847,11 @@ export function applyIdle(state, cfg = {}) {
   // Local state is fresh.
   if (state.status === 'idle') {
     // No transcripts being written anywhere on disk — Claude Code may have
-    // closed without a SessionEnd hook (force-quit, OS sleep, crash). With
-    // idleWhenOpen (default) we keep showing 'idle': the session hasn't been
-    // authoritatively closed and the staleMs dormancy backstop above will
-    // still clear it if Claude is truly gone. Set idleWhenOpen:false to go
-    // straight to stale here — clears Discord ~90-120s after the last write,
-    // at the cost of dropping the card whenever you pause for a couple
-    // minutes with the session still open.
+    // closed without a SessionEnd hook (force-quit, OS sleep, crash). By
+    // default (idleWhenOpen=false) go straight to stale so a closed terminal
+    // clears the card within ~90-120s of the last write. Opt in with
+    // idleWhenOpen:true to keep showing 'idle' through short pauses; the
+    // staleMs dormancy backstop above still clears it if Claude is truly gone.
     if (liveSessions.length === 0 && !idleWhenOpen) return staleWipe(state);
     return state;
   }
@@ -855,10 +859,10 @@ export function applyIdle(state, cfg = {}) {
     // Hook channel is quiet, but a live transcript was modified recently?
     // Keep "working" instead of dropping to "idle".
     if (liveAgeMs <= idleMs) return state;
-    // Hooks quiet AND no live transcripts. With idleWhenOpen (default) the
+    // Hooks quiet AND no live transcripts. By default (idleWhenOpen=false)
+    // treat Claude as gone and go stale now. With idleWhenOpen:true the
     // session is treated as open-but-paused and drops to idle; the staleMs
-    // backstop above clears it if Claude is actually gone. Set
-    // idleWhenOpen:false to go straight to stale here (old behavior).
+    // backstop above clears it later if Claude actually exited.
     if (liveSessions.length === 0 && !idleWhenOpen) return staleWipe(state);
     // Going idle — wipe "current activity" indicators so rotation frames
     // gated on filesEdited / currentFile / currentTool stop showing stale

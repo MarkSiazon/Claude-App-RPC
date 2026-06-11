@@ -29,8 +29,13 @@ const SCHEMA_VERSION = 1;
 const MAX_DELTA_SESSIONS = 100_000;       // per single report — bigger gets rejected
 const MAX_DELTA_TOKENS   = 5_000_000_000; // 5B; ~5 years of heavy use
 const SEEN_TTL_SECONDS   = 30 * 24 * 60 * 60;
-const RATE_WINDOW_SEC    = 60;            // 1 report/minute/instance
-const RATE_LIMIT_KEY     = (id) => `rate:${id}`;
+const RATE_WINDOW_SEC    = 60;            // 1 report/minute/instance/endpoint
+// Scoped per endpoint: /report and /profile used to share one `rate:<id>`
+// key, so the daemon's back-to-back community + profile flushes meant the
+// profile publish ALWAYS 429'd whenever community had a delta — board totals
+// only updated on cycles with nothing to report. Old unscoped keys expire
+// within 60s of a deploy, so no migration is needed.
+const RATE_LIMIT_KEY     = (id, scope) => `rate:${scope}:${id}`;
 
 // IP-scoped fixed-window limiter, layered on top of the per-instance one.
 // The per-instance limiter is keyed on an attacker-supplied UUID, so rotating
@@ -138,11 +143,11 @@ function clientIp(request) {
   return request.headers.get('CF-Connecting-IP') || null;
 }
 
-// Rate-limit: one report per instance per RATE_WINDOW_SEC. Cheap to
-// implement on KV via a TTL'd marker. Returns true if the report should
-// be accepted (no marker present), false if rate-limited.
-async function rateOk(env, instanceId) {
-  const key = RATE_LIMIT_KEY(instanceId);
+// Rate-limit: one report per instance per RATE_WINDOW_SEC, scoped per
+// endpoint. Cheap to implement on KV via a TTL'd marker. Returns true if the
+// report should be accepted (no marker present), false if rate-limited.
+async function rateOk(env, instanceId, scope = 'report') {
+  const key = RATE_LIMIT_KEY(instanceId, scope);
   const cur = await env.TOTALS.get(key);
   if (cur) return false;
   // expirationTtl is seconds; KV honors a minimum of 60s, which is what we want.
@@ -167,7 +172,7 @@ export async function handleReport(request, env) {
   if (!(await ipRateOk(env, clientIp(request)))) {
     return jsonError(429, 'rate limited (ip)');
   }
-  if (!(await rateOk(env, body.instanceId))) {
+  if (!(await rateOk(env, body.instanceId, 'report'))) {
     return jsonError(429, 'rate limited');
   }
 
@@ -409,12 +414,20 @@ export async function handleProfile(request, env) {
   if (why) return jsonError(400, why);
 
   if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
-  if (!(await rateOk(env, body.instanceId)))     return jsonError(429, 'rate limited');
+  if (!(await rateOk(env, body.instanceId, 'profile'))) return jsonError(429, 'rate limited');
 
   const handle = normHandle(body.handle);
-  // Handle uniqueness: a handle belongs to exactly one instanceId.
+  // Handle uniqueness: a handle belongs to exactly one instanceId — but only
+  // while that instance's profile still exists. Unverified pf: rows expire
+  // after 90 days while handle:<h> has no TTL, so an expired squatter's
+  // handle would otherwise stay claimed forever. If the owning profile is
+  // gone, release the orphaned mapping to the new claimant.
   const owner = await env.TOTALS.get(HANDLE_KEY(handle));
-  if (owner && owner !== body.instanceId) return jsonError(409, 'handle taken');
+  if (owner && owner !== body.instanceId) {
+    const ownerProfile = await getProfile(env, owner);
+    if (ownerProfile) return jsonError(409, 'handle taken');
+    try { await env.TOTALS.delete(HANDLE_KEY(handle)); } catch { /* best-effort */ }
+  }
 
   const now = Date.now();
   const prev = (await getProfile(env, body.instanceId))
@@ -469,7 +482,12 @@ export async function handleProfileGet(url, env) {
   const owner = await env.TOTALS.get(HANDLE_KEY(handle));
   if (!owner) return jsonError(404, 'no such profile');
   const p = await getProfile(env, owner);
-  if (!p) return jsonError(404, 'no such profile');
+  if (!p) {
+    // The owning pf: row expired (unverified 90-day TTL) — drop the orphaned
+    // handle mapping so the handle frees up for re-registration immediately.
+    try { await env.TOTALS.delete(HANDLE_KEY(handle)); } catch { /* best-effort */ }
+    return jsonError(404, 'no such profile');
+  }
   return new Response(JSON.stringify({ schemaVersion: SCHEMA_VERSION, profile: publicProfile(p), ts: Date.now() }, null, 2), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
   });

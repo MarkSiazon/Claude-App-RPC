@@ -603,3 +603,11 @@ test('applyTrigger: ignores expired commands, non-matches, and stale state', () 
   assert.equal(applyTrigger({ status: 'stale', lastBashCommand: 'docker build .', lastBashAt: Date.now() }, cfg).status, 'stale', 'never over stale');
   assert.equal(applyTrigger({ status: 'working' }, {}).status, 'working', 'no triggers configured');
 });
+
+test('humanModel: fable ids render as Fable 5 (no fake minor from date stamps)', () => {
+  assert.equal(humanModel('claude-fable-5'), 'Fable 5');
+  assert.equal(humanModel('claude-fable-5-20260301'), 'Fable 5', 'date suffix is not a minor version');
+  assert.equal(humanModel('claude-opus-4-8'), 'Opus 4.8');
+  // Legacy version-first ids still fall through to the bare tier name.
+  assert.equal(humanModel('claude-3-5-sonnet-20241022'), 'Sonnet');
+});

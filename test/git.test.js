@@ -65,3 +65,33 @@ test('detectLastCommitSubject: returns "" outside any repo', () => {
   assert.equal(detectLastCommitSubject(null), '');
   assert.equal(detectLastCommitSubject(''), '');
 });
+
+// ── Worktree / submodule `.git` FILE support ─────────────────────────────
+// In a linked worktree `.git` is a one-line file ("gitdir: <path>") pointing
+// at <main>/.git/worktrees/<name>, which holds HEAD + a `commondir` file back
+// to the main .git (where config lives). Hand-built fixture — no git binary.
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+test('worktree: branch, repo, and github URL resolve through the .git file', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rpc-git-'));
+  const mainGit = join(root, 'main', '.git');
+  const wtGitDir = join(mainGit, 'worktrees', 'feature');
+  mkdirSync(wtGitDir, { recursive: true });
+  writeFileSync(join(mainGit, 'config'),
+    '[remote "origin"]\n\turl = git@github.com:alice/my-app.git\n');
+  writeFileSync(join(wtGitDir, 'HEAD'), 'ref: refs/heads/feature/x\n');
+  writeFileSync(join(wtGitDir, 'commondir'), '../..\n');
+  writeFileSync(join(wtGitDir, 'COMMIT_EDITMSG'), 'feat: worktree commit\n');
+
+  const wt = join(root, 'wt-feature');
+  mkdirSync(wt);
+  writeFileSync(join(wt, '.git'), `gitdir: ${wtGitDir}\n`);
+
+  assert.equal(detectGitBranch(wt), 'feature/x', 'HEAD read from the per-worktree gitdir');
+  assert.equal(detectGithubUrl(wt), 'https://github.com/alice/my-app', 'config read from the common dir');
+  assert.equal(detectGitRepo(wt), 'my-app');
+  assert.equal(detectLastCommitSubject(wt), 'feat: worktree commit');
+  rmSync(root, { recursive: true });
+});

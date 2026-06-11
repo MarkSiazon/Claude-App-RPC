@@ -22,6 +22,7 @@ import { maybeNudge } from './nudge.js';
 import { badgeSvg } from './badge.js';
 import { fmtCost } from './pricing.js';
 import { addPrivateCwd, removePrivateCwd, listPrivateCwds, resolveVisibility } from './privacy.js';
+import { parseDuration, setPause, clearPause, pauseUntil } from './pause.js';
 import { loadConfig, hasUserConfig } from './config.js';
 import * as lb from './leaderboard.js';
 import { VERSION } from './version.js';
@@ -932,6 +933,78 @@ function doPrivacy() {
   console.log('');
 }
 
+// ── Pause / resume ───────────────────────────────────────────────────────
+//
+// `claude-rpc pause [30m|2h|1h30m|90]` → snooze the Discord card globally
+// (default 1h). `claude-rpc resume` (or `pause off`) lifts it early; expiry
+// lifts it automatically. Privacy controls are per-cwd — this is the
+// "I'm screen-sharing" switch that hides everything regardless of project.
+
+function fmtClock(ts) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function doPause(argv) {
+  const arg = (argv[0] || '').toLowerCase();
+  if (arg === 'off' || arg === 'resume') return doResume();
+  if (arg === 'status') {
+    const until = pauseUntil();
+    if (until) console.log(`${c.yellow}●${c.reset} paused until ${c.cyan}${fmtClock(until)}${c.reset}`);
+    else console.log(`${c.green}○${c.reset} not paused`);
+    return;
+  }
+  const ms = parseDuration(argv[0]);
+  if (ms === null) {
+    fail(`could not parse duration: ${argv[0]}`,
+      { hint: 'use 30m, 2h, 1h30m, or a bare number of minutes (default: 1h)', code: EX_USER_ERROR });
+  }
+  const until = setPause(ms);
+  console.log(`${c.green}✓${c.reset} presence paused until ${c.cyan}${fmtClock(until)}${c.reset}`);
+  console.log(`${c.dim}  the daemon clears the card within a few seconds. Resume early with ${c.reset}${c.cyan}claude-rpc resume${c.reset}`);
+}
+
+function doResume() {
+  const was = pauseUntil();
+  clearPause();
+  if (was) {
+    console.log(`${c.green}✓${c.reset} presence resumed ${c.dim}(was paused until ${fmtClock(was)})${c.reset}`);
+  } else {
+    console.log(`${c.dim}presence wasn't paused.${c.reset}`);
+  }
+}
+
+// ── Export ───────────────────────────────────────────────────────────────
+//
+// `claude-rpc export [--csv] [--out <file>]` — the full aggregate as JSON, or
+// the per-day breakdown as CSV (same shape the dashboard's /api/export routes
+// serve, without needing the server up). Writes to stdout unless --out, so it
+// pipes cleanly into jq / a spreadsheet import.
+
+async function doExport(argv) {
+  const csv = argv.includes('--csv');
+  let out = '';
+  const i = argv.findIndex((a) => a === '--out' || a === '-o');
+  if (i !== -1) out = argv[i + 1] || '';
+  const aggregate = readAggregate();
+  if (!aggregate) {
+    fail('no aggregate yet — nothing to export', { hint: 'run `claude-rpc scan` first', code: EX_BAD_STATE });
+  }
+  let payload;
+  if (csv) {
+    const { aggregateToCsv } = await import('./server/api.js');
+    payload = aggregateToCsv(aggregate);
+  } else {
+    payload = JSON.stringify(aggregate, null, 2) + '\n';
+  }
+  if (out) {
+    writeFileSync(out, payload);
+    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${out}${c.reset} (${payload.length} bytes, ${csv ? 'CSV' : 'JSON'})`);
+  } else {
+    process.stdout.write(payload);
+  }
+}
+
 // ── Community totals ─────────────────────────────────────────────────────
 //
 // `claude-rpc community`         → show current state + endpoint
@@ -1407,6 +1480,9 @@ function help() {
     ['mcp install', 'Wire the stats MCP server into Claude Code (one command)'],
     ['mcp',       'Run the MCP server (stdio) — exposes your stats to Claude'],
     ['wrapped',   'Open your animated year-in-review (Claude Wrapped)'],
+    ['pause',     'Snooze the Discord card globally (pause [30m|2h], default 1h)'],
+    ['resume',    'Lift a pause early'],
+    ['export',    'Dump the aggregate as JSON, or daily rows as CSV (--csv --out)'],
     ['private',   'Mark the current directory as private (hide from Discord)'],
     ['public',    'Un-mark the current directory'],
     ['privacy',   'Show resolved visibility for the current directory'],
@@ -1515,6 +1591,10 @@ const packagedDefault = IS_PACKAGED && !cmd;
       break;
     }
     case 'wrapped':   process.env.CLAUDE_RPC_OPEN_PATH = '/wrapped'; await import('./server/index.js'); break;
+    case 'pause':     doPause(process.argv.slice(3)); break;
+    case 'resume':
+    case 'unpause':   doResume(); break;
+    case 'export':    await doExport(process.argv.slice(3)); break;
     case 'private':   doPrivate(); break;
     case 'public':    doPublic(); break;
     case 'privacy':   doPrivacy(); break;

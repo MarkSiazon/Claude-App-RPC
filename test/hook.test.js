@@ -263,3 +263,16 @@ test('PostToolUse: gh pr create sets justShippedKind=pr', () => {
 
 // Cleanup
 test.after?.(() => { try { rmSync(TMP, { recursive: true, force: true }); } catch {} });
+
+test('classifyShip: separators inside quotes do not create fake segments', () => {
+  // The `&&` lives inside the quoted string — previously this split into a
+  // segment whose leading command was `git push` and false-fired.
+  assert.equal(classifyShip('echo "run git push && rejoice"'), null);
+  assert.equal(classifyShip("echo 'git commit -m x; git push'"), null);
+  // Real ship commands with quoted args (incl. separators in the message)
+  // still classify.
+  assert.equal(classifyShip('git commit -m "fix: a && b; c"'), 'commit');
+  assert.equal(classifyShip('git commit -m "x" && git push'), 'push');
+  // Unbalanced quote — string is left as-is, detection still works.
+  assert.equal(classifyShip('git commit -m "unterminated'), 'commit');
+});

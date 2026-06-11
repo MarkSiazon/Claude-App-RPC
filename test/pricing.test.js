@@ -80,3 +80,17 @@ test('fmtCost: round dollars no decimals', () => {
 test('fmtCost: zero collapses to "$0"', () => {
   assert.equal(fmtCost(0), '$0');
 });
+
+test('pricingKeyFor: fable tier resolves with and without date suffix', () => {
+  assert.equal(pricingKeyFor('claude-fable-5'), 'fable-5');
+  assert.equal(pricingKeyFor('claude-fable-5-20260301'), 'fable-5');
+  assert.equal(pricingKeyFor('claude-fable-9'), 'fable', 'unknown version → generic fable');
+});
+
+test('costFor: fable bills above opus, opus 4.6+ at current list rates', () => {
+  const usage = { input_tokens: 1_000_000, output_tokens: 0 };
+  assert.equal(costFor({ model: 'claude-fable-5', usage }), 10, '$10/MTok input');
+  assert.equal(costFor({ model: 'claude-opus-4-8', usage }), 5, '$5/MTok input');
+  assert.equal(costFor({ model: 'claude-opus-4-6', usage }), 5);
+  assert.equal(costFor({ model: 'claude-opus-4-20250514', usage }), 15, '4.0/4.1-era keeps launch pricing');
+});

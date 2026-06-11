@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 import { writeFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { basename, dirname } from 'node:path';
 import { Client } from './discord-ipc.js';
 import { readState } from './state.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
+import { pauseUntil } from './pause.js';
 import { loadConfig } from './config.js';
 import { migrateConfig } from './install.js';
 import { desktopNotify, postWebhook, shouldWebhook, shouldNotify } from './notify.js';
 import { humanProject } from './format.js';
-import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH } from './paths.js';
+import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH, PAUSE_PATH } from './paths.js';
 
 if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
 
@@ -232,7 +233,8 @@ function buildActivity(opts = {}) {
   } else if (config.modelAssets && state.model && state.status !== 'stale') {
     const m = String(state.model).toLowerCase();
     let pick = null;
-    if (m.includes('opus'))   pick = config.modelAssets.opus;
+    if (m.includes('fable'))       pick = config.modelAssets.fable;
+    else if (m.includes('opus'))   pick = config.modelAssets.opus;
     else if (m.includes('sonnet')) pick = config.modelAssets.sonnet;
     else if (m.includes('haiku'))  pick = config.modelAssets.haiku;
     if (!pick) pick = config.modelAssets.default;
@@ -283,6 +285,16 @@ function buildActivity(opts = {}) {
       url: fillTemplate(b.url, vars),
     }));
   }
+
+  // Concurrent sessions render natively via Discord's party field — the card
+  // shows "(2 of 2)" with no template work. Only attached when more than one
+  // live session exists (a party of one is noise). Opt out: showPartySize:false.
+  const liveCount = (state.liveSessions || []).length;
+  if (config.showPartySize !== false && liveCount > 1) {
+    activity.partyId = 'claude-rpc';
+    activity.partySize = liveCount;
+    activity.partyMax = liveCount;
+  }
   return activity;
 }
 
@@ -327,7 +339,11 @@ async function pushPresence() {
 
     const hideWhenStale = config.hideWhenStale !== false;
     const privacyHidden = resolved._privacy?.visibility === 'hidden';
-    if ((resolved.status === 'stale' && hideWhenStale) || privacyHidden) {
+    // Global snooze (`claude-rpc pause`) — clears the card while the deadline
+    // is in the future. Re-checked every tick, so expiry resumes presence
+    // automatically (the 'cleared' stamp differs from the next frame's hash).
+    const pausedUntil = pauseUntil();
+    if ((resolved.status === 'stale' && hideWhenStale) || privacyHidden || pausedUntil) {
       const stamp = 'cleared';
       if (lastPayloadHash === stamp) return;
       lastPayloadHash = stamp;
@@ -335,7 +351,9 @@ async function pushPresence() {
       // elapsed timer rather than counting from a previous session.
       effectiveSessionStart = null;
       await client.user.clearActivity();
-      const reason = privacyHidden ? 'privacy=hidden in this project' : 'stale — Claude Code not running';
+      const reason = pausedUntil
+        ? `paused until ${new Date(pausedUntil).toLocaleTimeString()}`
+        : privacyHidden ? 'privacy=hidden in this project' : 'stale — Claude Code not running';
       log(`Presence cleared (${reason})`);
       return;
     }
@@ -414,61 +432,45 @@ function scheduleReconnect(reason = 'reconnect') {
 }
 
 function watchFiles() {
-  let stateTimer = null;
-  if (existsSync(STATE_PATH)) {
-    watch(STATE_PATH, () => {
-      clearTimeout(stateTimer);
-      stateTimer = setTimeout(pushPresence, 250);
-    });
-  }
-  // config.json may not exist yet on a fresh install where the daemon starts
-  // before `setup` seeds it (or if the user deletes it). watch() on a missing
-  // path throws ENOENT synchronously, which would crash startup — exactly the
-  // failure loadConfig was hardened against. Guard it, and if the file is
-  // absent, poll for its creation and attach the watcher once it lands.
-  const watchConfig = () => {
-    watch(CONFIG_PATH, () => {
-      log('Config changed — reloading');
-      config = loadConfigWithLog();
-      lastPayloadHash = '';
-      pushPresence();
-    });
-  };
-  if (existsSync(CONFIG_PATH)) {
-    watchConfig();
-  } else {
-    let configTimer = null;
-    const dir = dirname(CONFIG_PATH);
-    if (existsSync(dir)) {
-      const dirWatcher = watch(dir, () => {
-        if (!existsSync(CONFIG_PATH)) return;
-        clearTimeout(configTimer);
-        configTimer = setTimeout(() => {
-          try {
-            dirWatcher.close();
-          } catch {
-            /* already closed */
-          }
-          log('Config appeared — reloading');
-          config = loadConfigWithLog();
-          lastPayloadHash = '';
-          watchConfig();
-          pushPresence();
-        }, 250);
+  // Watch DIRECTORIES, not files. Every watched file here is written via
+  // tmp+rename (state.js, the scanner, the settings GUI), and inotify tracks
+  // the inode — a watcher attached to the file path goes silent after the
+  // first rename. A directory watcher survives renames AND works when the
+  // file doesn't exist yet (fresh install where the daemon starts before the
+  // first hook / before `setup` seeds config.json). Events are filtered by
+  // filename where the platform reports one; the rare null-filename event
+  // just costs one debounced no-op push (the payload hash dedupes it).
+  const watchDirFor = (targetPath, label, onChange, extraNames = []) => {
+    const dir = dirname(targetPath);
+    const names = new Set([basename(targetPath), ...extraNames]);
+    if (!existsSync(dir)) return;
+    let timer = null;
+    try {
+      watch(dir, (event, filename) => {
+        if (filename && !names.has(filename)) return;
+        clearTimeout(timer);
+        timer = setTimeout(onChange, 250);
       });
+    } catch (e) {
+      log(`watch failed for ${label} (poll fallback still covers it):`, e.message);
     }
-  }
-  if (existsSync(AGGREGATE_PATH)) {
-    let aggTimer = null;
-    watch(AGGREGATE_PATH, () => {
-      clearTimeout(aggTimer);
-      aggTimer = setTimeout(() => {
-        aggregate = readAggregate() || aggregate;
-        lastPayloadHash = '';
-        pushPresence();
-      }, 250);
-    });
-  }
+  };
+
+  // state.json and pause.json share STATE_DIR — one watcher serves both, so
+  // a `claude-rpc pause` clears the card on the next debounce, not the next
+  // 4s tick. The filename filter keeps daemon.log appends from triggering it.
+  watchDirFor(STATE_PATH, 'state', pushPresence, [basename(PAUSE_PATH)]);
+  watchDirFor(CONFIG_PATH, 'config', () => {
+    log('Config changed — reloading');
+    config = loadConfigWithLog();
+    lastPayloadHash = '';
+    pushPresence();
+  });
+  watchDirFor(AGGREGATE_PATH, 'aggregate', () => {
+    aggregate = readAggregate() || aggregate;
+    lastPayloadHash = '';
+    pushPresence();
+  });
 
   // Mtime-poll fallback. fs.watch on Windows occasionally drops events
   // when the writer uses an atomic-rename pattern (which `state.js` does

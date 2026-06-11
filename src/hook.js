@@ -56,8 +56,17 @@ function shipKindForSegment(seg) {
 // leading command is git/gh — so a quoted mention ("git push later" inside an
 // echo or a commit message) no longer false-fires. Tolerates env prefixes,
 // sudo/time, chained commands, and git global flags.
+//
+// Quoted spans are blanked BEFORE splitting: separators inside quotes
+// (`echo "run git push && rejoice"`) used to create a fake segment whose
+// leading command was git. The real command's own quoted args (`git commit
+// -m "msg"`) classify the same with or without the message text, so blanking
+// is lossless for detection. An unbalanced quote leaves the string untouched.
 export function classifyShip(cmd) {
-  const segments = String(cmd || '').split(/[;&|\n]+/);
+  const blanked = String(cmd || '')
+    .replace(/'[^']*'/g, ' ')
+    .replace(/"(?:\\.|[^"\\])*"/g, ' ');
+  const segments = blanked.split(/[;&|\n]+/);
   const found = new Set();
   for (const seg of segments) {
     const k = shipKindForSegment(seg);

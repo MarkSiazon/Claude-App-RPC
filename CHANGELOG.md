@@ -2,6 +2,30 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.14.0] - 2026-06-11
+
+**Added**
+
+- **`claude-rpc pause [30m|2h]` / `claude-rpc resume`** — a global presence snooze. Privacy controls are per-project; this is the "I'm screen-sharing for an hour" switch that clears the Discord card everywhere, then resumes automatically when the timer expires (default 1h). The marker lives in the tmp state dir, so a reboot can't leave you paused forever.
+- **`claude-rpc export [--csv] [--out <file>]`** — dump the full aggregate as JSON, or the per-day breakdown as CSV, straight from the CLI. Same data the dashboard's export routes serve, without starting the server.
+- **Concurrent sessions show as a native Discord party** — with two or more live sessions the card now reads "(2 of 2)" via Discord's party field, instead of relying on a rotation frame. Opt out with `showPartySize: false`.
+
+**Fixed**
+
+- **Worker: profile publishes were silently rate-limited on almost every flush.** `/report` and `/profile` shared one per-instance rate key, and the daemon flushes community totals then the profile back-to-back — so whenever community had a delta, the profile publish 429'd and the board only updated on cycles with nothing to report. Rate keys are now scoped per endpoint. *(Needs a `wrangler deploy`.)*
+- **Worker: expired profiles no longer squat their handle forever.** Unverified profiles expire after 90 days, but the `handle:` mapping had no TTL — the handle stayed claimed by a dead row and every new claimant got 409 "handle taken". An orphaned handle is now released on the next claim (and cleaned up when a profile lookup 404s).
+- **Worktrees and submodules get branch / repo / GitHub-button detection.** `git.js` assumed `.git` is a directory; in a linked worktree it's a `gitdir:` pointer file, so detection silently vanished — increasingly common now that agents work in worktrees. The pointer (and the worktree's `commondir`) is now followed for HEAD, config, and the just-shipped commit subject.
+- **Fable 5 is recognized end-to-end.** `claude-fable-5` previously rendered as just "Claude" on the card, billed at Sonnet rates in cost estimates, and missed `modelAssets` art. Now: "Fable 5", $10/$50 per MTok, and a `modelAssets.fable` slot. Opus 4.6+ pricing also updated to current list rates ($5/$25 — it had been sitting at the 4.1-era $15/$75) and `claude-opus-4-8` added.
+- **Quoted shell separators can't fake a ship celebration.** `echo "run git push && rejoice"` split on the `&&` inside the quotes and classified as a push; quoted spans are now blanked before splitting.
+- **Stale comments in `applyIdle` contradicted the actual `idleWhenOpen` default** (false); they now describe the real behavior.
+
+**Changed**
+
+- **Scans skip disk writes when nothing changed.** The 5-minute rescan rewrote the full scan cache (potentially tens of MB) and recomputed + rewrote the aggregate even when zero transcripts changed. No-op scans now return the existing aggregate untouched — recomputing only when data changed or the local day rolled (streaks and "today" fields go stale at midnight).
+- **Active transcripts parse incrementally.** A live session's growing JSONL was fully re-read and re-parsed on every rescan; the scan cache now records a byte offset per transcript and parses only the appended tail (the same append-only trick `readSessionTokens` already used). Anything that breaks the append assumption falls back to a full parse.
+- **The daemon watches directories, not files.** `state.json` and `aggregate.json` are written via atomic rename, which kills an inode-based file watcher after the first write; the 4s tick and 30s poll were silently carrying the load. Directory watchers survive renames, work before the file first exists, and also pick up `pause.json` instantly.
+- **The daemon's per-transcript caches are LRU-capped** (512 entries) instead of growing one entry per file ever observed across a weeks-long run.
+
 ## [0.13.7] - 2026-06-06
 
 **Fixed**
