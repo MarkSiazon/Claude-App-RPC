@@ -1,7 +1,7 @@
 {
   "name": "claude-rpc-vscode",
-  "displayName": "Claude RPC",
-  "description": "Status bar companion for the claude-rpc CLI — see what your AI coding session is doing (working / thinking / waiting on you), session tokens, and lifetime stats, read from claude-rpc's local state files. Pause or resume the Discord presence card without leaving the editor. Never tracks your own editor activity.",
+  "displayName": "Claude RPC Presence",
+  "description": "Live Claude Code status in the status bar \u2014 what Claude is doing (working / thinking / waiting on you), session tokens, and lifetime stats, read from claude-rpc's state files. Pause or resume the Discord card without leaving the editor. Tracks Claude Code only \u2014 never your editor activity.",
   "version": "0.1.1",
   "publisher": "rarfile",
   "license": "MIT",
@@ -13,17 +13,42 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
-  "keywords": ["claude-rpc", "discord", "rich presence", "status bar"],
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude-rpc",
+    "discord",
+    "rich presence",
+    "status bar"
+  ],
   "main": "./extension.js",
-  "extensionKind": ["workspace", "ui"],
-  "activationEvents": ["onStartupFinished"],
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "commands": [
-      { "command": "claudeRpc.menu", "title": "Claude RPC: Menu" },
-      { "command": "claudeRpc.pause", "title": "Claude RPC: Pause Discord Presence" },
-      { "command": "claudeRpc.resume", "title": "Claude RPC: Resume Discord Presence" },
-      { "command": "claudeRpc.openDashboard", "title": "Claude RPC: Open Dashboard" }
+      {
+        "command": "claudeRpc.menu",
+        "title": "Claude RPC: Menu"
+      },
+      {
+        "command": "claudeRpc.pause",
+        "title": "Claude RPC: Pause Discord Presence"
+      },
+      {
+        "command": "claudeRpc.resume",
+        "title": "Claude RPC: Resume Discord Presence"
+      },
+      {
+        "command": "claudeRpc.openDashboard",
+        "title": "Claude RPC: Open Dashboard"
+      }
     ],
     "configuration": {
       "title": "Claude RPC",
@@ -47,7 +72,7 @@
         "claudeRpc.statusBarPriority": {
           "type": "number",
           "default": 10000,
-          "description": "Placement weight among left-aligned status bar items — higher appears further left. The default outranks virtually every other extension's item. Applies immediately."
+          "description": "Placement weight among left-aligned status bar items \u2014 higher appears further left. The default outranks virtually every other extension's item. Applies immediately."
         }
       }
     }
