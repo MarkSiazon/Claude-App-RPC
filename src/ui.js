@@ -43,12 +43,21 @@ export const EX_USER_ERROR = 1;
 export const EX_SYS_ERROR  = 2;
 export const EX_BAD_STATE  = 3;
 
-// Print a one-line message plus an indented dim hint on the next line.
-// Hint is the tired-user safety net: every failure surface tells you
-// what to type next. Empty hint omits the second line.
+// Hint lines sit directly under the message they belong to, aligned with the
+// label (the symbol column differs between TTY glyphs and [fail]-style tags).
+const HINT_INDENT = ' '.repeat(TTY ? 5 : 10);
+
+export function hintLine(text, stream = process.stdout) {
+  stream.write(`${HINT_INDENT}${c.gray}↳ ${text}${c.reset}\n`);
+}
+
+// Print a one-line message plus aligned dim hint line(s) below it. A hint is
+// the tired-user safety net: it tells you what to type next. Accepts a single
+// string or an array (one ↳ line each); empty omits them.
 function withHint(sym, label, hint, stream = process.stdout) {
   stream.write(`  ${sym}  ${label}\n`);
-  if (hint) stream.write(`        ${c.gray}↳ ${hint}${c.reset}\n`);
+  const hints = Array.isArray(hint) ? hint : (hint ? [hint] : []);
+  for (const h of hints) hintLine(h, stream);
 }
 
 export function ok(label, detail = '') {
@@ -63,11 +72,11 @@ export function warn(label, hint = '') {
   withHint(SYM_WARN, label, hint);
 }
 
-// Print a failure with a hint and exit with the given code. The hint is
-// the difference between a frustrated user and a fixed user — always
-// supply one when you can, and default it to `claude-rpc doctor` when
-// you have no better idea.
-export function fail(label, { hint = 'run `claude-rpc doctor` for a full diagnostic', code = EX_USER_ERROR } = {}) {
+// Print a failure with an optional hint and exit with the given code. Hints
+// must be contextual: point at `claude-rpc doctor` only for local wiring or
+// state problems it actually diagnoses — for usage errors, remote rejections,
+// and network failures, give a directly useful hint or none at all.
+export function fail(label, { hint = '', code = EX_USER_ERROR } = {}) {
   withHint(SYM_FAIL, label, hint, process.stderr);
   process.exit(code);
 }
@@ -93,7 +102,5 @@ export function check(label, status, detail = '', hint = '') {
   else                        sym = SYM_INFO;
   const tail = detail ? `  ${c.dim}${detail}${c.reset}` : '';
   process.stdout.write(`  ${sym}  ${label}${tail}\n`);
-  if (hint && status !== 'pass') {
-    process.stdout.write(`        ${c.gray}↳ ${hint}${c.reset}\n`);
-  }
+  if (hint && status !== 'pass') hintLine(hint);
 }

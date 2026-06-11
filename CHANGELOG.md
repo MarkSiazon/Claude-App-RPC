@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.1] - 2026-06-12
+
+**Changed**
+
+- **The CLI's human-facing output got a full visual rework.** One symbol vocabulary and aligned columns everywhere; `claude-rpc setup` is now a phased checklist (binary → config → claude code → daemon) closing with a single "what now" block; profile mutations print a one-line confirmation plus a pointer at the next step instead of re-rendering the whole dashboard twice; the profile checklist teaches the web pairing flow (`claude-rpc link <code>`) with the gist dance as the no-browser fallback; failure hints are contextual — `doctor` is only suggested for problems it can actually diagnose; the unknown-command error explains version skew on its own line.
+
 ## [0.15.0] - 2026-06-12
 
 **Added**

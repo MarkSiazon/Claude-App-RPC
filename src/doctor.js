@@ -50,7 +50,7 @@ export function fixPlan() {
 }
 
 function section(title) {
-  console.log(`\n${c.bold}${title}${c.reset}`);
+  console.log(`\n  ${c.bold}${title}${c.reset}`);
 }
 
 // ── individual checks ────────────────────────────────────────────────────
@@ -363,7 +363,8 @@ function checkDataDir() {
 export function runDoctor() {
   counters.pass = 0; counters.fail = 0; counters.warn = 0;
   findings = [];
-  console.log(`${c.bold}${c.cyan}claude-rpc doctor${c.reset}  ${c.dim}— diagnostic checklist${c.reset}`);
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ doctor${c.reset}  ${c.dim}— diagnostic checklist${c.reset}`);
 
   section('Runtime');
   checkNodeVersion();

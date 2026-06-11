@@ -17,9 +17,22 @@ import {
 } from './paths.js';
 import { DEFAULT_CONFIG } from './default-config.js';
 import { VERSION } from './version.js';
+import { c, SYM_OK, SYM_WARN, SYM_FAIL, SYM_INFO, hintLine } from './ui.js';
 
 const STARTUP_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 const STARTUP_VALUE = 'ClaudeRPC';
+
+// Setup output is a phased checklist: every row is `sym  label  detail`, with
+// the label column fixed-width so the detail column lines up across phases.
+// The same rows print standalone (doctor --fix, packaged refresh) and still
+// read fine outside the phased layout.
+const LABEL_W = 16;
+function step(sym, label, detail = '', log = console.log) {
+  log(`  ${sym}  ${label.padEnd(LABEL_W)}${detail ? `${c.dim}${detail}${c.reset}` : ''}`);
+}
+function phase(title) {
+  console.log(`\n  ${c.bold}${title}${c.reset}`);
+}
 
 const EVENTS = [
   'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse',
@@ -70,7 +83,7 @@ export function installHooks(exePath) {
     }
   }
   writeJson(CLAUDE_SETTINGS, settings);
-  console.log(`  hooks → ${CLAUDE_SETTINGS}`);
+  step(SYM_OK, 'hooks wired', `${EVENTS.length} events → ${CLAUDE_SETTINGS}`);
 }
 
 export function uninstallHooks() {
@@ -85,7 +98,7 @@ export function uninstallHooks() {
     if (settings.hooks[event].length === 0) delete settings.hooks[event];
   }
   writeJson(CLAUDE_SETTINGS, settings);
-  console.log(`  hooks removed from ${CLAUDE_SETTINGS}`);
+  step(SYM_OK, 'hooks removed', CLAUDE_SETTINGS);
 }
 
 function regCommand(args) {
@@ -106,13 +119,13 @@ export async function addStartupEntry(exePath) {
     '/d', `"${exePath}" daemon`,
     '/f',
   ]);
-  console.log(`  startup → HKCU\\...\\Run\\${STARTUP_VALUE}`);
+  step(SYM_OK, 'startup entry', `HKCU\\…\\Run\\${STARTUP_VALUE} — daemon starts at login`);
 }
 
 export async function removeStartupEntry() {
   try {
     await regCommand(['delete', STARTUP_KEY, '/v', STARTUP_VALUE, '/f']);
-    console.log(`  startup entry removed`);
+    step(SYM_OK, 'startup entry', 'removed');
   } catch {
     // Already absent — fine.
   }
@@ -159,7 +172,7 @@ export function ensureCanonicalExe(currentExe) {
       const src = statSync(currentExe);
       const dst = statSync(CANONICAL_EXE);
       if (src.size === dst.size && Math.abs(src.mtimeMs - dst.mtimeMs) < 2000) {
-        console.log(`  exe already installed → ${CANONICAL_EXE}`);
+        step(SYM_OK, 'exe installed', `${CANONICAL_EXE} (unchanged)`);
         return CANONICAL_EXE;
       }
     } catch { /* stat failed — fall through to copy attempt */ }
@@ -176,14 +189,13 @@ export function ensureCanonicalExe(currentExe) {
     }
     copyFileSync(currentExe, CANONICAL_EXE);
     if (process.platform !== 'win32') chmodSync(CANONICAL_EXE, 0o755);
-    console.log(`  exe installed → ${CANONICAL_EXE}`);
-    console.log(`  (the copy at ${currentExe} can be safely deleted)`);
+    step(SYM_OK, 'exe installed', CANONICAL_EXE);
+    step(SYM_INFO, 'original copy', `${currentExe} — safe to delete`);
     sweepStaleCanonicalBackups();
     return CANONICAL_EXE;
   } catch (e) {
-    console.warn(`  ! failed to copy exe to ${CANONICAL_EXE}: ${e.message}`);
-    console.warn(`    falling back to ${currentExe} — manual updates that change`);
-    console.warn(`    the exe path may require running 'setup' again.`);
+    step(SYM_WARN, 'exe copy failed', `${CANONICAL_EXE}: ${e.message}`, console.warn);
+    hintLine(`falling back to ${currentExe} — if that file moves, run \`claude-rpc setup\` again`, process.stderr);
     return currentExe;
   }
 }
@@ -199,17 +211,17 @@ export function seedConfig() {
       if (!existsSync(CONFIG_PATH) && existsSync(legacyPath)) {
         mkdirSync(USER_CONFIG_DIR, { recursive: true });
         copyFileSync(legacyPath, CONFIG_PATH);
-        console.log(`  config migrated → ${CONFIG_PATH}`);
-        console.log(`    (was: ${legacyPath} — safe to delete on next 'npm update')`);
+        step(SYM_OK, 'config migrated', CONFIG_PATH);
+        step(SYM_INFO, 'legacy copy', `${legacyPath} — safe to delete on the next npm update`);
         return false;
       }
     } catch (e) {
-      console.warn(`  ! legacy-config migration skipped: ${e.message}`);
+      step(SYM_WARN, 'config legacy', `migration skipped: ${e.message}`, console.warn);
     }
   }
 
   if (existsSync(CONFIG_PATH)) {
-    console.log(`  config exists → ${CONFIG_PATH}`);
+    step(SYM_OK, 'config found', CONFIG_PATH);
     return false;
   }
   mkdirSync(USER_CONFIG_DIR, { recursive: true });
@@ -221,9 +233,9 @@ export function seedConfig() {
     seeded.community.instanceId = randomUUID();
   }
   writeFileSync(CONFIG_PATH, JSON.stringify(seeded, null, 2));
-  console.log(`  config seeded → ${CONFIG_PATH}`);
+  step(SYM_OK, 'config seeded', CONFIG_PATH);
   if (seeded.community?.enabled && seeded.community.instanceId) {
-    console.log(`  community totals on by default → opt out with \`claude-rpc community off\``);
+    step(SYM_INFO, 'community', `anonymous totals on by default · opt out: ${c.reset}${c.cyan}claude-rpc community off`);
   }
   return true;
 }
@@ -270,7 +282,7 @@ export function migrateConfig({ silent = false } = {}) {
   let cfg;
   try { cfg = JSON.parse(readFileSync(CONFIG_PATH, 'utf8')); }
   catch (e) {
-    if (!silent) console.warn(`  ! could not read config for migration: ${e.message}`);
+    if (!silent) step(SYM_WARN, 'config migration', `could not read config: ${e.message}`, console.warn);
     return false;
   }
   if (!cfg || typeof cfg !== 'object') return false;
@@ -359,14 +371,11 @@ export function migrateConfig({ silent = false } = {}) {
   }
 
   if (added.length === 0) {
-    if (!silent) console.log(`  config up to date → ${CONFIG_PATH}`);
+    if (!silent) step(SYM_OK, 'config current', 'no new defaults to merge');
     return false;
   }
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
-  if (!silent) {
-    console.log(`  config migrated  → ${CONFIG_PATH}`);
-    console.log(`    added: ${added.join(', ')}`);
-  }
+  if (!silent) step(SYM_OK, 'config migrated', `added: ${added.join(', ')}`);
   return true;
 }
 
@@ -417,7 +426,7 @@ function verifyHookPipe(exePath) {
 // Best-effort + loud: a failed -g (perms, offline) returns false so the caller
 // can stop with the manual command rather than wire a dead hook.
 function promoteNpxToGlobal() {
-  console.log('  npx is one-off — installing claude-rpc globally so hooks survive…');
+  step(SYM_INFO, 'npx detected', 'one-off cache — installing globally so hooks survive…');
   const r = spawnSync('npm', ['install', '-g', `claude-rpc@${VERSION}`], {
     stdio: 'inherit',
     shell: process.platform === 'win32',   // npm is npm.cmd on Windows
@@ -442,72 +451,90 @@ function warnIfStale() {
     const [l, v] = [num(latest), num(VERSION)];
     const newer = l[0] !== v[0] ? l[0] > v[0] : l[1] !== v[1] ? l[1] > v[1] : l[2] > v[2];
     if (newer) {
-      console.warn(`  ! you're running v${VERSION} but v${latest} is published — npx may have served a stale cache.`);
-      console.warn(`    for the newest version, stop here and re-run:  npx claude-rpc@latest setup`);
+      step(SYM_WARN, 'newer version', `v${latest} is published but this is v${VERSION} — npx may have served a stale cache`, console.warn);
+      hintLine('for the newest version, stop here and re-run: npx claude-rpc@latest setup', process.stderr);
     }
   } catch { /* offline or npm missing — a version check must never block setup */ }
 }
 
 export async function install({ exePath, withStartup = true } = {}) {
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ claude-rpc setup${c.reset}  ${c.dim}v${VERSION}${c.reset}`);
   warnIfStale();
   if (IS_NPX) {
     if (!promoteNpxToGlobal()) {
-      console.error('\n  ✗ Global install failed. Run this once, then you\'re set:');
-      console.error('      npm install -g claude-rpc && claude-rpc setup');
+      console.error('');
+      step(SYM_FAIL, 'global install', 'failed', console.error);
+      hintLine('run this once, then you\'re set: npm install -g claude-rpc && claude-rpc setup', process.stderr);
       const err = new Error('npx self-install failed');
       err.code = 3;   // system error (see exit-code contract)
       throw err;
     }
-    console.log('  ✓ claude-rpc installed globally\n');
-  }
-  if (process.platform !== 'win32' && withStartup) {
-    console.warn('Note: startup registration only works on Windows; other steps still run.');
+    step(SYM_OK, 'global install', `claude-rpc@${VERSION}`);
   }
   const incoming = exePath || process.execPath;
   // Canonicalize first so hook + startup entries point at a stable location,
   // not at the temp/Downloads path the user happened to launch from.
+  if (IS_PACKAGED) phase('binary');
   const target = ensureCanonicalExe(incoming);
-  console.log('Installing Claude RPC…');
+
+  phase('config');
   // Order matters: seed creates the file if missing, then migrate fills in
   // any blocks new exe versions added (e.g. presence.byStatus from v0.3.6).
   seedConfig();
   migrateConfig();
-  installHooks(target);
-  if (withStartup && process.platform === 'win32') {
-    try { await addStartupEntry(target); }
-    catch (e) { console.warn(`  startup entry failed: ${e.message}`); }
-  }
 
+  phase('claude code');
+  installHooks(target);
   // Proof the hook pipe actually fires. A setup that returns success
   // without verification is a lie — we caught broken-hook-path bugs
   // twice during v0.3.x because no one ran a real event after install.
   const probe = verifyHookPipe(target);
   if (probe.ok) {
-    console.log(`  hook pipe   ✓ ${probe.detail}`);
+    step(SYM_OK, 'hook verified', probe.detail);
   } else {
-    console.warn(`  hook pipe   ✗ ${probe.detail}`);
-    console.warn(`              ↳ run \`claude-rpc doctor\` for a full diagnostic`);
+    step(SYM_FAIL, 'hook verify', probe.detail, console.warn);
+    hintLine('run `claude-rpc doctor` for a full diagnostic', process.stderr);
   }
 
-  console.log('\nDone.');
-  console.log(`Config: ${CONFIG_PATH}`);
-  console.log(`  (a working Discord app is bundled — edit clientId only to use your own)`);
-  // setup auto-starts the daemon (see cli.js), so we point at management +
-  // verification rather than a start command. The packaged exe manages the
-  // daemon via its own subcommands; the npm/dev bin uses `claude-rpc …`.
-  if (IS_PACKAGED) {
-    console.log(`\nManage the daemon:  "${target}" daemon  (start) · check with claude-rpc doctor`);
-  } else {
-    console.log(`\nManage the daemon:  claude-rpc start | stop | status`);
-    console.log(`Verify wiring:      claude-rpc doctor`);
+  // The CLI's setup case launches the daemon right after this returns, so its
+  // row lands under this heading; setupOutro() then closes the screen.
+  phase('daemon');
+  if (withStartup) {
+    if (process.platform === 'win32') {
+      try { await addStartupEntry(target); }
+      catch (e) { step(SYM_WARN, 'startup entry', `failed: ${e.message}`, console.warn); }
+    } else {
+      step(SYM_INFO, 'startup entry', 'skipped — login autostart is Windows-only');
+    }
   }
+  return target;
+}
+
+// The single closing block of `claude-rpc setup` — what to do now, where the
+// levers are. Printed by the CLI after the daemon launch so it always lands
+// last; doctor --fix re-runs install() without it.
+export function setupOutro(target) {
+  const point = (label, value, note = '') =>
+    console.log(`     ${c.dim}→${c.reset}  ${c.dim}${label.padEnd(14)}${c.reset} ${c.cyan}${value}${c.reset}${note ? `  ${c.dim}${note}${c.reset}` : ''}`);
+  console.log('');
+  console.log(`  ${SYM_OK}  ${c.bold}setup complete${c.reset} — open Claude Code and send a prompt; your card goes live in Discord.`);
+  point('verify wiring', 'claude-rpc doctor');
+  if (IS_PACKAGED) point('start daemon', `"${target}" daemon`, 'also runs automatically at login');
+  else point('manage daemon', 'claude-rpc start · stop · status');
+  point('config', CONFIG_PATH, 'a working Discord app is bundled — set clientId only to use your own');
+  console.log('');
 }
 
 export async function uninstall() {
-  console.log('Uninstalling Claude RPC…');
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ claude-rpc uninstall${c.reset}`);
+  console.log('');
   uninstallHooks();
   if (process.platform === 'win32') await removeStartupEntry();
-  console.log('\nDone. (Config at %APPDATA%\\claude-rpc\\ left intact — delete manually if you want.)');
+  console.log('');
+  console.log(`  ${SYM_OK}  ${c.bold}uninstalled${c.reset} — config at ${c.cyan}${USER_CONFIG_DIR}${c.reset} ${c.dim}left intact; delete it manually if you want.${c.reset}`);
+  console.log('');
 }
 
 export function isInstalled() {

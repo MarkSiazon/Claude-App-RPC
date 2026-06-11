@@ -15,7 +15,7 @@ import { readState } from './state.js';
 import { buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses, fmtNum } from './format.js';
 import { scan, readAggregate, findLiveSessions, dayKey, weekKey } from './scanner.js';
 import { runHookCli } from './hook.js';
-import { install as runInstall, uninstall as runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, mcpServerCommand } from './install.js';
+import { install as runInstall, uninstall as runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, mcpServerCommand, setupOutro } from './install.js';
 import { startTui } from './tui.js';
 import { generateInsights } from './insights.js';
 import { maybeNudge } from './nudge.js';
@@ -68,7 +68,7 @@ function daemonPid() {
 function startDaemon({ quiet = false } = {}) {
   const pid = daemonPid();
   if (pid) {
-    if (!quiet) console.log(`${c.yellow}!${c.reset} Daemon already running (pid ${pid}). Run 'stop' first to restart.`);
+    if (!quiet) console.log(`  ${c.yellow}!${c.reset}  ${'daemon running'.padEnd(16)}${c.dim}already up (pid ${pid}) · bounce it with ${c.reset}${c.cyan}claude-rpc restart${c.reset}`);
     return false;
   }
   // In packaged mode the "daemon script" is the exe itself with a subcommand;
@@ -79,19 +79,19 @@ function startDaemon({ quiet = false } = {}) {
   const args = IS_PACKAGED ? ['daemon'] : [DAEMON_SCRIPT];
   const child = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
-  if (!quiet) console.log(`${c.green}✓${c.reset} Daemon launched (pid ${c.cyan}${child.pid}${c.reset})  ${c.dim}logs: ${LOG_PATH}${c.reset}`);
+  if (!quiet) console.log(`  ${c.green}✓${c.reset}  ${'daemon launched'.padEnd(16)}${c.dim}pid ${c.reset}${c.cyan}${child.pid}${c.reset}${c.dim} · log ${shortPath(LOG_PATH)}${c.reset}`);
   return true;
 }
 
 function stopDaemon({ quiet = false } = {}) {
   const pid = daemonPid();
-  if (!pid) { if (!quiet) console.log('Daemon not running.'); return false; }
+  if (!pid) { if (!quiet) console.log(`  ${c.cyan}·${c.reset}  daemon not running`); return false; }
   try {
     process.kill(pid, 'SIGTERM');
-    if (!quiet) console.log(`${c.green}✓${c.reset} Sent SIGTERM to pid ${c.cyan}${pid}${c.reset}`);
+    if (!quiet) console.log(`  ${c.green}✓${c.reset}  ${'daemon stopping'.padEnd(16)}${c.dim}sent SIGTERM to pid ${pid}${c.reset}`);
     return true;
   } catch (e) {
-    if (!quiet) console.log(`${c.red}✗${c.reset} Failed to stop: ${e.message}`);
+    if (!quiet) console.log(`  ${c.red}✗${c.reset}  ${'stop failed'.padEnd(16)}${c.dim}${e.message}${c.reset}`);
     return false;
   }
 }
@@ -581,24 +581,24 @@ function dumpVars() {
 }
 
 function doScan(force = false) {
-  console.log(`${c.dim}Scanning ~/.claude/projects${c.reset}`, force ? '(force re-parse)' : '(incremental)…');
+  console.log(`  ${c.dim}scanning ~/.claude/projects ${force ? '(force re-parse)' : '(incremental)'}…${c.reset}`);
   const t0 = Date.now();
   let lastReport = 0;
   const result = scan({
     force,
     onProgress: ({ scanned, total }) => {
       if (Date.now() - lastReport > 500) {
-        process.stdout.write(`\r  parsed ${scanned}/${total}…`);
+        process.stdout.write(`\r  ${c.dim}parsed ${scanned}/${total}…${c.reset}`);
         lastReport = Date.now();
       }
     },
   });
   process.stdout.write('\n');
-  console.log(`${c.green}✓${c.reset} Done in ${Date.now() - t0}ms — ${c.cyan}${result.scanned}${c.reset} parsed · ${result.skipped} cached · ${result.removed} removed (${result.total} total)`);
+  console.log(`  ${c.green}✓${c.reset}  scan complete  ${c.dim}${Date.now() - t0}ms — ${c.reset}${c.cyan}${result.scanned}${c.reset}${c.dim} parsed · ${result.skipped} cached · ${result.removed} removed (${result.total} total)${c.reset}`);
   if (result.dirs && result.dirs.length > 1) {
-    console.log(`${c.dim}Scanned roots:${c.reset} ${result.dirs.join(', ')}`);
+    console.log(`     ${c.dim}roots: ${result.dirs.join(', ')}${c.reset}`);
   }
-  console.log(`${c.dim}Aggregate written to ${AGGREGATE_PATH}${c.reset}`);
+  console.log(`     ${c.dim}aggregate → ${AGGREGATE_PATH}${c.reset}`);
 }
 
 // Backfill from any folder that has .jsonl transcripts. Useful for:
@@ -617,9 +617,9 @@ function doBackfill(argv) {
   }
   if (!existsSync(path)) {
     fail(`path doesn't exist: ${path}`,
-      { hint: 'check the spelling, or run `claude-rpc doctor` to see where transcripts live' });
+      { hint: 'check the spelling — relative paths resolve from the current directory' });
   }
-  console.log(`${c.dim}Backfilling from${c.reset} ${c.cyan}${path}${c.reset}…`);
+  console.log(`  ${c.dim}backfilling from ${c.reset}${c.cyan}${path}${c.reset}${c.dim}…${c.reset}`);
   const t0 = Date.now();
   let lastReport = 0;
   // Pass `extraDirs` rather than `projectsDirs` — this way the default
@@ -630,16 +630,16 @@ function doBackfill(argv) {
     extraDirs: [path],
     onProgress: ({ scanned, total }) => {
       if (Date.now() - lastReport > 500) {
-        process.stdout.write(`\r  parsed ${scanned}/${total}…`);
+        process.stdout.write(`\r  ${c.dim}parsed ${scanned}/${total}…${c.reset}`);
         lastReport = Date.now();
       }
     },
   });
   process.stdout.write('\n');
-  console.log(`${c.green}✓${c.reset} Done in ${Date.now() - t0}ms — ${c.cyan}${result.scanned}${c.reset} new/changed · ${result.skipped} cached`);
-  console.log(`${c.dim}Scanned roots:${c.reset} ${result.dirs.join(', ')}`);
+  console.log(`  ${c.green}✓${c.reset}  backfill complete  ${c.dim}${Date.now() - t0}ms — ${c.reset}${c.cyan}${result.scanned}${c.reset}${c.dim} new/changed · ${result.skipped} cached${c.reset}`);
+  console.log(`     ${c.dim}roots: ${result.dirs.join(', ')}${c.reset}`);
   const hours = ((result.aggregate.activeMs || 0) / 3_600_000).toFixed(1);
-  console.log(`${c.dim}Aggregate now:${c.reset} ${result.aggregate.sessions} sessions · ${hours}h · ${result.aggregate.userMessages} prompts`);
+  console.log(`     ${c.dim}aggregate now: ${result.aggregate.sessions} sessions · ${hours}h · ${result.aggregate.userMessages} prompts${c.reset}`);
 }
 
 function showInsights() {
@@ -678,7 +678,7 @@ async function doBadge(argv) {
   }
   if (opts.out) {
     writeFileSync(opts.out, svg);
-    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
+    console.log(`  ${c.green}✓${c.reset}  wrote ${c.cyan}${opts.out}${c.reset}  ${c.dim}(${svg.length} bytes)${c.reset}`);
   } else {
     process.stdout.write(svg);
   }
@@ -715,11 +715,11 @@ async function publishBadgeToGist(svg, opts) {
     writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
     const wasUpdate = !!stored.id;
     console.log('');
-    console.log(`  ${c.green}✓${c.reset} ${wasUpdate ? 'Updated' : 'Created'} gist ${c.cyan}${result.id}${c.reset}`);
-    console.log(`  ${c.dim}raw:${c.reset}      ${c.cyan}${result.rawUrl}${c.reset}`);
-    if (result.htmlUrl) console.log(`  ${c.dim}gist:${c.reset}     ${c.dim}${result.htmlUrl}${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  ${wasUpdate ? 'updated' : 'created'} gist ${c.cyan}${result.id}${c.reset}`);
+    console.log(`     ${c.dim}raw: ${c.reset}${c.cyan}${result.rawUrl}${c.reset}`);
+    if (result.htmlUrl) console.log(`     ${c.dim}gist: ${result.htmlUrl}${c.reset}`);
     console.log('');
-    console.log(`  ${c.dim}Paste into your README:${c.reset}`);
+    console.log(`  ${c.dim}paste into your README:${c.reset}`);
     console.log(`    ${gistMarkdown({ owner: result.owner, id: result.id, filename, label: 'Claude' })}`);
     console.log('');
   } catch (e) {
@@ -753,8 +753,8 @@ async function doCard(argv) {
   const svg = renderCard(aggregate, { range: opts.range });
   if (opts.out) {
     writeFileSync(opts.out, svg);
-    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
-    console.log(`${c.dim}Tip: open in a browser, right-click → Save as PNG. Or drop straight into a Discord message — it'll render inline.${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  wrote ${c.cyan}${opts.out}${c.reset}  ${c.dim}(${svg.length} bytes)${c.reset}`);
+    console.log(`     ${c.dim}tip: open in a browser and save as PNG — or drop it straight into a Discord message; it renders inline${c.reset}`);
   } else {
     process.stdout.write(svg);
   }
@@ -788,8 +788,8 @@ async function doGithubStat(argv) {
   }
   if (opts.out) {
     writeFileSync(opts.out, svg);
-    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
-    console.log(`${c.dim}Embed in your README:  <img src="${opts.out}" alt="Claude Code stats" width="500" />${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  wrote ${c.cyan}${opts.out}${c.reset}  ${c.dim}(${svg.length} bytes)${c.reset}`);
+    console.log(`     ${c.dim}embed in your README:  <img src="${opts.out}" alt="Claude Code stats" width="500" />${c.reset}`);
   } else {
     process.stdout.write(svg);
   }
@@ -825,13 +825,13 @@ async function doCalendar(argv) {
     else if (argv[i] === '--gist') opts.gist = true;
   }
   const aggregate = readAggregate();
-  if (!aggregate) fail('no aggregate yet — run `claude-rpc scan` first', { code: EX_BAD_STATE });
+  if (!aggregate) fail('no aggregate yet — nothing to render', { hint: 'run `claude-rpc scan` first', code: EX_BAD_STATE });
   const { renderCalendar } = await import('./calendar.js');
   const svg = renderCalendar(aggregate, {});
   if (opts.gist) return publishBadgeToGist(svg, { metric: 'calendar', range: 'year' });
   if (opts.out) {
     writeFileSync(opts.out, svg);
-    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
+    console.log(`  ${c.green}✓${c.reset}  wrote ${c.cyan}${opts.out}${c.reset}  ${c.dim}(${svg.length} bytes)${c.reset}`);
   } else process.stdout.write(svg);
 }
 
@@ -846,7 +846,7 @@ async function doSessionCard(argv) {
   const svg = renderSessionCard(vars, {});
   if (opts.out) {
     writeFileSync(opts.out, svg);
-    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${opts.out}${c.reset} (${svg.length} bytes)`);
+    console.log(`  ${c.green}✓${c.reset}  wrote ${c.cyan}${opts.out}${c.reset}  ${c.dim}(${svg.length} bytes)${c.reset}`);
   } else process.stdout.write(svg);
 }
 
@@ -864,8 +864,8 @@ function doMcpInstall(argv) {
   const manual = (r) => `claude mcp add claude-rpc --scope ${scope} -- ${r.command} ${r.args.join(' ')}`;
   if (res.ok) {
     console.log('');
-    console.log(`  ${c.green}✓${c.reset} Registered the ${c.cyan}claude-rpc${c.reset} MCP server with Claude Code (scope: ${scope}).`);
-    console.log(`  ${c.dim}Restart Claude Code (or run /mcp), then ask: "how long have I coded today?"${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  registered the ${c.cyan}claude-rpc${c.reset} MCP server with Claude Code ${c.dim}(scope: ${scope})${c.reset}`);
+    console.log(`     ${c.dim}restart Claude Code (or run /mcp), then ask: "how long have I coded today?"${c.reset}`);
     console.log('');
   } else if (res.reason === 'no-claude') {
     fail('the `claude` CLI was not found on your PATH', {
@@ -880,7 +880,7 @@ function doMcpInstall(argv) {
 function doMcpUninstall(argv) {
   const scope = argv.includes('--project') ? 'project' : argv.includes('--local') ? 'local' : 'user';
   const res = uninstallMcp({ scope });
-  if (res.ok) console.log(`${c.green}✓${c.reset} Removed the claude-rpc MCP server (scope: ${scope}).`);
+  if (res.ok) console.log(`  ${c.green}✓${c.reset}  removed the claude-rpc MCP server ${c.dim}(scope: ${scope})${c.reset}`);
   else if (res.reason === 'no-claude') fail('the `claude` CLI was not found on your PATH', { code: EX_USER_ERROR });
   else fail('could not remove the MCP server', { hint: 'claude mcp remove claude-rpc', code: EX_USER_ERROR });
 }
@@ -897,8 +897,8 @@ function doMcpUninstall(argv) {
 function doPrivate() {
   const cwd = process.cwd();
   const list = addPrivateCwd(cwd);
-  console.log(`${c.green}✓${c.reset} ${c.cyan}${cwd}${c.reset} marked private`);
-  console.log(`${c.dim}  ${list.length} ${list.length === 1 ? 'path' : 'paths'} in the private list. Daemon picks it up within ~5 min (cache TTL) or restart.${c.reset}`);
+  console.log(`  ${c.green}✓${c.reset}  ${c.cyan}${cwd}${c.reset} marked private`);
+  console.log(`     ${c.dim}${list.length} ${list.length === 1 ? 'path' : 'paths'} in the private list — the daemon picks it up within ~5 min, or ${c.reset}${c.cyan}claude-rpc restart${c.reset}`);
 }
 
 function doPublic() {
@@ -906,9 +906,9 @@ function doPublic() {
   const before = listPrivateCwds().length;
   const list = removePrivateCwd(cwd);
   if (list.length === before) {
-    console.log(`${c.yellow}!${c.reset} ${c.cyan}${cwd}${c.reset} wasn't in the private list`);
+    console.log(`  ${c.yellow}!${c.reset}  ${c.cyan}${cwd}${c.reset} wasn't in the private list`);
   } else {
-    console.log(`${c.green}✓${c.reset} ${c.cyan}${cwd}${c.reset} removed from the private list`);
+    console.log(`  ${c.green}✓${c.reset}  ${c.cyan}${cwd}${c.reset} removed from the private list`);
   }
 }
 
@@ -950,8 +950,8 @@ function doPause(argv) {
   if (arg === 'off' || arg === 'resume') return doResume();
   if (arg === 'status') {
     const until = pauseUntil();
-    if (until) console.log(`${c.yellow}●${c.reset} paused until ${c.cyan}${fmtClock(until)}${c.reset}`);
-    else console.log(`${c.green}○${c.reset} not paused`);
+    if (until) console.log(`  ${c.yellow}●${c.reset}  paused until ${c.cyan}${fmtClock(until)}${c.reset}`);
+    else console.log(`  ${c.green}○${c.reset}  not paused`);
     return;
   }
   const ms = parseDuration(argv[0]);
@@ -960,17 +960,17 @@ function doPause(argv) {
       { hint: 'use 30m, 2h, 1h30m, or a bare number of minutes (default: 1h)', code: EX_USER_ERROR });
   }
   const until = setPause(ms);
-  console.log(`${c.green}✓${c.reset} presence paused until ${c.cyan}${fmtClock(until)}${c.reset}`);
-  console.log(`${c.dim}  the daemon clears the card within a few seconds. Resume early with ${c.reset}${c.cyan}claude-rpc resume${c.reset}`);
+  console.log(`  ${c.green}✓${c.reset}  presence paused until ${c.cyan}${fmtClock(until)}${c.reset}`);
+  console.log(`     ${c.dim}the daemon clears the card within seconds — resume early with ${c.reset}${c.cyan}claude-rpc resume${c.reset}`);
 }
 
 function doResume() {
   const was = pauseUntil();
   clearPause();
   if (was) {
-    console.log(`${c.green}✓${c.reset} presence resumed ${c.dim}(was paused until ${fmtClock(was)})${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  presence resumed ${c.dim}(was paused until ${fmtClock(was)})${c.reset}`);
   } else {
-    console.log(`${c.dim}presence wasn't paused.${c.reset}`);
+    console.log(`  ${c.cyan}·${c.reset}  presence wasn't paused`);
   }
 }
 
@@ -999,7 +999,7 @@ async function doExport(argv) {
   }
   if (out) {
     writeFileSync(out, payload);
-    console.log(`${c.green}✓${c.reset} Wrote ${c.cyan}${out}${c.reset} (${payload.length} bytes, ${csv ? 'CSV' : 'JSON'})`);
+    console.log(`  ${c.green}✓${c.reset}  wrote ${c.cyan}${out}${c.reset}  ${c.dim}(${payload.length} bytes, ${csv ? 'CSV' : 'JSON'})${c.reset}`);
   } else {
     process.stdout.write(payload);
   }
@@ -1018,7 +1018,12 @@ function squadAuth() {
   const cfg = loadConfig();
   const endpoint = (cfg.community?.endpoint || '').replace(/\/+$/, '');
   const instanceId = cfg.community?.instanceId;
-  if (!endpoint) fail('no community endpoint configured', { code: EX_BAD_STATE });
+  if (!endpoint) {
+    fail('no community endpoint configured', {
+      hint: 'config.json is missing community.endpoint — re-run `claude-rpc setup` to restore the default',
+      code: EX_BAD_STATE,
+    });
+  }
   if (!instanceId) {
     fail('squads need an identity', {
       hint: 'run `claude-rpc profile set --handle <name> && claude-rpc profile on` first',
@@ -1044,9 +1049,9 @@ function squadPageUrl(id) { return `https://claude-rpc.vercel.app/squad/${id}`; 
 
 function printSquadInvite(squad) {
   console.log('');
-  console.log(`  ${c.green}✓${c.reset} squad ${c.bold}${squad.name}${c.reset}`);
-  console.log(`    ${c.dim}invite code:${c.reset} ${c.cyan}${squad.code}${c.reset}`);
-  console.log(`    ${c.dim}standings:  ${c.reset} ${c.cyan}${squadPageUrl(squad.id)}${c.reset}`);
+  console.log(`  ${c.green}✓${c.reset}  squad ${c.bold}${squad.name}${c.reset}`);
+  console.log(`     ${c.dim}invite code:${c.reset} ${c.cyan}${squad.code}${c.reset}`);
+  console.log(`     ${c.dim}standings:  ${c.reset} ${c.cyan}${squadPageUrl(squad.id)}${c.reset}`);
   console.log('');
   console.log(`  ${c.dim}send your crew this:${c.reset}`);
   console.log(`    join my Claude Code squad "${squad.name}" — npx claude-rpc@latest setup, then:`);
@@ -1083,19 +1088,28 @@ async function doSquadCmd(argv) {
   if (sub === 'status' || sub === '') return squadStatus(ctx);
   if (sub === 'create') {
     const name = argv.slice(1).join(' ').trim();
-    if (!name) return fail('usage: claude-rpc squad create <name>', { code: EX_USER_ERROR });
+    if (!name) {
+      return fail('usage: claude-rpc squad create <name>',
+        { hint: 'example: claude-rpc squad create "the night shift"', code: EX_USER_ERROR });
+    }
     const r = await ctx.post('/squad/create', { name });
     if (r.status !== 200) return fail(`create failed: ${r.json?.error || r.status}`, { code: EX_SYS_ERROR });
     return printSquadInvite(r.json.squad);
   }
   if (sub === 'join') {
     const code = (argv[1] || '').trim();
-    if (!code) return fail('usage: claude-rpc squad join SQ-XXXXXX', { code: EX_USER_ERROR });
+    if (!code) {
+      return fail('usage: claude-rpc squad join SQ-XXXXXX',
+        { hint: 'the invite code comes from whoever created the squad (`claude-rpc squad create`)', code: EX_USER_ERROR });
+    }
     const r = await ctx.post('/squad/join', { code });
-    if (r.status !== 200) return fail(`join failed: ${r.json?.error || r.status}`, { code: EX_SYS_ERROR });
+    if (r.status !== 200) {
+      return fail(`join failed: ${r.json?.error || r.status}`,
+        { hint: 'double-check the invite code with whoever created the squad', code: EX_SYS_ERROR });
+    }
     const s = r.json.squad;
-    console.log(`${c.green}✓${c.reset} ${s.alreadyMember ? 'already in' : 'joined'} ${c.bold}${s.name}${c.reset} (${s.members} member${s.members === 1 ? '' : 's'})`);
-    console.log(`  ${c.dim}standings: ${squadPageUrl(s.id)}  ·  claude-rpc squad${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  ${s.alreadyMember ? 'already in' : 'joined'} ${c.bold}${s.name}${c.reset} ${c.dim}(${s.members} member${s.members === 1 ? '' : 's'})${c.reset}`);
+    console.log(`     ${c.dim}standings: ${squadPageUrl(s.id)} — or run ${c.reset}${c.cyan}claude-rpc squad${c.reset}`);
     return;
   }
   if (sub === 'leave') {
@@ -1114,7 +1128,7 @@ async function doSquadCmd(argv) {
     }
     const r = await ctx.post('/squad/leave', { squadId: target.id });
     if (r.status !== 200) return fail(`leave failed: ${r.json?.error || r.status}`, { code: EX_SYS_ERROR });
-    console.log(`${c.green}✓${c.reset} left ${c.bold}${target.name}${c.reset}${r.json.dissolved ? ` ${c.dim}(last member — squad dissolved)${c.reset}` : ''}`);
+    console.log(`  ${c.green}✓${c.reset}  left ${c.bold}${target.name}${c.reset}${r.json.dissolved ? ` ${c.dim}(last member — squad dissolved)${c.reset}` : ''}`);
     return;
   }
   fail(`unknown squad subcommand: ${sub}`, {
@@ -1147,14 +1161,15 @@ async function doLink(argv) {
   }
   const r = await ctx.post('/pair/claim', { code });
   if (r.status !== 200) {
-    return fail(`link failed: ${r.json?.error || r.status}`, { code: EX_SYS_ERROR });
+    return fail(`link failed: ${r.json?.error || r.status}`,
+      { hint: 'grab a fresh code from https://claude-rpc.vercel.app/squads and try again', code: EX_SYS_ERROR });
   }
   // Mirror the verified identity locally so `profile status` agrees.
   const userCfg = readJson(CONFIG_PATH, {});
   userCfg.profile = { ...(userCfg.profile || {}), githubUser: r.json.githubUser, verified: true };
   writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
-  console.log(`${c.green}✓${c.reset} linked as ${c.cyan}@${r.json.githubUser}${c.reset} — profile verified, squads unlocked in the browser.`);
-  console.log(`  ${c.dim}head back to https://claude-rpc.vercel.app/squads — it picks the link up automatically.${c.reset}`);
+  console.log(`  ${c.green}✓${c.reset}  linked as ${c.cyan}@${r.json.githubUser}${c.reset} — profile verified, squads unlocked in the browser`);
+  console.log(`     ${c.dim}head back to https://claude-rpc.vercel.app/squads — it picks the link up automatically${c.reset}`);
 }
 
 // ── Community totals ─────────────────────────────────────────────────────
@@ -1201,7 +1216,7 @@ async function communityOn() {
   const cfg = loadConfig();
   const community = cfg.community || {};
   if (community.enabled) {
-    console.log(`${c.green}✓${c.reset} community totals are already enabled`);
+    console.log(`  ${c.green}✓${c.reset}  community totals are already enabled`);
     return;
   }
   console.log('');
@@ -1246,12 +1261,12 @@ async function communityOn() {
 function communityOff() {
   const userCfg = readJson(CONFIG_PATH, {});
   if (!userCfg.community?.enabled) {
-    console.log(`${c.dim}community totals are already off.${c.reset}`);
+    console.log(`  ${c.cyan}·${c.reset}  community totals are already off`);
     return;
   }
   userCfg.community = { ...userCfg.community, enabled: false };
   writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
-  console.log(`${c.green}✓${c.reset} community totals disabled. instanceId retained for re-enable continuity.`);
+  console.log(`  ${c.green}✓${c.reset}  community totals disabled ${c.dim}(instanceId retained for re-enable continuity)${c.reset}`);
 }
 
 async function communityReport() {
@@ -1263,11 +1278,11 @@ async function communityReport() {
   const result = await flushCommunity(cfg);
   console.log('');
   if (result.ok && result.delta) {
-    console.log(`  ${c.green}✓${c.reset} reported  ${c.cyan}+${result.delta.sessions} sessions${c.reset}  ${c.cyan}+${result.delta.tokens} tokens${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  reported  ${c.cyan}+${result.delta.sessions} sessions${c.reset}  ${c.cyan}+${result.delta.tokens} tokens${c.reset}`);
   } else if (result.ok) {
-    console.log(`  ${c.dim}${result.reason}${c.reset}`);
+    console.log(`  ${c.cyan}·${c.reset}  ${c.dim}${result.reason}${c.reset}`);
   } else {
-    console.log(`  ${c.yellow}↳${c.reset} flush did not complete  ${c.dim}(${result.reason}${result.error ? ': ' + result.error : ''})${c.reset}`);
+    console.log(`  ${c.yellow}!${c.reset}  flush did not complete  ${c.dim}(${result.reason}${result.error ? ': ' + result.error : ''})${c.reset}`);
   }
   console.log('');
 }
@@ -1281,6 +1296,32 @@ function readFlag(argv, name) {
   if (i !== -1 && i + 1 < argv.length) return argv[i + 1];
   const eq = argv.find((a) => a.startsWith(`--${name}=`));
   return eq ? eq.slice(name.length + 3) : undefined;
+}
+
+// Single source of truth for the profile checklist. `profile`/`profile status`
+// renders all of it; mutations point at just the first unfinished step.
+// Verification is `done` whichever way it happened — web pairing (doLink sets
+// profile.verified) or the gist fallback (profileVerify).
+function profileSteps(p) {
+  return [
+    { key: 'handle',  done: lb.isValidHandle(p.handle), label: 'set a handle',      cmd: 'claude-rpc profile set --handle <name>', note: p.handle },
+    { key: 'publish', done: !!p.enabled,                label: 'enable publishing', cmd: 'claude-rpc profile on',                  note: 'daemon republishes automatically' },
+    { key: 'verify',  done: !!p.verified,               label: 'verify via GitHub', cmd: 'claude-rpc link <code>',                 note: p.githubUser ? `@${p.githubUser}` : '' },
+  ];
+}
+
+// One dim pointer at the next unfinished step — what mutations print instead
+// of re-rendering the whole dashboard.
+function profileNextStep() {
+  const p = loadConfig().profile || {};
+  const next = profileSteps(p).find((s) => !s.done);
+  if (!next) {
+    console.log(`     ${c.dim}→  all set — you're live at${c.reset} ${c.cyan}https://claude-rpc.vercel.app/u/${encodeURIComponent(p.handle)}${c.reset}`);
+  } else if (next.key === 'verify') {
+    console.log(`     ${c.dim}→  next: log in at${c.reset} ${c.cyan}https://claude-rpc.vercel.app/squads${c.reset}${c.dim}, then${c.reset} ${c.cyan}claude-rpc link <code>${c.reset}`);
+  } else {
+    console.log(`     ${c.dim}→  next:${c.reset} ${c.cyan}${next.cmd}${c.reset}  ${c.dim}(${next.label})${c.reset}`);
+  }
 }
 
 function profileStatus() {
@@ -1307,23 +1348,27 @@ function profileStatus() {
   // Setup checklist — same shape every time, so the user always sees where
   // they are and the exact next command. This is the screen the daemon's
   // breadcrumbs point back to.
-  const steps = [
-    { done: handleOk,    label: 'set a handle',      cmd: 'claude-rpc profile set --handle <name>', note: p.handle },
-    { done: !!p.enabled, label: 'enable publishing', cmd: 'claude-rpc profile on',                  note: 'daemon republishes automatically' },
-    { done: !!p.verified, label: 'verify on GitHub', cmd: 'claude-rpc profile verify',              note: p.githubUser ? `@${p.githubUser}` : '' },
-  ];
+  const steps = profileSteps(p);
   if (steps.every((s) => s.done)) {
-    console.log(`  ${c.green}✓${c.reset} all set — you're live at ${c.cyan}${boardUrl}${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  all set — you're live at ${c.cyan}${boardUrl}${c.reset}`);
   } else {
     const nextIdx = steps.findIndex((s) => !s.done);
-    box('next steps', steps.map((s, i) => {
+    const lines = steps.map((s, i) => {
       const mark = s.done ? `${c.green}✓${c.reset}` : (i === nextIdx ? `${c.yellow}○${c.reset}` : `${c.dim}○${c.reset}`);
       const label = s.done ? `${c.dim}${s.label}${c.reset}` : `${c.bold}${s.label}${c.reset}`;
       const tail = s.done
         ? `${c.dim}${s.note || 'done'}${c.reset}`
         : `${c.cyan}${s.cmd}${c.reset}${i === nextIdx ? `  ${c.dim}← next${c.reset}` : ''}`;
       return `${mark} ${i + 1}. ${label}${' '.repeat(Math.max(1, 20 - s.label.length))}${tail}`;
-    }));
+    });
+    // Web pairing is the primary verify path; the gist dance stays available
+    // for terminals with no browser nearby.
+    if (!steps[2].done) {
+      lines.push('');
+      lines.push(`${c.dim}the code comes from${c.reset} ${c.cyan}https://claude-rpc.vercel.app/squads${c.reset} ${c.dim}(log in with GitHub)${c.reset}`);
+      lines.push(`${c.dim}no browser? fall back to${c.reset} ${c.cyan}claude-rpc profile verify${c.reset}`);
+    }
+    box('next steps', lines);
   }
   console.log('');
 }
@@ -1356,8 +1401,14 @@ function profileSet(argv) {
 
   userCfg.profile = next;
   writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
-  console.log(`${c.green}✓${c.reset} profile saved`);
-  profileStatus();
+  // One-line confirmation + a pointer at the next step. The full dashboard
+  // stays behind `claude-rpc profile` — mutations shouldn't re-render it.
+  const saved = [];
+  if (rawHandle !== undefined) saved.push(`handle ${next.handle}`);
+  if (rawName !== undefined)   saved.push(`name ${next.displayName || '—'}`);
+  if (rawGh !== undefined)     saved.push(`github ${next.githubUser || '—'}`);
+  console.log(`  ${c.green}✓${c.reset}  profile saved${saved.length ? `  ${c.dim}${saved.join(' · ')}${c.reset}` : ''}`);
+  profileNextStep();
 }
 
 function profileEnable(on) {
@@ -1382,10 +1433,11 @@ function profileEnable(on) {
   }
   userCfg.profile = next;
   writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
-  console.log(`${c.green}✓${c.reset} leaderboard publishing ${on ? 'enabled' : 'disabled'}`);
   if (on) {
-    console.log(`  ${c.dim}publish now with ${c.reset}${c.cyan}claude-rpc profile publish${c.reset}${c.dim} (or wait for the next daemon flush).${c.reset}`);
-    profileStatus();
+    console.log(`  ${c.green}✓${c.reset}  leaderboard publishing enabled  ${c.dim}(live on the next daemon flush — or now: ${c.reset}${c.cyan}claude-rpc profile publish${c.reset}${c.dim})${c.reset}`);
+    profileNextStep();
+  } else {
+    console.log(`  ${c.green}✓${c.reset}  leaderboard publishing disabled`);
   }
 }
 
@@ -1399,12 +1451,12 @@ async function profilePublish() {
     });
   }
   const { flushProfile } = await import('./community.js');
-  console.log(`${c.dim}publishing @${cfg.profile.handle} to the board…${c.reset}`);
+  console.log(`  ${c.dim}publishing @${cfg.profile.handle} to the board…${c.reset}`);
   const r = await flushProfile(cfg);
   if (r.ok) {
-    console.log(`${c.green}✓${c.reset} published — see it at ${c.cyan}https://claude-rpc.vercel.app/u/${encodeURIComponent(cfg.profile.handle)}${c.reset}`);
+    console.log(`  ${c.green}✓${c.reset}  published — see it at ${c.cyan}https://claude-rpc.vercel.app/u/${encodeURIComponent(cfg.profile.handle)}${c.reset}`);
   } else if (r.reason === 'rate-limited') {
-    console.log(`${c.yellow}!${c.reset} rate-limited — already published in the last minute; the board has you.`);
+    console.log(`  ${c.yellow}!${c.reset}  rate-limited — already published in the last minute; the board has you`);
   } else {
     return fail(`publish failed: ${r.reason}${r.error ? ' (' + r.error + ')' : ''}`, { code: EX_SYS_ERROR });
   }
@@ -1421,13 +1473,18 @@ async function profileVerify() {
   // and publishing that gist already requires gh auth, so the account is
   // known by the time it matters.
   if (!profile.githubUser) {
-    console.log(`${c.dim}no --github set — your verified identity will be the account that owns the proof gist.${c.reset}`);
+    console.log(`  ${c.dim}no --github set — your verified identity will be the account that owns the proof gist${c.reset}`);
   }
   if (!community.instanceId) {
     return fail('enable the profile first', { hint: 'claude-rpc profile on', code: EX_BAD_STATE });
   }
   const endpoint = (community.endpoint || '').replace(/\/+$/, '');
-  if (!endpoint) return fail('no community endpoint configured', { code: EX_BAD_STATE });
+  if (!endpoint) {
+    return fail('no community endpoint configured', {
+      hint: 'config.json is missing community.endpoint — re-run `claude-rpc setup` to restore the default',
+      code: EX_BAD_STATE,
+    });
+  }
 
   const post = async (path, body) => {
     const res = await fetch(endpoint + path, {
@@ -1445,13 +1502,13 @@ async function profileVerify() {
       const { flushProfile } = await import('./community.js');
       await flushProfile(cfg);
     }
-    console.log(`${c.dim}requesting a verification token…${c.reset}`);
+    console.log(`  ${c.dim}requesting a verification token…${c.reset}`);
     const start = await post('/verify/start', { instanceId: community.instanceId, githubUser: profile.githubUser || null });
     if (!start.json?.token) return fail(`verify/start failed: ${start.json?.error || start.status}`, { code: EX_SYS_ERROR });
     const token = start.json.token;
 
     const { publishGistFile } = await import('./gist.js');
-    console.log(`${c.dim}publishing a public proof gist…${c.reset}`);
+    console.log(`  ${c.dim}publishing a public proof gist…${c.reset}`);
     const gist = await publishGistFile({
       svg: `claude-rpc leaderboard verification\n${token}\n`,
       filename: 'claude-rpc-verify.txt',
@@ -1462,7 +1519,7 @@ async function profileVerify() {
     // Hand the worker the gist ID so it fetches that gist directly (no
     // gist-list lag) and reads the real owner — instant, and the owner becomes
     // the verified identity regardless of what --github was set to.
-    console.log(`${c.dim}confirming with the server…${c.reset}`);
+    console.log(`  ${c.dim}confirming with the server…${c.reset}`);
     const check = await post('/verify/check', { instanceId: community.instanceId, gistId: gist.id });
     if (check.json?.verified) {
       const who = check.json.githubUser || gist.owner || profile.githubUser;
@@ -1471,13 +1528,13 @@ async function profileVerify() {
       const userCfg = readJson(CONFIG_PATH, {});
       userCfg.profile = { ...(userCfg.profile || {}), ...(who ? { githubUser: who } : {}), verified: true };
       writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
-      console.log(`${c.green}✓${c.reset} verified as @${who} — you'll show the ✓ on the board.`);
+      console.log(`  ${c.green}✓${c.reset}  verified as ${c.cyan}@${who}${c.reset} — you'll show the ✓ on the board`);
       if (who && profile.githubUser && who.toLowerCase() !== profile.githubUser.toLowerCase()) {
-        console.log(`  ${c.dim}(your gist is owned by @${who}, so the profile now uses that account.)${c.reset}`);
+        console.log(`     ${c.dim}(your gist is owned by @${who}, so the profile now uses that account)${c.reset}`);
       }
     } else {
-      console.log(`${c.yellow}!${c.reset} not confirmed: ${check.json?.error || check.status}`);
-      console.log(`  ${c.dim}make sure the gist is public, then re-run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}${c.dim}.${c.reset}`);
+      console.log(`  ${c.yellow}!${c.reset}  not confirmed: ${check.json?.error || check.status}`);
+      console.log(`     ${c.dim}↳ make sure the gist is public, then re-run ${c.reset}${c.cyan}claude-rpc profile verify${c.reset}`);
     }
   } catch (e) {
     return fail(`verification failed: ${e.message}`, {
@@ -1514,7 +1571,8 @@ async function doCommunity(argv) {
 
 function tailLog() {
   if (!existsSync(LOG_PATH)) {
-    console.log(`${c.yellow}No log yet at ${LOG_PATH}${c.reset}`);
+    console.log(`  ${c.yellow}!${c.reset}  no log yet  ${c.dim}${LOG_PATH}${c.reset}`);
+    console.log(`     ${c.gray}↳ the daemon creates it on first start: ${c.reset}${c.cyan}claude-rpc start${c.reset}`);
     return;
   }
   // Print the last ~30 lines, then follow.
@@ -1646,18 +1704,19 @@ function help() {
     ['tail',      'Tail the daemon log file'],
     ['daemon',    'Run daemon in foreground (debug)'],
   ];
+  const colW = cmds.reduce((m, [name]) => Math.max(m, name.length), 0);
   console.log('');
   console.log(`  ${c.bold}${c.magenta}◆ claude-rpc${c.reset}  ${c.dim}— Discord Rich Presence for Claude Code${c.reset}`);
   console.log('');
   console.log(`  ${c.dim}Commands:${c.reset}`);
   for (const [name, desc] of cmds) {
-    console.log(`    ${c.cyan}${name.padEnd(10)}${c.reset}  ${desc}`);
+    console.log(`    ${c.cyan}${name.padEnd(colW)}${c.reset}  ${desc}`);
   }
   console.log('');
   console.log(`  ${c.dim}First-time setup:${c.reset}`);
-  console.log(`    1. Set ${c.cyan}clientId${c.reset} in ${c.cyan}config.json${c.reset} to your Discord app id.`);
-  console.log(`    2. (Optional) Upload art under Rich Presence → Art Assets: ${c.cyan}claude${c.reset}, ${c.cyan}working${c.reset}, ${c.cyan}idle${c.reset}, ${c.cyan}thinking${c.reset}.`);
-  console.log(`    3. ${c.cyan}npm install${c.reset}  &&  ${c.cyan}claude-rpc setup${c.reset}  &&  ${c.cyan}claude-rpc start${c.reset}.`);
+  console.log(`    1. ${c.cyan}claude-rpc setup${c.reset} — wires hooks, seeds config, starts the daemon.`);
+  console.log(`    2. Open Claude Code and send a prompt — the card appears in Discord.`);
+  console.log(`    3. ${c.dim}(optional)${c.reset} Use your own Discord app: set ${c.cyan}clientId${c.reset} in ${c.cyan}config.json${c.reset} and upload art under Rich Presence → Art Assets: ${c.cyan}claude${c.reset}, ${c.cyan}working${c.reset}, ${c.cyan}idle${c.reset}, ${c.cyan}thinking${c.reset}.`);
   console.log('');
   console.log(`  ${c.dim}Tip: ${c.reset}edit ${c.cyan}config.json${c.reset} to customize rotation frames. Run ${c.cyan}claude-rpc preview${c.reset} to see the result without Discord.`);
   console.log('');
@@ -1686,8 +1745,10 @@ const packagedDefault = IS_PACKAGED && !cmd;
     // startup, install = with) but in practice users expect one command
     // to do everything. Non-Windows: addStartupEntry is a no-op + warning.
     case 'setup':
-    case 'install':
-      await runInstall({ exePath: EXE_PATH || process.execPath });
+    case 'install': {
+      // runInstall prints the phased checklist and leaves the `daemon` phase
+      // open; the launch row lands there, then setupOutro closes the screen.
+      const target = await runInstall({ exePath: EXE_PATH || process.execPath });
       // Slimmer first run: bring the daemon up now so the card appears
       // immediately, instead of making the user run a separate `start`.
       // Best-effort — a start hiccup must never make `setup` look failed.
@@ -1696,20 +1757,23 @@ const packagedDefault = IS_PACKAGED && !cmd;
           // Our own tree is npm's throwaway _npx cache; launch from the global
           // install setup just promoted to, via the PATH-resolved bin.
           if (!daemonPid()) {
-            spawn('claude-rpc', ['daemon'], {
+            const child = spawn('claude-rpc', ['daemon'], {
               detached: true, stdio: 'ignore', windowsHide: true,
               shell: process.platform === 'win32',
-            }).unref();
-            console.log(`${c.green}✓${c.reset} Daemon launched  ${c.dim}logs: ${LOG_PATH}${c.reset}`);
+            });
+            child.unref();
+            console.log(`  ${c.green}✓${c.reset}  ${'daemon launched'.padEnd(16)}${c.dim}log ${shortPath(LOG_PATH)}${c.reset}`);
           }
         } else {
           startDaemon();
         }
       } catch (e) {
-        console.log(`${c.yellow}!${c.reset} Couldn't auto-start the daemon: ${e.message}`);
-        console.log(`  ${c.dim}↳ run \`claude-rpc start\` when you're ready${c.reset}`);
+        console.log(`  ${c.yellow}!${c.reset}  ${'daemon start'.padEnd(16)}${c.dim}couldn't auto-start: ${e.message}${c.reset}`);
+        console.log(`     ${c.gray}↳ run \`claude-rpc start\` when you're ready${c.reset}`);
       }
+      setupOutro(target);
       break;
+    }
     case 'uninstall': await runUninstall(); break;
     case 'upgrade-config': migrateConfig(); break;
     case 'start':     startDaemon(); break;
@@ -1776,19 +1840,19 @@ const packagedDefault = IS_PACKAGED && !cmd;
         try {
           if (kind === 'setup') {
             await runInstall({ exePath: EXE_PATH || process.execPath });
-            console.log(`  ${c.green}✓${c.reset} config + hooks repaired`);
+            console.log(`  ${c.green}✓${c.reset}  config + hooks repaired`);
           } else if (kind === 'rescan') {
             doScan(true);
-            console.log(`  ${c.green}✓${c.reset} aggregate rebuilt from transcripts`);
+            console.log(`  ${c.green}✓${c.reset}  aggregate rebuilt from transcripts`);
           } else if (kind === 'daemon') {
             restartDaemon();
             restarted = true;
-            console.log(`  ${c.green}✓${c.reset} daemon (re)starting`);
+            console.log(`  ${c.green}✓${c.reset}  daemon (re)starting`);
           } else if (kind === 'discord') {
-            console.log(`  ${c.yellow}!${c.reset} discord IPC is down — open the Discord ${c.bold}desktop${c.reset} app (RPC isn't exposed by the browser client). Not auto-fixable.`);
+            console.log(`  ${c.yellow}!${c.reset}  discord IPC is down — open the Discord ${c.bold}desktop${c.reset} app (RPC isn't exposed by the browser client). Not auto-fixable.`);
           }
         } catch (e) {
-          console.log(`  ${c.red}✗${c.reset} ${kind} step failed: ${e.message}`);
+          console.log(`  ${c.red}✗${c.reset}  ${kind} step failed: ${e.message}`);
         }
       }
       // A 'setup' rewire only takes effect once the daemon reloads, so ensure a
@@ -1805,8 +1869,9 @@ const packagedDefault = IS_PACKAGED && !cmd;
     default: {
       if (packagedDefault) {
         if (!isInstalled()) {
-          await runInstall({ exePath: EXE_PATH || process.execPath });
+          const target = await runInstall({ exePath: EXE_PATH || process.execPath });
           startDaemon();
+          setupOutro(target);
         } else {
           // Self-heal an existing install. Two real failure modes this fixes:
           //
@@ -1824,13 +1889,14 @@ const packagedDefault = IS_PACKAGED && !cmd;
           // Refresh hooks against the canonical exe, migrate config blocks,
           // wipe state, restart daemon. Anything the user has customized in
           // config.json is preserved (migrateConfig is non-destructive).
-          console.log('Claude RPC is installed. Refreshing…');
+          console.log('');
+          console.log(`  ${c.bold}${c.magenta}◆ claude-rpc${c.reset}  ${c.dim}— already installed; refreshing hooks + config${c.reset}`);
           try {
             const target = ensureCanonicalExe(process.execPath);
             migrateConfig();
             installHooks(target);
           } catch (e) {
-            console.warn(`refresh skipped: ${e.message}`);
+            console.warn(`  ${c.yellow}!${c.reset}  ${'refresh skipped'.padEnd(16)}${c.dim}${e.message}${c.reset}`);
           }
           const wasRunning = stopDaemon({ quiet: true });
           try { if (existsSync(STATE_PATH)) unlinkSync(STATE_PATH); } catch { /* state.json locked or already gone — next hook will recreate it */ }
@@ -1847,11 +1913,16 @@ const packagedDefault = IS_PACKAGED && !cmd;
         // click with no args" install-and-start flow.
         overview();
       } else {
-        // Version in the error line is deliberate: the #1 cause of "unknown
+        // Version in the hint is deliberate: the #1 cause of "unknown
         // command" in the wild is a stale global install resolving instead of
         // the version the user read the docs for. Make the skew visible.
-        fail(`unknown command: ${cmd}  (claude-rpc v${VERSION})`,
-          { hint: 'run `claude-rpc --help` for the full list — if this command should exist, update first: npm install -g claude-rpc@latest', code: EX_USER_ERROR });
+        fail(`unknown command: ${cmd}`, {
+          hint: [
+            'run `claude-rpc --help` for the full command list',
+            `this install is v${VERSION} — if the docs mention \`${cmd}\`, update first: npm install -g claude-rpc@latest`,
+          ],
+          code: EX_USER_ERROR,
+        });
       }
     }
   }
