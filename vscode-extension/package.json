@@ -1,9 +1,9 @@
 {
   "name": "claude-rpc-vscode",
-  "displayName": "Claude RPC — Claude Code Status",
-  "description": "Live Claude Code status in the status bar — what Claude is doing (working / thinking / waiting on you), session tokens, and lifetime stats, read from claude-rpc's state files. Pause or resume the Discord card without leaving the editor. Tracks Claude Code only — never your editor activity.",
+  "displayName": "Claude RPC",
+  "description": "Status bar companion for the claude-rpc CLI — see what your AI coding session is doing (working / thinking / waiting on you), session tokens, and lifetime stats, read from claude-rpc's local state files. Pause or resume the Discord presence card without leaving the editor. Never tracks your own editor activity.",
   "version": "0.1.1",
-  "publisher": "rar-file",
+  "publisher": "rarfile",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -14,7 +14,7 @@
     "vscode": "^1.85.0"
   },
   "categories": ["Other"],
-  "keywords": ["claude", "claude code", "discord", "rich presence", "status bar"],
+  "keywords": ["claude-rpc", "discord", "rich presence", "status bar"],
   "main": "./extension.js",
   "extensionKind": ["workspace", "ui"],
   "activationEvents": ["onStartupFinished"],
