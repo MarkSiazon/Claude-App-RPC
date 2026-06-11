@@ -35,7 +35,7 @@ In remote / WSL setups the extension runs where Claude Code runs (`extensionKind
 ```sh
 cd vscode-extension
 npm run package        # → claude-rpc-vscode-<version>.vsix
-code --install-extension claude-rpc-vscode-*.vsix
+code --install-extension claude-rpc-presence-*.vsix
 ```
 
 Zero dependencies, plain CommonJS — nothing to compile.
