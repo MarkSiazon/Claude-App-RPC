@@ -363,3 +363,33 @@ test('verify/check sends authenticated GitHub API requests when app creds exist'
   await handleVerifyCheck(post('/verify/check', { instanceId: IDS.bob, gistId: 'abcdef123456' }), env, gistFetch);
   assert.ok(sawAuth && sawAuth.startsWith('Basic '), 'OAuth-app Basic auth applied (shared-IP rate-limit fix)');
 });
+
+test('a verified profile claims its own GitHub-name handle from an unverified squatter', async () => {
+  const env = makeEnv();
+  // Squatter publishes first and takes the name.
+  await seedProfile(env, IDS.bob, 'octocat', { tokens: 5 });
+  // Claimant is verified AS GitHub user "octocat" (e.g. via pair/claim).
+  await seedProfile(env, IDS.alice, 'tempname', { tokens: 100 });
+  const pf = JSON.parse(env.TOTALS.store.get('pf:' + IDS.alice).value);
+  pf.verified = true; pf.githubUser = 'octocat';
+  env.TOTALS.store.set('pf:' + IDS.alice, { value: JSON.stringify(pf), ttl: null });
+
+  const res = await handleProfile(post('/profile', {
+    instanceId: IDS.alice, handle: 'octocat', version: '0.15.0', osFamily: 'linux', tokens: 100,
+  }), env);
+  assert.equal(res.status, 200, await res.clone().text());
+  assert.equal((await res.json()).profile.handle, 'octocat');
+  assert.equal(await env.TOTALS.get('handle:octocat'), IDS.alice, 'verified identity wins the name');
+  const displaced = JSON.parse(env.TOTALS.store.get('pf:' + IDS.bob).value);
+  assert.match(displaced.handle, /^octocat-[0-9a-f]{4}/, 'squatter keeps stats under a derived handle');
+  assert.equal(await env.TOTALS.get('handle:' + displaced.handle), IDS.bob);
+});
+
+test('an unverified claimant still cannot take a held handle', async () => {
+  const env = makeEnv();
+  await seedProfile(env, IDS.bob, 'octocat');
+  const res = await handleProfile(post('/profile', {
+    instanceId: IDS.alice, handle: 'octocat', version: '0.15.0', osFamily: 'linux', tokens: 1,
+  }), env);
+  assert.equal(res.status, 409);
+});

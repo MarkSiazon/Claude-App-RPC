@@ -437,6 +437,10 @@ export async function handleProfile(request, env) {
   if (!(await rateOk(env, body.instanceId, 'profile'))) return jsonError(429, 'rate limited');
 
   const handle = normHandle(body.handle);
+  const now = Date.now();
+  const prev = (await getProfile(env, body.instanceId))
+    || { tokens: 0, sessions: 0, activeMs: 0, verified: false, createdAt: now };
+
   // Handle uniqueness: a handle belongs to exactly one instanceId — but only
   // while that instance's profile still exists. Unverified pf: rows expire
   // after 90 days while handle:<h> has no TTL, so an expired squatter's
@@ -445,13 +449,32 @@ export async function handleProfile(request, env) {
   const owner = await env.TOTALS.get(HANDLE_KEY(handle));
   if (owner && owner !== body.instanceId) {
     const ownerProfile = await getProfile(env, owner);
-    if (ownerProfile) return jsonError(409, 'handle taken');
-    try { await env.TOTALS.delete(HANDLE_KEY(handle)); } catch { /* best-effort */ }
+    if (!ownerProfile) {
+      try { await env.TOTALS.delete(HANDLE_KEY(handle)); } catch { /* best-effort */ }
+    } else if (prev.verified && normHandle(prev.githubUser) === handle && !ownerProfile.verified) {
+      // Verified-identity claim: this claimant has PROVEN they are GitHub
+      // user "<handle>"; an unverified row can't squat someone's own name
+      // (a user's second machine commonly does this to themselves). The
+      // holder keeps their stats under a derived handle.
+      let alt = null;
+      for (const suffix of [owner.slice(0, 4), owner.slice(0, 8), owner.slice(0, 12)]) {
+        const candidate = normHandle(`${handle}-${suffix}`);
+        if (candidate && !(await env.TOTALS.get(HANDLE_KEY(candidate)))) { alt = candidate; break; }
+      }
+      if (!alt) return jsonError(409, 'handle taken');
+      ownerProfile.handle = alt;
+      await env.TOTALS.put(PF_KEY(owner), JSON.stringify(ownerProfile),
+        ownerProfile.verified ? {} : { expirationTtl: PF_UNVERIFIED_TTL_SECONDS });
+      await env.TOTALS.put(HANDLE_KEY(alt), owner);
+      await env.TOTALS.delete(HANDLE_KEY(handle));
+      try {
+        const index = pruneBoardIndex(await getBoardIndex(env));
+        if (index[owner]) { index[owner] = boardEntry(ownerProfile); await env.TOTALS.put(BOARD_INDEX_KEY, JSON.stringify(index)); }
+      } catch { /* board heals on the displaced row's next publish */ }
+    } else {
+      return jsonError(409, 'handle taken');
+    }
   }
-
-  const now = Date.now();
-  const prev = (await getProfile(env, body.instanceId))
-    || { tokens: 0, sessions: 0, activeMs: 0, verified: false, createdAt: now };
   // Release a previously-held handle if this instance is renaming.
   if (prev.handle && prev.handle !== handle) {
     try { await env.TOTALS.delete(HANDLE_KEY(prev.handle)); } catch { /* best-effort */ }
