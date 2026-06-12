@@ -656,7 +656,25 @@ function showPreview() {
   state.usage = readUsageCache();
   const vars = buildVars(state, config, aggregate);
   const p = config.presence || {};
-  const frames = (Array.isArray(p.rotation) ? p.rotation : [{ details: p.details, state: p.state }]);
+  // Preview the frames the daemon ACTUALLY uses: byStatus (base frame + its
+  // rotation, per status) when present — pickFrames in the daemon prefers it
+  // — falling back to the legacy top-level rotation for old configs.
+  const sections = [];
+  if (p.byStatus && typeof p.byStatus === 'object' && Object.keys(p.byStatus).length) {
+    for (const [status, sb] of Object.entries(p.byStatus)) {
+      if (!sb || typeof sb !== 'object') continue;
+      const frames = [
+        { details: sb.details, state: sb.state },
+        ...(Array.isArray(sb.rotation) ? sb.rotation : []),
+      ];
+      sections.push({ title: status, frames });
+    }
+  } else {
+    sections.push({
+      title: null,
+      frames: Array.isArray(p.rotation) ? p.rotation : [{ details: p.details, state: p.state }],
+    });
+  }
 
   console.log('');
   console.log(`  ${c.bold}${c.magenta}◆ Presence preview${c.reset}  ${c.dim}— how Discord renders each rotation frame${c.reset}`);
@@ -670,19 +688,22 @@ function showPreview() {
   console.log(`  ${c.dim}small image:${c.reset} ${smallHidden ? c.dim + '(hidden)' + c.reset : c.cyan + smallKey + c.reset}  ${c.dim}· tooltip:${c.reset} ${smallText}`);
   console.log('');
 
-  frames.forEach((frame, i) => {
-    const passes = framePasses(frame, vars);
-    const reqs = frame.requires ? (Array.isArray(frame.requires) ? frame.requires : [frame.requires]) : [];
-    const tag = passes
-      ? `${c.green}● live${c.reset}`
-      : `${c.dim}○ skipped (requires ${reqs.join(', ')})${c.reset}`;
-    const details = fillTemplate(frame.details || '', vars);
-    const stateLine = fillTemplate(frame.state || '', vars);
-    console.log(`  ${c.bold}${String(i + 1).padStart(2)}.${c.reset} ${tag}`);
-    console.log(`     ${passes ? c.cyan : c.dim}${details || '—'}${c.reset}`);
-    console.log(`     ${passes ? '' : c.dim}${stateLine || '—'}${c.reset}`);
-    console.log('');
-  });
+  for (const { title, frames } of sections) {
+    if (title) console.log(`  ${c.bold}${title}${c.reset}${state.status === title ? `  ${c.green}← current status${c.reset}` : ''}`);
+    frames.forEach((frame, i) => {
+      const passes = framePasses(frame, vars);
+      const reqs = frame.requires ? (Array.isArray(frame.requires) ? frame.requires : [frame.requires]) : [];
+      const tag = passes
+        ? `${c.green}● live${c.reset}`
+        : `${c.dim}○ skipped (requires ${reqs.join(', ')})${c.reset}`;
+      const details = fillTemplate(frame.details || '', vars);
+      const stateLine = fillTemplate(frame.state || '', vars);
+      console.log(`  ${c.bold}${String(i + 1).padStart(2)}.${c.reset} ${tag}`);
+      console.log(`     ${passes ? c.cyan : c.dim}${details || '—'}${c.reset}`);
+      console.log(`     ${passes ? '' : c.dim}${stateLine || '—'}${c.reset}`);
+      console.log('');
+    });
+  }
 }
 
 // Emit the autocomplete payload the dashboard needs as JSON, without the

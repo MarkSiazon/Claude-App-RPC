@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.1] - 2026-06-12
+
+**Fixed**
+
+- **`claude-rpc preview` previews the frames the daemon actually renders.** It still read only the legacy top-level `presence.rotation` — dead config for anyone on the v0.3.6+ `byStatus` shape — so new frames (like the v0.16.0 usage frame) were invisible in preview while rendering fine on Discord. Preview now walks `byStatus` (base frame + rotation, grouped per status, current status marked) and falls back to the legacy rotation only for old configs.
+
 ## [0.16.0] - 2026-06-12
 
 **Added**
