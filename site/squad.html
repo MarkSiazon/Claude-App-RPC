@@ -84,6 +84,7 @@
         <thead><tr><th>#</th><th>who</th><th style="text-align:right">tokens</th><th style="text-align:right">hours</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
+      <p class="note" id="weekNote" hidden>Fresh week — scores start at zero and build as each member's daemon reports (about every 30 minutes of Claude Code use). The <strong>lifetime</strong> tab has the full totals.</p>
       <div class="panel" id="memberPanel" hidden>
         <h3>invite your crew</h3>
         <div>send them this link — they join in one click:</div>
@@ -174,6 +175,9 @@
   // ── view mode ────────────────────────────────────────────────────────────
   let standings = [];
   let tab = 'week';
+  function weekIsEmpty() {
+    return standings.every((r) => !r.weekTokens && !r.weekActiveMs);
+  }
   function renderRows() {
     const rows = document.getElementById('rows');
     rows.innerHTML = standings.map((r) => {
@@ -186,6 +190,9 @@
         `<td class="who"><a href="/u/${encodeURIComponent(r.handle)}" style="color:inherit">${esc(name)}</a>${badge}${crown}</td>` +
         `<td class="val">${fmt(tok)}</td><td class="val">${hours(ms)}</td></tr>`;
     }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--ink-mute);padding:26px">nobody here yet</td></tr>';
+    // A fresh week (or fresh squad) is all zeros — say why instead of looking broken.
+    const note = document.getElementById('weekNote');
+    note.hidden = !(tab === 'week' && weekIsEmpty());
   }
 
   async function loadView(id) {
@@ -197,6 +204,15 @@
       `${j.squad.members} member${j.squad.members === 1 ? '' : 's'} · week ${j.squad.week} · resets monday 00:00 utc`;
     document.title = `${j.squad.name} — claude-rpc squad`;
     standings = j.standings;
+    // Land on the tab that has something to show: a brand-new squad's week is
+    // all zeros, which reads as "no stats" — open on lifetime until the race
+    // has numbers, leaving the week tab one click away.
+    if (weekIsEmpty()) {
+      tab = 'life';
+      for (const t of document.querySelectorAll('.tab')) {
+        t.setAttribute('aria-pressed', String(t.dataset.tab === 'life'));
+      }
+    }
     renderRows();
     document.getElementById('view').hidden = false;
 
