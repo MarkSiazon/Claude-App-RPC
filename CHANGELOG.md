@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.3] - 2026-06-12
+
+**Added**
+
+- **One GitHub identity = one leaderboard identity, across machines.** Linking a second (third, …) install as the same GitHub user now MERGES it into your canonical profile instead of creating a parallel row: the board shows one entry whose tokens/sessions/hours are summed across machines (streak = your best machine), the extra handle is released, and every machine manages the same squads. A brand-new machine links with just `claude-rpc link <code>` — no profile dance first. Each machine's stats stay tracked as its own slice, so a flush from one never clobbers another.
+
 ## [0.15.2] - 2026-06-12
 
 **Changed**
