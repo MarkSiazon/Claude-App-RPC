@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.15.6] - 2026-06-12
+
+**Fixed**
+
+- **`npx claude-rpc@latest setup` no longer opens a visible terminal running the daemon on Windows 11 — and no longer runs it from the npx cache.** The npx branch launched the daemon as `claude-rpc daemon` through a shell: PATH inside an npx run resolves that bare name back into npm's throwaway `_npx` cache (the very copy setup promotes away from), and the `cmd → .cmd shim → node` chain meant the hide/detach flags only applied to the first hop — the detached cmd loses its console, the grandchild node allocates a fresh one, and Windows 11 surfaces it as a visible Windows Terminal window. Closing that window killed the daemon; an `npm cache clean` would have stranded its source. Setup now resolves the global install explicitly (`npm root -g`) and spawns `node <global daemon.js>` directly — detached, windowless, cache-eviction-proof — falling back to a direct (still windowless) spawn of the npx copy only if npm can't be asked.
+
 ## [0.15.5] - 2026-06-12
 
 **Changed**

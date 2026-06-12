@@ -29,7 +29,7 @@ import { VERSION } from './version.js';
 import { fail, tailLines, heat, sparkline, fmtDelta, topPercentile, EX_USER_ERROR, EX_BAD_STATE, EX_SYS_ERROR } from './ui.js';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 
 const cmd = process.argv[2];
 
@@ -1849,14 +1849,33 @@ const packagedDefault = IS_PACKAGED && !cmd;
       try {
         if (IS_NPX) {
           // Our own tree is npm's throwaway _npx cache; launch from the global
-          // install setup just promoted to, via the PATH-resolved bin.
+          // install setup just promoted to. The global copy must be resolved
+          // EXPLICITLY (npm root -g): inside an npx run, PATH has the _npx
+          // cache's .bin first, so a bare `claude-rpc` resolves right back
+          // into the cache we're escaping. And it must be spawned as a direct
+          // `node <script>` child — a shell+shim chain (cmd → .cmd → node)
+          // only hides the FIRST hop's window; the detached cmd loses its
+          // console, the grandchild node allocates a fresh one, and Windows 11
+          // pops it as a visible Windows Terminal window whose closure kills
+          // the daemon.
           if (!daemonPid()) {
-            const child = spawn('claude-rpc', ['daemon'], {
+            let script = null;
+            try {
+              const r = spawnSync('npm', ['root', '-g'], {
+                encoding: 'utf8', timeout: 8000, windowsHide: true,
+                shell: process.platform === 'win32',   // npm is npm.cmd on Windows
+              });
+              const root = (r.stdout || '').trim();
+              const candidate = root && join(root, 'claude-rpc', 'src', 'daemon.js');
+              if (candidate && existsSync(candidate)) script = candidate;
+            } catch { /* npm unavailable → fall back below */ }
+            // Fallback: run from this (npx) tree. Still invisible — only the
+            // npx-cache-eviction caveat remains, healed by the next setup.
+            const child = spawn(process.execPath, [script || DAEMON_SCRIPT], {
               detached: true, stdio: 'ignore', windowsHide: true,
-              shell: process.platform === 'win32',
             });
             child.unref();
-            console.log(`  ${c.green}✓${c.reset}  ${'daemon launched'.padEnd(16)}${c.dim}log ${shortPath(LOG_PATH)}${c.reset}`);
+            console.log(`  ${c.green}✓${c.reset}  ${'daemon launched'.padEnd(16)}${c.dim}pid ${c.reset}${c.cyan}${child.pid}${c.reset}${c.dim} · log ${shortPath(LOG_PATH)}${c.reset}`);
           } else {
             console.log(`  ${c.cyan}·${c.reset}  ${'daemon running'.padEnd(16)}${c.dim}pid ${daemonPid()}${c.reset}`);
           }
