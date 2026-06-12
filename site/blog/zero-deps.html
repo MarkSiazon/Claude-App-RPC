@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>zero runtime dependencies, on purpose · claude-rpc</title>
+<meta name="description" content="Why claude-rpc has an empty dependency list: a hand rolled Discord IPC client, no install scripts, CI only publishing with provenance, and a supply chain you can audit in one sitting." />
+<link rel="canonical" href="https://claude-rpc.vercel.app/blog/zero-deps" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="zero runtime dependencies, on purpose" />
+<meta property="og:description" content="A tool that sits next to your credentials deserves paranoia. The dependency list is empty and the whole supply chain fits in one review." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://claude-rpc.vercel.app/blog/zero-deps" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="zero runtime dependencies, on purpose" />
+<meta name="twitter:description" content="The dependency list is empty and the whole supply chain fits in one review." />
+<meta name="twitter:image" content="https://claude-rpc.vercel.app/img/og.png" />
+
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker {
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3);
+  }
+  h1 { font-family: var(--font-disp); font-size: clamp(1.8rem, 4.5vw, 2.7rem); margin: 8px 0 6px; line-height: 1.08; }
+  .date { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .prose { margin-top: 28px; }
+  .prose p { line-height: 1.75; font-size: 1.0rem; }
+  .prose h2 { font-family: var(--font-disp); font-size: 1.3rem; margin: 38px 0 10px; }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-2);
+    border: 1px solid rgba(43,39,34,0.25); padding: 1px 5px;
+  }
+  .prose pre {
+    background: var(--ink); color: var(--paper); border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow); padding: 18px 20px; overflow-x: auto;
+    font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.65;
+  }
+  .prose pre code { background: transparent; border: 0; padding: 0; color: inherit; }
+  .prose ul { line-height: 1.75; }
+  .back { font-family: var(--font-mono); font-size: 0.78rem; display: inline-block; margin-top: 36px; }
+  footer { text-align: center; padding: 28px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+  footer a { color: var(--ink-mute); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">posts</span>
+    <h1>zero runtime dependencies, on purpose</h1>
+    <span class="date">2026-06-05</span>
+
+    <div class="prose">
+      <p>claude-rpc installs next to your Claude Code credentials, your transcripts, and your source code. A tool in that position deserves paranoia, yours and mine. So as of v0.13.5 the npm package has zero runtime dependencies, and I intend to keep it that way.</p>
+
+      <h2>what that took</h2>
+      <p>The obvious dependency for a project like this is a Discord RPC library. I wrote the IPC client by hand instead, and honestly it was less work than the reputation suggests. The protocol is small: a unix socket on macOS and Linux, a named pipe on Windows, an eight byte header carrying an opcode and a length, then a JSON payload. A few hundred lines covers connect, handshake, activity updates, and reconnects.</p>
+      <p>The transcript parser is hand rolled too, a line by line JSONL reader with incremental caching. Same for the SVG renderers behind the badges, cards, and the year heatmap. None of these needed a framework. They needed attention.</p>
+
+      <h2>what you get</h2>
+      <ul>
+        <li><code>npm i</code> installs exactly one package. There is no tree to audit, because there is no tree.</li>
+        <li>No install scripts. Nothing runs on your machine at install time.</li>
+        <li>Publishing is CI only, with npm provenance attached. The package on the registry provably comes from the public repo.</li>
+        <li>GitHub Actions are pinned to commit SHAs, not floating tags.</li>
+        <li>Discord communication is a local socket. The only network features are opt in, and they are documented in SECURITY.md.</li>
+      </ul>
+      <p>The point of all this is not purity. The point is that one person can sit down with the repo and audit the entire supply chain in a single session. Most tools in this space cannot offer that, not because their authors are careless, but because the default path piles up dependencies fast.</p>
+
+      <h2>the tradeoff</h2>
+      <p>I maintain more code. When the IPC handshake has a bug, it is my bug, with no upstream to wait on. I think that trade is correct for a tool that lives this close to your work, and so far the hand rolled parts have been the most stable code in the project.</p>
+      <p>If you want to check my claims, the code is short and public: <a href="https://github.com/rar-file/claude-rpc">github.com/rar-file/claude-rpc</a>. Start with <code>src/discord-ipc.js</code>.</p>
+    </div>
+
+    <a class="back" href="/blog">&larr; all posts</a>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.vercel.app</a> · <a href="/blog">posts</a> · <a href="https://github.com/rar-file/claude-rpc">github</a> · built solo
+  </footer>
+</body>
+</html>

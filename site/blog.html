@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>claude-rpc · posts</title>
+<meta name="description" content="Build log for claude-rpc: short posts on how the Discord presence works, the zero dependency policy, and honest numbers from a tiny launch." />
+<link rel="canonical" href="https://claude-rpc.vercel.app/blog" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="claude-rpc · posts" />
+<meta property="og:description" content="Build log: how the presence works, why zero dependencies, and honest numbers from a tiny launch." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://claude-rpc.vercel.app/blog" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="claude-rpc · posts" />
+<meta name="twitter:description" content="Build log: how the presence works, why zero dependencies, and honest numbers from a tiny launch." />
+<meta name="twitter:image" content="https://claude-rpc.vercel.app/img/og.png" />
+
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker {
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3);
+  }
+  h1 { font-family: var(--font-disp); font-size: clamp(2rem, 5vw, 3.2rem); margin: 8px 0 6px; line-height: 1.05; }
+  .lead { color: var(--ink-mute); max-width: 56ch; font-size: 1.02rem; }
+
+  .posts { display: flex; flex-direction: column; gap: 18px; margin: 40px 0 8px; }
+  .post {
+    display: block; text-decoration: none; color: var(--ink);
+    background: var(--paper-2); border: 1.5px solid var(--ink); box-shadow: var(--shadow);
+    padding: 22px 24px; transition: transform 0.08s ease;
+  }
+  .post:hover { transform: translate(-2px, -2px); }
+  .post .date { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .post .title { font-family: var(--font-disp); font-weight: 700; font-size: 1.25rem; margin: 6px 0 6px; color: var(--ink); }
+  .post .blurb { color: var(--ink-mute); font-size: 0.94rem; margin: 0; max-width: 60ch; }
+  .post .more { font-family: var(--font-mono); font-size: 0.76rem; color: var(--rust-3); margin-top: 10px; display: inline-block; }
+
+  footer { text-align: center; padding: 28px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+  footer a { color: var(--ink-mute); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">posts</span>
+    <h1>build log.</h1>
+    <p class="lead">Short posts about building <a href="/">claude-rpc</a>: design notes, decisions, and honest numbers. Written by one person, on the train, between sessions.</p>
+
+    <div class="posts">
+      <a class="post" href="/blog/three-weeks">
+        <span class="date">2026-06-13</span>
+        <div class="title">three weeks in: the real numbers</div>
+        <p class="blurb">Seven stars, twenty visitors, and the embarrassing discovery that I built every growth loop except the part where you actually tell people.</p>
+        <span class="more">read &rarr;</span>
+      </a>
+      <a class="post" href="/blog/ship-week">
+        <span class="date">2026-06-11</span>
+        <div class="title">one week: a leaderboard, squads, and a status bar</div>
+        <p class="blurb">The v0.13 to v0.14 sprint: a GitHub verified leaderboard, private squads, a ten issue bug bash, and a VS Code extension on the Marketplace.</p>
+        <span class="more">read &rarr;</span>
+      </a>
+      <a class="post" href="/blog/zero-deps">
+        <span class="date">2026-06-05</span>
+        <div class="title">zero runtime dependencies, on purpose</div>
+        <p class="blurb">This tool sits next to your credentials and your source code. That deserves paranoia, so the dependency list is empty and the whole supply chain fits in one review.</p>
+        <span class="more">read &rarr;</span>
+      </a>
+      <a class="post" href="/blog/how-it-works">
+        <span class="date">2026-05-20</span>
+        <div class="title">the whole thing is a file watcher</div>
+        <p class="blurb">How the live card actually works: five hooks, one small state file, and a daemon that holds Discord's local socket. No magic, no polling, no network.</p>
+        <span class="more">read &rarr;</span>
+      </a>
+    </div>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.vercel.app</a> · <a href="/leaderboard">leaderboard</a> · <a href="/community">community</a> · <a href="https://github.com/rar-file/claude-rpc">github</a> · built solo
+  </footer>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>three weeks in: the real numbers · claude-rpc</title>
+<meta name="description" content="Seven stars, twenty visitors, zero external posts. Honest numbers from a tiny launch, and the lesson about growth loops that do not start themselves." />
+<link rel="canonical" href="https://claude-rpc.vercel.app/blog/three-weeks" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="three weeks in: the real numbers" />
+<meta property="og:description" content="Seven stars, twenty visitors, zero external posts. Honest numbers from a tiny launch." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://claude-rpc.vercel.app/blog/three-weeks" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="three weeks in: the real numbers" />
+<meta name="twitter:description" content="Seven stars, twenty visitors, zero external posts. Honest numbers from a tiny launch." />
+<meta name="twitter:image" content="https://claude-rpc.vercel.app/img/og.png" />
+
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker {
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3);
+  }
+  h1 { font-family: var(--font-disp); font-size: clamp(1.8rem, 4.5vw, 2.7rem); margin: 8px 0 6px; line-height: 1.08; }
+  .date { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .prose { margin-top: 28px; }
+  .prose p { line-height: 1.75; font-size: 1.0rem; }
+  .prose h2 { font-family: var(--font-disp); font-size: 1.3rem; margin: 38px 0 10px; }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-2);
+    border: 1px solid rgba(43,39,34,0.25); padding: 1px 5px;
+  }
+  .prose ul { line-height: 1.75; }
+  .numbers {
+    background: var(--paper-2); border: 1.5px solid var(--ink); box-shadow: var(--shadow);
+    padding: 18px 22px; margin: 24px 0; font-family: var(--font-mono); font-size: 0.86rem; line-height: 2;
+  }
+  .numbers b { color: var(--rust-3); }
+  .back { font-family: var(--font-mono); font-size: 0.78rem; display: inline-block; margin-top: 36px; }
+  footer { text-align: center; padding: 28px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+  footer a { color: var(--ink-mute); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">posts</span>
+    <h1>three weeks in: the real numbers</h1>
+    <span class="date">2026-06-13</span>
+
+    <div class="prose">
+      <p>Build in public posts usually show up after the graph goes vertical. This is the other kind. claude-rpc launched on May 20. Here is exactly where it stands three and a half weeks later.</p>
+
+      <div class="numbers">
+        github stars: <b>7</b> (one of them is me)<br />
+        page views, last 14 days: <b>118</b><br />
+        unique visitors, last 14 days: <b>20</b><br />
+        posts on reddit, hacker news, or x: <b>0</b>
+      </div>
+
+      <p>That last line is the whole story.</p>
+
+      <h2>the loops i built</h2>
+      <p>I did the homework, or what I thought was the homework. The Discord card carries an install button with referral attribution. Every shared card, badge, and Wrapped page links back here. The site has proper OG images, JSON LD, a sitemap. There is a <a href="/community">community page</a> with live totals, a <a href="/leaderboard">leaderboard</a> with GitHub verification, share nudges in the CLI. I even wrote launch posts for every channel, tailored per community, with a posting schedule.</p>
+      <p>Then I never posted them. I kept finding one more feature that should land first, one more rough edge to sand. The drafts sat in a folder while I shipped a leaderboard, squads, a VS Code extension, and a dashboard nobody outside this domain has seen.</p>
+
+      <h2>what the data says anyway</h2>
+      <p>Even at this size the referrer table teaches something: every visitor came from GitHub itself, from this site, or from a stray Google query. Growth loops amplify traffic. They do not create it. A flywheel with no first push is furniture.</p>
+      <p>The stars that did arrive came in a small cluster right after the busiest shipping week, which suggests the obvious: activity is visible, and visible activity converts, even when nobody is promoting it. Four of the seven stars landed within two days of the v0.14 release.</p>
+
+      <h2>the plan, stated publicly so i actually do it</h2>
+      <ul>
+        <li>Submit to the awesome claude code list.</li>
+        <li>Post the Show HN and the r/ClaudeAI thread that have been drafted since June 4.</li>
+        <li>Publish the VS Code extension to Open VSX for Cursor and Windsurf users.</li>
+        <li>Keep writing these posts, because the numbers only get interesting if you start recording them before they are good.</li>
+      </ul>
+      <p>If you are reading this because one of those finally went out: hi. The install is one command, <code>npx claude-rpc setup</code>, and <a href="https://github.com/rar-file/claude-rpc">the source</a> is short on purpose.</p>
+    </div>
+
+    <a class="back" href="/blog">&larr; all posts</a>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.vercel.app</a> · <a href="/blog">posts</a> · <a href="https://github.com/rar-file/claude-rpc">github</a> · built solo
+  </footer>
+</body>
+</html>

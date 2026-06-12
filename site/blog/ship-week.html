@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>one week: a leaderboard, squads, and a status bar · claude-rpc</title>
+<meta name="description" content="The v0.13 to v0.14 sprint: a GitHub verified leaderboard, private squads, a ten issue bug bash run by Claude itself, and a VS Code extension on the Marketplace." />
+<link rel="canonical" href="https://claude-rpc.vercel.app/blog/ship-week" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="one week: a leaderboard, squads, and a status bar" />
+<meta property="og:description" content="The v0.13 to v0.14 sprint, including the day Claude closed ten of its own issues." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://claude-rpc.vercel.app/blog/ship-week" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="one week: a leaderboard, squads, and a status bar" />
+<meta name="twitter:description" content="The v0.13 to v0.14 sprint, including the day Claude closed ten of its own issues." />
+<meta name="twitter:image" content="https://claude-rpc.vercel.app/img/og.png" />
+
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker {
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3);
+  }
+  h1 { font-family: var(--font-disp); font-size: clamp(1.8rem, 4.5vw, 2.7rem); margin: 8px 0 6px; line-height: 1.08; }
+  .date { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .prose { margin-top: 28px; }
+  .prose p { line-height: 1.75; font-size: 1.0rem; }
+  .prose h2 { font-family: var(--font-disp); font-size: 1.3rem; margin: 38px 0 10px; }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-2);
+    border: 1px solid rgba(43,39,34,0.25); padding: 1px 5px;
+  }
+  .prose ul { line-height: 1.75; }
+  .back { font-family: var(--font-mono); font-size: 0.78rem; display: inline-block; margin-top: 36px; }
+  footer { text-align: center; padding: 28px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+  footer a { color: var(--ink-mute); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">posts</span>
+    <h1>one week: a leaderboard, squads, and a status bar</h1>
+    <span class="date">2026-06-11</span>
+
+    <div class="prose">
+      <p>Some weeks you fix one bug. Some weeks the project grows three limbs. This was the second kind, so here is the log before I forget how it happened.</p>
+
+      <h2>june 4: the leaderboard</h2>
+      <p>Shipped in four phases over one long day: a local profile foundation, the worker backend with ranking and anti fraud, client side publishing with GitHub verification, and public pages at <a href="/leaderboard">/leaderboard</a> plus <code>/u/&lt;handle&gt;</code> for every profile.</p>
+      <p>Verification matters here. Anyone can claim a handle, so claiming one you want to keep means proving you own the GitHub account behind it, via a gist you create and the worker checks. Stats stay opt in: nothing is published until you run <code>claude-rpc profile publish</code>.</p>
+
+      <h2>june 7: the bug bash i did not run</h2>
+      <p>I wired the repo so that <code>@claude</code> can pick up issues, push fixes, and open PRs. Then I filed everything that annoyed me and went to do other things. It closed around ten issues in a day, including a genuinely subtle one: the SSE file watcher died after atomic renames because it watched an inode that no longer existed. The fix watches the parent directory instead. I reviewed and merged each PR, but I wrote almost none of the code that day.</p>
+      <p>A Discord presence for Claude Code, debugged by Claude Code, feels like the project working as intended.</p>
+
+      <h2>june 11: v0.14 and a status bar</h2>
+      <p>v0.14.0 landed with pause and export commands, party size on the card, worktree aware git detection, and support for the new Fable 5 model. Alongside it, the first non terminal surface: a VS Code extension that shows the same live stats in your status bar, published on the Marketplace as <code>rarfile.claude-rpc-presence</code>. It reads the same state files the daemon writes, so it costs nothing extra.</p>
+
+      <h2>what i learned</h2>
+      <ul>
+        <li>Phased shipping beats one giant branch, even solo. Each leaderboard phase was usable on its own.</li>
+        <li>Letting the agent work the issue queue is a real multiplier, but only with review. Two of the ten PRs needed changes.</li>
+        <li>Every new surface should read existing state, not invent its own. The VS Code extension was small because the daemon already did the work.</li>
+      </ul>
+      <p>Next up: making sure anyone outside this site actually hears about any of this.</p>
+    </div>
+
+    <a class="back" href="/blog">&larr; all posts</a>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.vercel.app</a> · <a href="/blog">posts</a> · <a href="https://github.com/rar-file/claude-rpc">github</a> · built solo
+  </footer>
+</body>
+</html>

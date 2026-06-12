@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>the whole thing is a file watcher · claude-rpc</title>
+<meta name="description" content="How claude-rpc puts a live Claude Code session on a Discord profile: five hooks, one small state file, and a daemon that holds the local IPC socket." />
+<link rel="canonical" href="https://claude-rpc.vercel.app/blog/how-it-works" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="the whole thing is a file watcher" />
+<meta property="og:description" content="How claude-rpc works: five hooks, one state file, one daemon. No magic, no polling, no network." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://claude-rpc.vercel.app/blog/how-it-works" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="the whole thing is a file watcher" />
+<meta name="twitter:description" content="How claude-rpc works: five hooks, one state file, one daemon." />
+<meta name="twitter:image" content="https://claude-rpc.vercel.app/img/og.png" />
+
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker {
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3);
+  }
+  h1 { font-family: var(--font-disp); font-size: clamp(1.8rem, 4.5vw, 2.7rem); margin: 8px 0 6px; line-height: 1.08; }
+  .date { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .prose { margin-top: 28px; }
+  .prose p { line-height: 1.75; font-size: 1.0rem; }
+  .prose h2 { font-family: var(--font-disp); font-size: 1.3rem; margin: 38px 0 10px; }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-2);
+    border: 1px solid rgba(43,39,34,0.25); padding: 1px 5px;
+  }
+  .prose pre {
+    background: var(--ink); color: var(--paper); border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow); padding: 18px 20px; overflow-x: auto;
+    font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.65;
+  }
+  .prose pre code { background: transparent; border: 0; padding: 0; color: inherit; }
+  .prose ul { line-height: 1.75; }
+  .back { font-family: var(--font-mono); font-size: 0.78rem; display: inline-block; margin-top: 36px; }
+  footer { text-align: center; padding: 28px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+  footer a { color: var(--ink-mute); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">posts</span>
+    <h1>the whole thing is a file watcher</h1>
+    <span class="date">2026-05-20 · launch day</span>
+
+    <div class="prose">
+      <p>The card looks like magic. Your Discord profile shows the model you are running, the project you are in, the tool Claude is using right now, and it clears the second you close the session. People assume there is a plugin inside Claude Code, or some API polling loop, or worse.</p>
+      <p>There is none of that. The whole thing is a file watcher with good manners.</p>
+
+      <h2>the hook side</h2>
+      <p>Claude Code fires lifecycle hooks: <code>SessionStart</code>, <code>PreToolUse</code>, <code>PostToolUse</code>, <code>Stop</code>, <code>SessionEnd</code>. The setup command registers a tiny hook on each of them. Each hook does exactly one thing: write a small JSON state file and exit.</p>
+      <p>That is the entire footprint inside your session. No network calls, no daemon logic, nothing that can slow Claude down or break a session if claude-rpc has a bug. If the daemon is dead, the hook still just writes a file and leaves.</p>
+
+      <h2>the daemon side</h2>
+      <p>A separate long lived daemon owns the Discord half. Discord exposes a local IPC socket on every desktop install, a unix socket on macOS and Linux, a named pipe on Windows. The daemon connects once, holds the socket, and watches the state file plus the live transcript on disk.</p>
+      <p>When something changes, it pushes a presence frame. Frames rotate: current model and project, the file or tool in flight, hours today, lifetime tokens and cost, subscription usage. When you <code>git push</code> from a session, it flips to a shipped frame for a bit, because shipping deserves a frame.</p>
+      <p>When the session ends, <code>SessionEnd</code> writes the final state and the card clears instantly. No ghost presence three minutes after you closed the terminal.</p>
+
+      <h2>the stats side</h2>
+      <p>Lifetime numbers come from a third piece: a scanner that walks <code>~/.claude/projects/**/*.jsonl</code>, the transcripts Claude Code already keeps on disk, and aggregates active time, tokens, cost, streaks, and languages. It caches incrementally, so a rescan after a long day touches only the new lines.</p>
+
+      <h2>why this shape</h2>
+      <p>The hooks are the only code that runs inside your session, so they have to be near zero cost. The daemon can afford to be long lived because it does almost nothing. The scanner can afford to be thorough because it runs on its own schedule. Three small parts, one file between them.</p>
+      <p>Boring design, in the best sense. Try it: <code>npx claude-rpc setup</code></p>
+    </div>
+
+    <a class="back" href="/blog">&larr; all posts</a>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.vercel.app</a> · <a href="/blog">posts</a> · <a href="https://github.com/rar-file/claude-rpc">github</a> · built solo
+  </footer>
+</body>
+</html>
