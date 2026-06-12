@@ -13,6 +13,7 @@ import { migrateConfig } from './install.js';
 import { desktopNotify, postWebhook, shouldWebhook, shouldNotify } from './notify.js';
 import { humanProject } from './format.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH, PAUSE_PATH } from './paths.js';
+import { readUsageCache, pollUsage } from './usage.js';
 
 if (!existsSync(STATE_DIR)) mkdirSync(STATE_DIR, { recursive: true });
 
@@ -184,6 +185,9 @@ function buildActivity(opts = {}) {
   // pushPresence). Fall back to resolving here for any standalone caller.
   const state = opts.resolved || resolvePresence(opts);
 
+  // Subscription usage rides in like liveSessions: injected onto state so
+  // buildVars stays pure. Stale/missing cache → null → usage frames vanish.
+  state.usage = readUsageCache();
   const vars = buildVars(state, config, opts.aggregate || aggregate);
   const p = config.presence || {};
 
@@ -643,6 +647,40 @@ async function runCommunityFlush() {
 }
 const communityFlushMs = Math.max(60_000, (config.community?.flushIntervalMin || 30) * 60 * 1000);
 setInterval(runCommunityFlush, communityFlushMs);
+
+// Subscription-usage poll (feeds {usageWeeklyPct} & friends + `claude-rpc
+// usage`). Only while something is live — no point burning requests against
+// an idle account — and backs off to hourly retries after a bad run, since
+// the endpoint is internal and deserves politeness. pollUsage never throws.
+let usageFailStreak = 0;
+let usageSkipUntil = 0;
+async function runUsagePoll() {
+  if (config.usage?.enabled === false) return;
+  if (Date.now() < usageSkipUntil) return;
+  try {
+    if (!findLiveSessions({ thresholdMs: 30 * 60_000 }).length) return;
+  } catch { /* detection hiccup — poll anyway */ }
+  try {
+    const r = await pollUsage(config);
+    if (r.ok) {
+      usageFailStreak = 0;
+      log(`usage: session ${r.usage.sessionPct}% · week ${r.usage.weeklyPct}%`);
+    } else if (r.reason !== 'disabled') {
+      usageFailStreak += 1;
+      log(`usage: ${r.reason}${r.error ? ' (' + r.error + ')' : ''}`);
+      if (usageFailStreak >= 3) {
+        usageSkipUntil = Date.now() + 60 * 60_000;
+        usageFailStreak = 0;
+      }
+    }
+  } catch (e) {
+    log('usage poll threw:', e.message);
+  }
+}
+const usagePollMs = Math.max(5 * 60_000, (config.usage?.pollIntervalMin || 10) * 60_000);
+setInterval(runUsagePoll, usagePollMs);
+// First poll shortly after startup so the frame doesn't wait a full interval.
+setTimeout(runUsagePoll, 15_000);
 // Initial flush after a short delay — gives the scan above a chance to
 // build aggregate.json before we ask community.js to read it.
 setTimeout(runCommunityFlush, 60_000);

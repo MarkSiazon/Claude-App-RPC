@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.16.0] - 2026-06-12
+
+**Added**
+
+- **Subscription usage on the card — "Usage · 34% weekly".** claude-rpc now surfaces the exact numbers Claude Code's own `/usage` screen shows (5-hour session %, weekly %, per-model weekly buckets). The daemon reads the OAuth token Claude Code already stores locally and polls Anthropic's own usage endpoint every 10 minutes while a session is live; the token is sent **only to its issuer**, never logged or forwarded, and the refresh token is never touched (`SECURITY.md` §3d documents the exact request). New pieces: a default rotation frame (`Usage · {usageWeeklyPct}% weekly` — vanishes whenever data is missing or stale), template vars `{usageSessionPct}` `{usageWeeklyPct}` `{usageStateLabel}` `{usageWeeklyResets}` `{usagePlan}` and friends, a `claude-rpc usage` command with heat-graded bars (works without the daemon — falls back to a one-shot live fetch), a `claude usage` box in `status`, and a `doctor` row. Installs without OAuth credentials (API key / enterprise) are silently skipped; kill switch: `usage.enabled: false`.
+
 ## [0.15.6] - 2026-06-12
 
 **Fixed**

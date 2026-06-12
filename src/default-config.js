@@ -104,6 +104,18 @@ export const DEFAULT_CONFIG = {
     endpoint: "https://claude-rpc-totals.claude-rpc.workers.dev",
     flushIntervalMin: 30,
   },
+  // Subscription usage — the numbers Claude Code's own /usage screen shows
+  // (5h session %, weekly %). The daemon reads Claude Code's OAuth token
+  // LOCALLY and asks api.anthropic.com — the token's issuer — for the
+  // utilization; the token and the percentages are never sent anywhere else
+  // and the leaderboard never sees them (SECURITY.md §3d). Feeds the
+  // {usageWeeklyPct}-family template vars and `claude-rpc usage`. Installs
+  // without OAuth credentials (API key / enterprise) simply get no data.
+  // Kill switch: `usage.enabled: false`.
+  usage: {
+    enabled: true,
+    pollIntervalMin: 10,
+  },
   // Public leaderboard / profile (opt-in, off by default). When enabled with a
   // handle, the daemon flush also publishes your display identity + validated
   // usage deltas to the board. Link a GitHub user to earn the verified ✓.
@@ -144,6 +156,9 @@ export const DEFAULT_CONFIG = {
           // Pops in for ~5min when the session crosses an hour milestone, then
           // the `requires` gate drops it and we're back to the single frame.
           { details: "{sessionMilestoneLabel} · {project}", state: "{tokensLabel} · {messagesLabel}", requires: ["sessionMilestoneHit"] },
+          // Subscription usage — only renders while the daemon's usage poll
+          // is fresh (requires drops it otherwise; see the `usage` block).
+          { details: "Usage · {usageWeeklyPct}% weekly",    state: "{usageStateLabel}",               requires: ["usageWeeklyPct", "usageStateLabel"] },
         ],
       },
       thinking: {
@@ -182,6 +197,7 @@ export const DEFAULT_CONFIG = {
           { details: "{allFreshTokensFmt} fresh tokens",       state: "{allCachePctLabel}",                         requires: ["allCachePctLabel"] },
           { details: "Code churn · {linesAddedFmt} added",     state: "{linesNetFmt} net · {topLanguage}",            requires: ["topLanguage"] },
           { details: "Cost · {todayCostFmt} today",            state: "{allCostFmt} all-time",                        requires: ["allCost"] },
+          { details: "Usage · {usageWeeklyPct}% weekly",       state: "{usageStateLabel}",                            requires: ["usageWeeklyPct", "usageStateLabel"] },
           { details: "Daily goal",                             state: "{goalLabel}",                                  requires: ["goalLabel"] },
           { details: "Monthly budget",                         state: "{budgetLabel}",                                requires: ["budgetLabel"] },
         ],

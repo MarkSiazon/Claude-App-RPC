@@ -109,6 +109,8 @@ A card that updates as you work. The large image swaps between five states (work
 
 A *View on GitHub →* button appears automatically when your cwd is a git repo with a github origin. The daemon checks `.git/config` directly — no shell-out, no surprise GH API call.
 
+A rotation frame can show your **subscription usage** — `Usage · 34% weekly` — the exact numbers Claude Code's own `/usage` screen shows. The daemon asks Anthropic's usage endpoint with the OAuth token Claude Code already stores locally; the token goes only to its issuer, the percentages go only where you template them, and `usage.enabled: false` turns the whole thing off ([`SECURITY.md` §3d](SECURITY.md)). `claude-rpc usage` prints the same data as heat-graded bars in your terminal.
+
 ### on your machine
 
 Three local surfaces, all reading the same `~/.claude-rpc/aggregate.json`:
@@ -269,6 +271,7 @@ The full default config is in [`src/default-config.js`](src/default-config.js) �
 | `start` / `stop` / `restart` | Lifecycle for the detached daemon |
 | `status`         | Interactive TUI — heatmap, hour histogram, leaderboards (`--dump` for plain output) |
 | `today` / `week` | Focused views (today's stats, weekday breakdown) |
+| `usage`          | Subscription limits — session + weekly %, the same numbers `/usage` shows |
 | `serve`          | Open the local web dashboard (port 47474) |
 | `preview`        | Render every rotation frame against real state |
 | `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects` |

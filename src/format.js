@@ -3,6 +3,7 @@ import { dayKey, weekKey, DATE_SUFFIX_RE, cleanProjectName } from './scanner.js'
 import { fmtCost } from './pricing.js';
 import { languageOf } from './languages.js';
 import { detectGitBranch, detectGitRepo } from './git.js';
+import { fmtResetTime, fmtResetDay } from './usage.js';
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -438,6 +439,22 @@ export function buildVars(state, config, aggregate) {
   const filesRead = (state.filesRead || []).length;
   const filesOpened = (state.filesOpened || []).length;
 
+  // ── Subscription usage (state.usage, injected by the caller from
+  // readUsageCache like liveSessions is). All-empty when the daemon hasn't
+  // polled / polling is disabled / the cache went stale, so `requires`-gated
+  // usage frames simply vanish rather than rendering blanks.
+  const usage = state.usage || null;
+  const usageSessionPct = usage?.sessionPct ?? '';
+  const usageWeeklyPct = usage?.weeklyPct ?? '';
+  let usageStateLabel = '';
+  if (usage) {
+    const bits = [];
+    if (usage.sessionPct != null) bits.push(`session ${usage.sessionPct}%`);
+    const day = fmtResetDay(usage.weeklyResetsAt);
+    if (day) bits.push(`resets ${day}`);
+    usageStateLabel = bits.join(' · ');
+  }
+
   return {
     // session — raw
     status: state.status || 'idle',
@@ -470,6 +487,16 @@ export function buildVars(state, config, aggregate) {
     currentToolPretty,
     currentFile: state.currentFile || '',
     currentFilePretty,
+
+    // ── Subscription usage (v0.16) — what Claude Code's /usage shows ──
+    usageSessionPct,
+    usageWeeklyPct,
+    usageWeeklyOpusPct: usage?.weeklyOpusPct ?? '',
+    usageWeeklySonnetPct: usage?.weeklySonnetPct ?? '',
+    usageSessionResets: usage ? fmtResetTime(usage.sessionResetsAt) : '',
+    usageWeeklyResets: usage ? fmtResetDay(usage.weeklyResetsAt) : '',
+    usageStateLabel,
+    usagePlan: usage?.plan ? usage.plan.charAt(0).toUpperCase() + usage.plan.slice(1) : '',
 
     // ── File / directory / language (v0.3.6) ────────────────────
     fileName,

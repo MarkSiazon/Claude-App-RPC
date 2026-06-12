@@ -16,6 +16,7 @@ import {
 } from './paths.js';
 import { findLiveSessions } from './scanner.js';
 import { resolveVisibility, listPrivateCwds } from './privacy.js';
+import { readClaudeCredentials, readUsageCache } from './usage.js';
 import { c, check as uiCheck } from './ui.js';
 
 const counters = { pass: 0, fail: 0, warn: 0 };
@@ -349,6 +350,30 @@ function checkLiveSessions() {
   }
 }
 
+// Subscription-usage polling (src/usage.js). Three healthy non-pass states
+// exist — disabled, no OAuth credentials, daemon hasn't polled yet — so only
+// the last is a warn; the others are informational.
+function checkUsage(cfg) {
+  if (cfg?.usage?.enabled === false) {
+    check('usage polling', 'info', 'disabled in config (usage.enabled: false)');
+    return;
+  }
+  const creds = readClaudeCredentials();
+  if (!creds) {
+    check('usage polling', 'info',
+      'no Claude Code OAuth credentials — subscription limits unavailable (API-key install?)');
+    return;
+  }
+  const u = readUsageCache();
+  if (u) {
+    check('usage polling', 'pass',
+      `week ${u.weeklyPct}% · session ${u.sessionPct}% · fetched ${Math.max(0, Math.round((Date.now() - u.fetchedAt) / 60_000))} min ago`);
+  } else {
+    check('usage polling', 'warn', 'no fresh usage data yet',
+      'the daemon polls every 10 min while a session is live — or run `claude-rpc usage` for a live fetch');
+  }
+}
+
 function checkDataDir() {
   if (!existsSync(USER_CONFIG_DIR)) {
     check('user config dir', 'warn', `${USER_CONFIG_DIR} missing`,
@@ -389,6 +414,7 @@ export function runDoctor() {
   section('Data');
   checkAggregate();
   checkLiveSessions();
+  checkUsage(cfg);
 
   section('Privacy');
   checkPrivacy(cfg);

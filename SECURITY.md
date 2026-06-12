@@ -78,7 +78,9 @@ events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
 
 ## 3. Outbound network
 
-There are three distinct network behaviors. Two are optional; one is cosmetic.
+There are five distinct network behaviors: community totals (3a), gist
+publishing (3b), squads/web login (3c), subscription-usage polling (3d), and
+the cosmetic GIF assets (3e). Each is independently optional.
 
 ### 3a. Community totals (telemetry) — ON by default for fresh installs
 
@@ -142,7 +144,36 @@ Worker-side storage adds: `gh:<login>` → profile link, `squad:*` membership
 records, and weekly baseline snapshots (auto-expiring). Leaving your last
 squad deletes its record.
 
-### 3d. Presence GIF assets — Discord-side only
+### 3d. Subscription usage — your own token, to its issuer, ON by default
+
+**Source:** `src/usage.js`; consumed by the daemon poll, `claude-rpc usage`,
+and the `{usageWeeklyPct}`-family template variables.
+
+The daemon reads the OAuth access token Claude Code already stores on your
+machine (`~/.claude/.credentials.json`; the login keychain on macOS) and calls
+`GET https://api.anthropic.com/api/oauth/usage` — the same internal endpoint
+Claude Code's own `/usage` screen uses — every 10 minutes **while a session is
+live**. The response (session %, weekly %, reset times) is cached in
+`$TMPDIR/claude-rpc/usage.json`.
+
+The trust boundary is deliberately narrow:
+
+- The token is sent **only to `api.anthropic.com` — the party that issued
+  it**. It is never logged, never written anywhere new, and never sent to the
+  claude-rpc worker or any other host. Only the daemon and the one-shot
+  `claude-rpc usage` command touch credentials; every other surface reads the
+  percentage cache.
+- **Read-only:** the refresh token is never used or modified. If the access
+  token expires, polling goes quiet until Claude Code itself refreshes it.
+- The percentages stay local unless **you** template them into your Discord
+  card (a default rotation frame does, and disappears whenever data is
+  missing or stale).
+- Installs without OAuth credentials (API key, enterprise gateways) are
+  silently skipped — there is nothing to fetch.
+- **Off switch:** `usage.enabled: false` in `config.json` stops the polling,
+  the command's live fetch, and the card frame in one go.
+
+### 3e. Presence GIF assets — Discord-side only
 
 `default-config.js` references `https://cdn.qualit.ly/clawd-*.gif`. These URLs
 are handed to Discord as image keys; **Discord's** client fetches them to render

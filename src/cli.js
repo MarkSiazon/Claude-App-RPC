@@ -23,6 +23,7 @@ import { badgeSvg } from './badge.js';
 import { fmtCost } from './pricing.js';
 import { addPrivateCwd, removePrivateCwd, listPrivateCwds, resolveVisibility } from './privacy.js';
 import { parseDuration, setPause, clearPause, pauseUntil } from './pause.js';
+import { readUsageCache, fetchUsage, writeUsageCache, fmtResetTime, fmtResetDay } from './usage.js';
 import { loadConfig, hasUserConfig } from './config.js';
 import * as lb from './leaderboard.js';
 import { VERSION } from './version.js';
@@ -316,6 +317,7 @@ function showStatus() {
   const config = loadConfig();
   const live = findLiveSessions({ thresholdMs: 90_000 });
   state.liveSessions = live;
+  state.usage = readUsageCache();
   const vars = buildVars(state, config, aggregate);
   const pid = daemonPid();
 
@@ -356,6 +358,11 @@ function showStatus() {
   if (aggregate) {
     box('today', todayBoxLines(vars, aggregate));
     console.log('');
+
+    if (state.usage) {
+      box('claude usage', usageBoxLines(state.usage));
+      console.log('');
+    }
 
     box('streak', [
       pair('current',   `${c.bold}${c.magenta}${vars.streak}${c.reset} ${c.dim}days${c.reset}`, ''),
@@ -581,6 +588,54 @@ function showWeek() {
   }
 }
 
+// Rows for the subscription-usage box (shared by `status` and `usage`).
+// Bars ride the heat ramp — the % IS the intensity. Absent buckets (per-model
+// outside Max plans) drop out.
+function usageBoxLines(u) {
+  const row = (label, pct, resets) => pct == null ? null : pair(
+    label,
+    `${bar(pct, 100, 18)} ${c.bold}${String(pct).padStart(3)}%${c.reset}${resets ? `  ${c.dim}resets ${resets}${c.reset}` : ''}`,
+    '',
+  );
+  return [
+    row('session (5h)', u.sessionPct, fmtResetTime(u.sessionResetsAt)),
+    row('week',         u.weeklyPct,  fmtResetDay(u.weeklyResetsAt)),
+    row('  sonnet',     u.weeklySonnetPct, null),
+    row('  opus',       u.weeklyOpusPct,   null),
+  ].filter(Boolean);
+}
+
+// `claude-rpc usage` — subscription limits, the same numbers Claude Code's
+// /usage screen shows. Prefers the daemon's cache; falls back to a one-shot
+// live fetch so it works with the daemon stopped.
+async function showUsage() {
+  let u = readUsageCache();
+  let src = 'cached by the daemon';
+  if (!u) {
+    const r = await fetchUsage();
+    if (!r.ok) {
+      const hints = {
+        'no-credentials': 'claude-rpc reads Claude Code\'s own OAuth credentials (~/.claude) — API-key installs have no subscription limits to show',
+        'token-expired': 'Claude Code\'s token has expired — open Claude Code once; it refreshes itself',
+        unauthorized: 'the token was rejected — open Claude Code once; it refreshes itself',
+      };
+      return fail(`could not fetch usage: ${r.reason}`,
+        { hint: hints[r.reason] || 'check your network and try again', code: EX_SYS_ERROR });
+    }
+    u = r.usage;
+    src = 'live';
+    writeUsageCache(u); // so preview/status/frames see it without the daemon
+  }
+  const plan = u.plan ? ` · Claude ${u.plan.charAt(0).toUpperCase()}${u.plan.slice(1)}` : '';
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ usage${c.reset}  ${c.dim}— subscription limits${plan} (what /usage shows)${c.reset}`);
+  console.log('');
+  box('usage', usageBoxLines(u));
+  console.log('');
+  console.log(`  ${c.dim}${src} · the daemon polls every ${loadConfig().usage?.pollIntervalMin || 10} min while you code · off: usage.enabled false${c.reset}`);
+  console.log('');
+}
+
 function statusColor(status) {
   switch (status) {
     case 'working':  return c.green;
@@ -598,6 +653,7 @@ function showPreview() {
   const live = findLiveSessions({ thresholdMs: 90_000 });
   state.liveSessions = live;
   state = applyIdle(state, config);
+  state.usage = readUsageCache();
   const vars = buildVars(state, config, aggregate);
   const p = config.presence || {};
   const frames = (Array.isArray(p.rotation) ? p.rotation : [{ details: p.details, state: p.state }]);
@@ -637,6 +693,7 @@ function dumpVars() {
   const config = loadConfig();
   state.liveSessions = findLiveSessions({ thresholdMs: 90_000 });
   state = applyIdle(state, config);
+  state.usage = readUsageCache();
   const live = buildVars(state, config, readAggregate() || {});
   process.stdout.write(JSON.stringify({ vars: Object.keys(live).sort(), live }));
 }
@@ -863,6 +920,7 @@ function liveVars() {
   state.liveSessions = findLiveSessions({ thresholdMs: 90_000 });
   const config = loadConfig();
   const resolved = applyIdle(state, config);
+  resolved.usage = readUsageCache();
   return { vars: buildVars(resolved, config, readAggregate()), config };
 }
 
@@ -1713,6 +1771,7 @@ function overview() {
   const state = readState();
   const aggregate = readAggregate();
   state.liveSessions = findLiveSessions({ thresholdMs: 90_000 });
+  state.usage = readUsageCache();
   const vars = buildVars(state, cfg, aggregate);
   const dot = pid
     ? `${c.green}●${c.reset} running ${c.dim}pid ${pid}${c.reset}`
@@ -1768,6 +1827,7 @@ function help() {
     ['status',    'Print current session + all-time stats'],
     ['today',     'Focus view: today\'s stats + 24h activity histogram'],
     ['week',      'Focus view: this week, daily breakdown'],
+    ['usage',     'Subscription limits — session + weekly % (what /usage shows)'],
     ['serve',     'Open a live web dashboard in your browser'],
     ['preview',   'Show how each rotation frame renders right now'],
     ['scan',      'Incrementally scan ~/.claude/projects for all-time totals'],
@@ -1905,6 +1965,7 @@ const packagedDefault = IS_PACKAGED && !cmd;
     case 'dump':      showStatus(); break;
     case 'today':     showToday(); break;
     case 'week':      showWeek(); break;
+    case 'usage':     await showUsage(); break;
     case 'serve':     await import('./server/index.js'); break;
     case 'preview':   showPreview(); break;
     case 'vars':      dumpVars(); break;
