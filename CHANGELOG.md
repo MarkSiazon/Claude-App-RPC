@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.18.0] - 2026-06-14
+
+**Added**
+
+- **Per-session presence — the card no longer thrashes when several Claude sessions run at once.** Every concurrent session used to write one shared `state.json`, so the card jumped between projects, the elapsed timer reset (it followed whichever session pinged last), message/tool counters summed across sessions, and the "N sessions" count wobbled. Now each session writes its own `state-<sessionId>.json` (from the hook's `session_id`; subagent hooks carry the parent's id, so they roll up), and the daemon shows one session with **stickiness** — it stays on the session you're actively working in and only switches once that one goes idle, then jumps to wherever you're now active. The elapsed timer and the GitHub button follow the shown session (so both stay stable), counters are per-session, the party count is derived from the same per-session list so it stays consistent with the card, and a just-ended session drops out immediately. Single-session behavior is byte-identical, and a hook payload without a session id falls back to the old global state file. Per-session files also remove the cross-session lock contention and are swept once they age out.
+
 ## [0.17.2] - 2026-06-14
 
 **Fixed**

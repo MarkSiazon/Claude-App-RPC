@@ -155,6 +155,10 @@ function resolvePresence(opts = {}) {
       const picked = pickActiveSession(sessions, displayedSessionId, Date.now(), idleMs);
       displayedSessionId = picked.sessionId;
       state = picked.state || readState();
+      // Party count from the SAME per-session list we selected from, so the
+      // "N sessions" field stays consistent with the card instead of wobbling
+      // on transcript-mtime timing.
+      state._liveCount = picked.liveCount;
     } else {
       state = readState();
     }
@@ -280,7 +284,9 @@ function buildActivity(opts = {}) {
   // Concurrent sessions render natively via Discord's party field — the card
   // shows "(2 of 2)" with no template work. Only attached when more than one
   // live session exists (a party of one is noise). Opt out: showPartySize:false.
-  const liveCount = (state.liveSessions || []).length;
+  // Prefer the per-session count (consistent with the displayed session); fall
+  // back to the transcript-derived count for the legacy single-state path.
+  const liveCount = state._liveCount != null ? state._liveCount : (state.liveSessions || []).length;
   if (config.showPartySize !== false && liveCount > 1) {
     activity.partyId = 'claude-rpc';
     activity.partySize = liveCount;
