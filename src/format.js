@@ -448,11 +448,16 @@ export function buildVars(state, config, aggregate) {
   const usageWeeklyPct = usage?.weeklyPct ?? '';
   let usageStateLabel = '';
   if (usage) {
+    // The usage rotation frame's DETAILS line already shows "{usageWeeklyPct}%
+    // weekly", so this state line must NOT repeat weekly% — it complements with
+    // session% + reset day. (A weekly-only fallback lives below so the line
+    // isn't empty when session% is absent and we'd otherwise show nothing.)
     const bits = [];
     if (usage.sessionPct != null) bits.push(`session ${usage.sessionPct}%`);
-    if (usage.weeklyPct != null) bits.push(`weekly ${usage.weeklyPct}%`);
     const day = fmtResetDay(usage.weeklyResetsAt);
     if (day) bits.push(`resets ${day}`);
+    // Only fall back to weekly% when the line would otherwise be empty.
+    if (!bits.length && usage.weeklyPct != null) bits.push(`weekly ${usage.weeklyPct}%`);
     usageStateLabel = bits.join(' · ');
   }
 

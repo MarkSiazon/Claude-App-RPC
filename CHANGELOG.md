@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.2] - 2026-06-14
+
+**Fixed**
+
+- **The usage rotation frame printed the weekly % twice.** v0.17.0 added the weekly percentage to `{usageStateLabel}` (the frame's lower/state line), but that frame's details line already reads `Usage · {usageWeeklyPct}% weekly` — so the card showed weekly twice. The state line now complements the header (session % + reset day) and only falls back to weekly % when the session % is absent.
+
 ## [0.17.1] - 2026-06-14
 
 **Fixed**

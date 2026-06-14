@@ -117,7 +117,8 @@ test('buildVars: usage vars present with data, all-empty without', async () => {
   } }, {}, {});
   assert.equal(withUsage.usageWeeklyPct, 35);
   assert.equal(withUsage.usageSessionPct, 19);
-  assert.match(withUsage.usageStateLabel, /^session 19% · weekly 35% · resets /);
+  assert.match(withUsage.usageStateLabel, /^session 19% · resets /);
+  assert.ok(!withUsage.usageStateLabel.includes('weekly'), 'state line must not repeat the weekly% the frame details already show');
   assert.equal(withUsage.usagePlan, 'Max');
   const without = buildVars(base, {}, {});
   assert.equal(without.usageWeeklyPct, '');
