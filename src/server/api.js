@@ -20,7 +20,10 @@ export function rangeToDays(range) {
   if (range === 'all') return Infinity;
   if (range === '1y') return 365;
   const n = parseInt(range, 10);
-  return Number.isFinite(n) && n > 0 ? n : 90;
+  // Clamp to a year-and-change. windowedAggregate loops once per day, so an
+  // unclamped `?range=99999999` would spin ~100M iterations and wedge the
+  // single-threaded serve process — reachable from any localhost page.
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 366) : 90;
 }
 
 // Filter byDay to a windowed slice; also recompute roll-ups (top files etc.)

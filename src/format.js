@@ -450,6 +450,7 @@ export function buildVars(state, config, aggregate) {
   if (usage) {
     const bits = [];
     if (usage.sessionPct != null) bits.push(`session ${usage.sessionPct}%`);
+    if (usage.weeklyPct != null) bits.push(`weekly ${usage.weeklyPct}%`);
     const day = fmtResetDay(usage.weeklyResetsAt);
     if (day) bits.push(`resets ${day}`);
     usageStateLabel = bits.join(' · ');

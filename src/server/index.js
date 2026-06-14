@@ -43,7 +43,7 @@ function isLocalHost(host) {
   return h === 'localhost' || h === '127.0.0.1' || h === '::1';
 }
 
-const server = createServer((req, res) => {
+function dispatch(req, res) {
   if (!isLocalHost(req.headers.host)) {
     res.writeHead(403, JSON_HEADERS).end(JSON.stringify({ error: 'forbidden' }));
     return;
@@ -105,6 +105,18 @@ const server = createServer((req, res) => {
   }
 
   res.writeHead(404).end('not found');
+}
+
+const server = createServer((req, res) => {
+  try {
+    dispatch(req, res);
+  } catch {
+    // A malformed aggregate or any thrown handler must not take down the whole
+    // in-process dashboard (it runs inside `claude-rpc serve`). Respond 500 if
+    // the socket is still writable, else just close it.
+    if (!res.headersSent) res.writeHead(500, JSON_HEADERS).end(JSON.stringify({ error: 'internal error' }));
+    else try { res.end(); } catch { /* socket already torn down */ }
+  }
 });
 
 watchSources();
@@ -127,3 +139,9 @@ server.listen(PORT, '127.0.0.1', () => {
 
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
+
+// Last-resort floor for the async edges the per-request try/catch can't reach
+// (SSE writes, timer callbacks). Keeping the localhost dashboard alive beats
+// crashing it; the per-request guard above handles the common sync case.
+process.on('uncaughtException', (e) => { try { console.error('dashboard error:', e?.message || e); } catch { /* ignore */ } });
+process.on('unhandledRejection', (e) => { try { console.error('dashboard rejection:', e?.message || e); } catch { /* ignore */ } });

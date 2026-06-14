@@ -167,6 +167,7 @@ test('rangeToDays parses range tokens', async () => {
   assert.equal(rangeToDays('1y'), 365);
   assert.equal(rangeToDays('all'), Infinity);
   assert.equal(rangeToDays(undefined), 90, 'default 90d window');
+  assert.ok(rangeToDays('99999999') <= 366, 'huge ranges clamp so windowedAggregate cannot spin');
 });
 
 test('buildHtml interpolates port', async () => {

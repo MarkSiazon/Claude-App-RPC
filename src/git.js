@@ -60,7 +60,16 @@ function readGitInfo(cwd) {
   // origin URL → github URL + repo name.
   try {
     const cfg = readFileSync(join(commonGitDir(gitDir), 'config'), 'utf8');
-    const m = cfg.match(/\[remote\s+"origin"\][^[]*?url\s*=\s*([^\r\n]+)/i);
+    // Isolate the [remote "origin"] section (everything up to the next section
+    // header) and read its url= line. The old single regex used `[^[]*?`
+    // between the header and url=, so any stray `[` in between — e.g. a
+    // bracketed comment above the url — aborted the match and silently dropped
+    // GitHub detection.
+    const oi = cfg.search(/\[remote\s+"origin"\]/i);
+    const rest = oi === -1 ? '' : cfg.slice(oi);
+    const nextSec = rest ? rest.slice(1).search(/\n[ \t]*\[/) : -1;
+    const section = nextSec === -1 ? rest : rest.slice(0, nextSec + 1);
+    const m = section.match(/^[ \t]*url\s*=\s*(.+)$/mi);
     if (m) {
       const raw = m[1].trim();
       const ssh = raw.match(/^git@github\.com:([^\s]+?)(?:\.git)?$/i);

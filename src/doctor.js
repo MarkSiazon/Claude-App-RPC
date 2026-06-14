@@ -366,8 +366,13 @@ function checkUsage(cfg) {
   }
   const u = readUsageCache();
   if (u) {
-    check('usage polling', 'pass',
-      `week ${u.weeklyPct}% · session ${u.sessionPct}% · fetched ${Math.max(0, Math.round((Date.now() - u.fetchedAt) / 60_000))} min ago`);
+    // Either bucket can be null (they come and go between Claude Code
+    // releases); interpolating both unconditionally printed a literal `null%`.
+    const parts = [];
+    if (u.weeklyPct != null) parts.push(`week ${u.weeklyPct}%`);
+    if (u.sessionPct != null) parts.push(`session ${u.sessionPct}%`);
+    parts.push(`fetched ${Math.max(0, Math.round((Date.now() - u.fetchedAt) / 60_000))} min ago`);
+    check('usage polling', 'pass', parts.join(' · '));
   } else {
     check('usage polling', 'warn', 'no fresh usage data yet',
       'the daemon polls every 10 min while a session is live — or run `claude-rpc usage` for a live fetch');

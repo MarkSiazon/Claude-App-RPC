@@ -67,6 +67,26 @@ test('parseTranscript: counts tool calls and lines added', () => {
   rmSync(dir, { recursive: true });
 });
 
+test('parseTranscript: MultiEdit counts churn (per-edit) and one file edit', () => {
+  const { dir, path } = makeTranscript([
+    { type: 'user', sessionId: 's1', cwd: '/tmp/proj', timestamp: '2026-05-22T10:00:00Z',
+      message: { content: 'go' } },
+    { type: 'assistant', timestamp: '2026-05-22T10:00:30Z',
+      message: { model: 'claude-opus-4-7', usage: { input_tokens: 0, output_tokens: 0 },
+        content: [
+          { type: 'tool_use', name: 'MultiEdit', input: { file_path: '/m.js', edits: [
+            { old_string: 'a', new_string: 'a\nb\nc' },   // +3, -1
+            { old_string: 'x\ny', new_string: 'z' },        // +1, -2
+          ] } },
+        ] } },
+  ]);
+  const s = parseTranscript(path);
+  assert.equal(s.linesAdded, 4, 'MultiEdit adds 3 + 1');
+  assert.equal(s.linesRemoved, 3, 'MultiEdit removes 1 + 2');
+  assert.equal(s.fileEdits['/m.js'], 1, 'MultiEdit counts as one edit of the file');
+  rmSync(dir, { recursive: true });
+});
+
 test('parseTranscript: skips meta and system-reminder user messages', () => {
   const { dir, path } = makeTranscript([
     { type: 'user', sessionId: 's1', cwd: '/tmp/proj',

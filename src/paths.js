@@ -1,13 +1,24 @@
 import { homedir, tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Detect packaged mode. Covers both pkg (process.pkg) and Node SEA (where
-// process.execPath is the renamed exe rather than node/node.exe).
-export const IS_PACKAGED = typeof process.pkg !== 'undefined'
-  || !/[\\/]node(\.exe)?$/i.test(process.execPath || '');
+// Detect packaged mode. Covers both pkg (process.pkg) and Node SEA. We ask
+// node:sea directly (the same guarded require server/assets.js uses) rather
+// than sniffing process.execPath: the old "execPath doesn't end in /node"
+// heuristic wrongly flagged a renamed runtime — Debian's `nodejs`, a `node24`
+// build, any non-canonical binary — as a packaged SEA, which cascaded into a
+// wrong CONFIG_PATH, a dead HOOK_SCRIPT, and IS_NPM_INSTALL flipping false on
+// the primary install path. isSea() is true ONLY inside a real SEA binary.
+function detectSea() {
+  try {
+    const sea = createRequire(import.meta.url)('node:sea');
+    return typeof sea.isSea === 'function' && sea.isSea();
+  } catch { return false; } // node:sea absent (Node < 20.12) → not a SEA
+}
+export const IS_PACKAGED = typeof process.pkg !== 'undefined' || detectSea();
 
 export const ROOT = resolve(__dirname, '..');
 

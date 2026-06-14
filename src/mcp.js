@@ -99,7 +99,11 @@ export function toolList() {
 export function callTool(name, getAgg = readAggregate) {
   const t = TOOLS[name];
   if (!t) throw new Error(`unknown tool: ${name}`);
-  const agg = getAgg() || {};
+  const agg = getAgg();
+  // No aggregate at all (fresh install / standalone MCP / scanner never ran):
+  // a `|| {}` here would render all-zeros, indistinguishable from a genuinely
+  // idle day. Surface the same hint every other surface uses instead.
+  if (agg == null) return 'No stats yet — run `claude-rpc scan` to build your history.';
   return t.handler(agg);
 }
 
@@ -130,6 +134,11 @@ export function runMcpServer({ input = process.stdin, output = process.stdout } 
     if (method === 'tools/list') return reply(id, { tools: toolList() });
     if (method === 'tools/call') {
       const name = params?.name;
+      // "No such tool" is a protocol error, not a tool that ran and failed —
+      // validate before dispatch so we don't conflate the two (or leak the
+      // literal "undefined" when params.name is omitted).
+      if (!name) return replyErr(id, -32602, 'missing tool name');
+      if (!TOOLS[name]) return replyErr(id, -32602, `unknown tool: ${name}`);
       try {
         const text = callTool(name);
         return reply(id, { content: [{ type: 'text', text }], isError: false });

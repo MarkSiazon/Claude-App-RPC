@@ -52,6 +52,8 @@ test('runMcpServer: handles initialize / tools.list / ping / unknown / tools.cal
     { jsonrpc: '2.0', id: 3, method: 'ping' },
     { jsonrpc: '2.0', id: 4, method: 'totally/bogus' },
     { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'get_today' } },
+    { jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'no_such_tool' } },
+    { jsonrpc: '2.0', id: 7, method: 'tools/call', params: {} }, // missing name
     { jsonrpc: '2.0', method: 'notifications/initialized' }, // notification: no reply
   ];
   for (const r of reqs) input.write(JSON.stringify(r) + '\n');
@@ -68,6 +70,11 @@ test('runMcpServer: handles initialize / tools.list / ping / unknown / tools.cal
   assert.equal(byId[4].error.code, -32601);
   // tools/call always replies with a content array (isError true OR false).
   assert.ok(Array.isArray(byId[5].result.content));
+  // Unknown / missing tool name is a JSON-RPC error (-32602), NOT a tool that
+  // ran and failed (which would be an isError content result).
+  assert.equal(byId[6].error.code, -32602);
+  assert.ok(!byId[6].result, 'unknown tool returns no result');
+  assert.equal(byId[7].error.code, -32602);
   // Notifications get no reply, so no message carries id === undefined.
   assert.ok(!('undefined' in byId));
 

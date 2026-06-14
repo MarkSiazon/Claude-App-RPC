@@ -62,7 +62,7 @@ function dayKeyNum(key) {
   return dayNum(y, m - 1, d);
 }
 
-const EDITING_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit']);
+const EDITING_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
 // First non-env token of a shell command. `FOO=bar git status` → `git`.
 // Strips `sudo`, `time`, and tee-style decorators that aren't the "real" command.
@@ -316,7 +316,11 @@ function parseChunkInto(text, summary, pstate) {
         const turnCost = costFor({ model: turnModel, usage: u });
         if (turnCost > 0) {
           summary.cost += turnCost;
-          summary.costByModel[mkey] = (summary.costByModel[mkey] || 0) + turnCost;
+          // When the turn has no model id, mkey is null but costFor charged it
+          // at sonnet rates (pricing's default) — bucket it under 'sonnet', not
+          // a literal "null" key that renders as a "null" bar on the dashboard.
+          const ck = mkey || 'sonnet';
+          summary.costByModel[ck] = (summary.costByModel[ck] || 0) + turnCost;
           if (mb) mb.cost += turnCost;
           for (const bucket of allBuckets) bucket.cost += turnCost;
         }
@@ -355,6 +359,20 @@ function parseChunkInto(text, summary, pstate) {
             for (const bucket of allBuckets) {
               bucket.linesAdded += adds;
               bucket.linesRemoved += rems;
+            }
+          } else if (b.name === 'MultiEdit') {
+            // One MultiEdit carries N independent edits; sum their churn the
+            // same way Edit does. (File-edit count above already credited it
+            // once, the right granularity for hotspots.)
+            for (const e of (Array.isArray(input.edits) ? input.edits : [])) {
+              const adds = countLines(e.new_string);
+              const rems = countLines(e.old_string);
+              summary.linesAdded += adds;
+              summary.linesRemoved += rems;
+              for (const bucket of allBuckets) {
+                bucket.linesAdded += adds;
+                bucket.linesRemoved += rems;
+              }
             }
           } else if (b.name === 'Write') {
             const adds = countLines(input.content);
