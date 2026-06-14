@@ -337,6 +337,16 @@ test('handleProfile: SETS absolute totals (idempotent, not accumulated)', async 
   assert.equal(j.profile.sessions, 9);
 });
 
+test('handleProfile: ignores client-supplied githubUser (no impersonation)', async () => {
+  const env = makeEnv();
+  // An unverified caller tries to assert someone else's GitHub identity.
+  const res = await handleProfile(profileRequest({ ...profileBody, githubUser: 'torvalds' }), env);
+  assert.equal(res.status, 200);
+  const j = await res.json();
+  assert.equal(j.profile.verified, false);
+  assert.equal(j.profile.githubUser, null, 'only the verify/link flow may set githubUser');
+});
+
 test('handleProfile: accepts a multi-billion lifetime total (the v0.13.2 400 bug)', async () => {
   const env = makeEnv();
   const res = await handleProfile(profileRequest({ ...profileBody, tokens: 9_427_309_583 }), env);

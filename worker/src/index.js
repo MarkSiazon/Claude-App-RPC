@@ -421,7 +421,9 @@ function boardEntry(p) {
   return {
     handle:      p.handle,
     displayName: p.displayName || null,
-    githubUser:  p.githubUser  || null,
+    // Only surface a GitHub identity for verified rows (defense-in-depth — also
+    // sanitizes any legacy row that predates the write-path fix).
+    githubUser:  p.verified ? (p.githubUser || null) : null,
     verified:    !!p.verified,
     tokens:      p.tokens   || 0,
     sessions:    p.sessions || 0,
@@ -449,7 +451,9 @@ function publicProfile(p) {
   // internal `machines` map (which is keyed by raw instanceIds) or any other
   // internal field. Keeping this an explicit allowlist is the guard.
   return {
-    handle: p.handle, displayName: p.displayName || null, githubUser: p.githubUser || null,
+    handle: p.handle, displayName: p.displayName || null,
+    // Only verified rows expose a GitHub identity (see boardEntry).
+    githubUser: p.verified ? (p.githubUser || null) : null,
     verified: !!p.verified, tokens: p.tokens || 0, sessions: p.sessions || 0,
     activeMs: p.activeMs || 0, streak: p.streak || 0,
   };
@@ -595,7 +599,11 @@ export async function handleProfile(request, env) {
   const next = {
     handle,
     displayName: cleanName(body.displayName) || prev.displayName || null,
-    githubUser:  normGithub(body.githubUser) || prev.githubUser  || null,
+    // githubUser is set ONLY by the verify/link flow (applyVerifiedLink), never
+    // by the client — same rule as `verified` below. Trusting body.githubUser
+    // let an unverified profile claim any GitHub identity (and render a
+    // clickable github.com/<user> link on the public board).
+    githubUser:  prev.githubUser  || null,
     verified:    !!prev.verified, // only the verify flow flips this — never the client
     machines:    ensureMachines(prev, id),
     createdAt:   prev.createdAt || now,
