@@ -2,6 +2,36 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.0] - 2026-06-14
+
+A broad correctness, reliability, and security pass driven by a full-codebase audit — 34 findings fixed across the daemon, hook, scanner, CLI, local server, Cloudflare worker, and docs — plus testability work (the presence-render core and the rotation logic are now unit-tested).
+
+**Added**
+
+- **Existing users finally receive new default rotation frames.** `migrateConfig` now backfills default frames shipped *after* a user's first install — the v0.16 `Usage`, `Cost`, `Code churn`, `Daily goal`, and `Monthly budget` frames — onto any rotation that's still default-derived, leaving customized rotations untouched. Rotation arrays were seeded once and never reconciled (arrays replace on merge), so these frames had only ever reached fresh installs.
+- **The dashboard range stat card shows a real "vs prior" delta** (current window vs the preceding identical window) instead of a permanently blank `—`.
+
+**Fixed**
+
+- **Desktop notifications & webhooks no longer fire while paused or `privacy=hidden`** — they were defeating the snooze and the hidden flag.
+- **A `SessionEnd` from one session no longer blanks the card while a sibling session is mid-work** — the daemon adopts the live sibling instead. (Single-session close still clears, unchanged.)
+- **Single-instance daemon guard** — a second daemon now steps aside when a live one owns the PID file, instead of fighting over `setActivity` and double-counting community totals; `restart` polls for the old daemon to exit rather than guessing with a fixed sleep that could leave *no* daemon running.
+- **Hook acks survive a state-write failure** — the documented `{continue:true}` contract is always honored, so a full/unwritable tmpdir can't surface an error in the user's turn.
+- **The local dashboard is crash-resistant:** `/api/aggregate?range=<huge>` is clamped (it could spin the event loop ~100M iterations), and a thrown `/api` handler returns 500 instead of crashing the whole `serve` process.
+- **Windows reliability:** `gh` is detected for `badge --gist` (was falling through to a token error); the login-startup entry launches windowless via a `.vbs` shim (no persistent console window); `IS_PACKAGED` no longer misfires on a `nodejs`/`node24` binary (which broke `CONFIG_PATH`/hooks on those installs); and a maliciously-named project directory can't inject into the PowerShell notifier.
+- **The presence base frame is shown on entering a status** instead of being immediately skipped to a rotation frame.
+- Network calls across community / gist / notify / squad now time out; `squad`/`link` failures exit cleanly instead of dumping an undici stack, with a top-level rejection floor for the exit-code contract.
+- `MultiEdit` now counts toward churn, hotspots, and language stats; the model-less cost bucket no longer renders a `null` bar; GitHub detection survives a bracketed `git config` comment; the MCP server returns proper JSON-RPC errors for unknown tools and a "run scan" hint when there's no data; `doctor` no longer prints `null%`; CLI flag parsers reject a missing value (`badge --out --gist` no longer writes a file named `--gist`); config-mutating commands work before `setup`; `PreCompact` is wired so the `compacting` state is reachable (and the dead `PostToolUse`/`PostCompact` code is gone); `--help` documents `mcp uninstall` and `status --dump`.
+
+**Security**
+
+- **The public leaderboard worker no longer trusts a client-supplied `githubUser`** — only the verify/link flow can set it, blocking board impersonation; verified-only emission also sanitizes legacy rows. *(Ships on the next `wrangler deploy`.)*
+- **`SECURITY.md` is byte-accurate again:** documents the status webhook (a sixth network destination) with its exact payload, the recurring `/profile` flush, and the desktop dashboard's auto-update; the subprocess inventory now lists every spawnable binary (`npm`, `claude`, `security`, `osascript`/`powershell`/`notify-send`, `wscript`, `chcp`).
+
+**Internal**
+
+- The presence-render core (`pickFrames` / `selectFrame` / `resolveLargeImageKey`) is extracted into a side-effect-free `src/presence.js` and unit-tested — it previously lived inside `daemon.js`, which can't be imported under test. Dead code removed; orphaned per-pid `state.json.<pid>.tmp` files are swept on daemon startup.
+
 ## [0.16.2] - 2026-06-14
 
 **Fixed**
