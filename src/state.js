@@ -68,8 +68,8 @@ function ensureDir() {
 // serialize through an exclusive lock file. The lock is strictly best-effort:
 // if we can't get it within LOCK_MAX_WAIT_MS we proceed anyway (a slightly racy
 // write is better than a dropped hook), and a stale lock from a crashed process
-// is reclaimed after LOCK_STALE_MS.
-const LOCK_PATH = STATE_PATH + '.lock';
+// is reclaimed after LOCK_STALE_MS. The lock path is per state file (passed in)
+// so per-session writers don't serialize against each other.
 const LOCK_STALE_MS = 2000;
 const LOCK_RETRY_MS = 4;
 const LOCK_MAX_WAIT_MS = 1000;
@@ -85,18 +85,18 @@ function sleepSync(ms) {
   }
 }
 
-function acquireLock() {
+function acquireLock(lockPath) {
   const deadline = Date.now() + LOCK_MAX_WAIT_MS;
   for (;;) {
     try {
       // 'wx' fails if the file exists — that's our mutex.
-      return openSync(LOCK_PATH, 'wx');
+      return openSync(lockPath, 'wx');
     } catch (err) {
       if (err.code !== 'EEXIST') return null; // unexpected (perms, etc.) — go lockless
       try {
-        if (Date.now() - statSync(LOCK_PATH).mtimeMs > LOCK_STALE_MS) {
+        if (Date.now() - statSync(lockPath).mtimeMs > LOCK_STALE_MS) {
           try {
-            unlinkSync(LOCK_PATH);
+            unlinkSync(lockPath);
           } catch {
             /* someone else reclaimed it first */
           }
@@ -111,7 +111,7 @@ function acquireLock() {
   }
 }
 
-function releaseLock(fd) {
+function releaseLock(fd, lockPath) {
   if (fd === null) return;
   // Only unlink the lock if the path still points at OUR lock file. If this
   // process somehow held it past LOCK_STALE_MS, a sibling has reclaimed the
@@ -120,7 +120,7 @@ function releaseLock(fd) {
   let ours;
   try {
     const a = fstatSync(fd);
-    const b = statSync(LOCK_PATH);
+    const b = statSync(lockPath);
     ours = a.ino === b.ino && a.dev === b.dev;
   } catch {
     ours = false; // lock already gone — nothing to unlink
@@ -132,40 +132,53 @@ function releaseLock(fd) {
   }
   if (!ours) return;
   try {
-    unlinkSync(LOCK_PATH);
+    unlinkSync(lockPath);
   } catch {
     /* already removed */
   }
 }
 
-function withLock(fn) {
-  const fd = acquireLock();
+function withLock(lockPath, fn) {
+  const fd = acquireLock(lockPath);
   try {
     return fn();
   } finally {
-    releaseLock(fd);
+    releaseLock(fd, lockPath);
   }
 }
 
-export function readState() {
+// Resolve the state file for a session. No id → the legacy global state.json
+// (single-session and back-compat). With an id → a per-session file, so
+// concurrent sessions stop clobbering each other's status/tools/tokens and the
+// daemon can pick which one to show. The id is a Claude Code session UUID;
+// sanitize defensively for the filename regardless.
+export function statePathFor(sessionId) {
+  if (!sessionId) return STATE_PATH;
+  const safe = String(sessionId).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'unknown';
+  return join(STATE_DIR, `state-${safe}.json`);
+}
+
+export function readState(sessionId) {
   ensureDir();
-  if (!existsSync(STATE_PATH)) return { ...DEFAULT_STATE };
+  const path = statePathFor(sessionId);
+  if (!existsSync(path)) return { ...DEFAULT_STATE };
   try {
-    const raw = readFileSync(STATE_PATH, 'utf8');
+    const raw = readFileSync(path, 'utf8');
     return { ...DEFAULT_STATE, ...JSON.parse(raw) };
   } catch {
     return { ...DEFAULT_STATE };
   }
 }
 
-export function writeState(next) {
+export function writeState(next, sessionId) {
   ensureDir();
-  // Per-process tmp name: two processes writing the shared STATE_PATH + '.tmp'
-  // would clobber each other's tmp before rename. The pid suffix keeps the
+  const path = statePathFor(sessionId);
+  // Per-process tmp name: two processes writing the same <path>.tmp would
+  // clobber each other's tmp before rename. The pid suffix keeps the
   // atomic-rename guarantee intact even on the best-effort lockless path.
-  const tmp = `${STATE_PATH}.${process.pid}.tmp`;
+  const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2));
-  renameSync(tmp, STATE_PATH);
+  renameSync(tmp, path);
 }
 
 // Best-effort sweep of orphaned per-pid tmp files (`state.json.<pid>.tmp`) left
@@ -184,19 +197,62 @@ export function sweepStaleStateTmp(now = Date.now()) {
   } catch { /* STATE_DIR missing / unreadable — nothing to sweep */ }
 }
 
-export function updateState(mutator) {
-  return withLock(() => {
-    const current = readState();
+// All per-session states currently on disk, each tagged with its sessionId
+// (recovered from the `state-<id>.json` filename). The daemon uses this to pick
+// which session to show. Excludes the legacy global state.json (no `-<id>`),
+// and tmp/lock siblings (they don't end in `.json`).
+export function listSessionStates() {
+  ensureDir();
+  const out = [];
+  let names;
+  try { names = readdirSync(STATE_DIR); } catch { return out; }
+  for (const name of names) {
+    const m = /^state-(.+)\.json$/.exec(name);
+    if (!m) continue;
+    try {
+      const parsed = JSON.parse(readFileSync(join(STATE_DIR, name), 'utf8'));
+      out.push({ ...DEFAULT_STATE, ...parsed, sessionId: m[1] });
+    } catch { /* torn/broken file mid-write — skip this tick */ }
+  }
+  return out;
+}
+
+// Remove per-session state files whose last activity is older than maxAgeMs — a
+// session that ended without cleanup, or a crashed one. Called periodically by
+// the daemon; never touches the global state.json. Returns the count removed.
+export function sweepStaleSessionStates(maxAgeMs = 6 * 60 * 60 * 1000, now = Date.now()) {
+  let removed = 0, names;
+  try { names = readdirSync(STATE_DIR); } catch { return 0; }
+  for (const name of names) {
+    if (!/^state-.+\.json$/.test(name)) continue;
+    const full = join(STATE_DIR, name);
+    try {
+      const last = JSON.parse(readFileSync(full, 'utf8')).lastActivity || 0;
+      if (now - last > maxAgeMs) { unlinkSync(full); removed++; }
+    } catch {
+      // Unparseable — age out by file mtime so a corrupt file still clears.
+      try { if (now - statSync(full).mtimeMs > maxAgeMs) { unlinkSync(full); removed++; } }
+      catch { /* gone */ }
+    }
+  }
+  return removed;
+}
+
+export function updateState(mutator, sessionId) {
+  const lockPath = statePathFor(sessionId) + '.lock';
+  return withLock(lockPath, () => {
+    const current = readState(sessionId);
     const next = mutator({ ...current }) ?? current;
-    writeState(next);
+    writeState(next, sessionId);
     return next;
   });
 }
 
-export function resetState(seed = {}) {
-  return withLock(() => {
+export function resetState(seed = {}, sessionId) {
+  const lockPath = statePathFor(sessionId) + '.lock';
+  return withLock(lockPath, () => {
     const fresh = { ...DEFAULT_STATE, sessionStart: Date.now(), lastActivity: Date.now(), ...seed };
-    writeState(fresh);
+    writeState(fresh, sessionId);
     return fresh;
   });
 }

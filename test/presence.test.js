@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton } =
+const { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession } =
   await import('../src/presence.js');
 
 // ── pickFrames ─────────────────────────────────────────────────────────
@@ -125,4 +125,60 @@ test('shouldShowGithubButton: suppressed when stale or under any non-public priv
   assert.equal(shouldShowGithubButton({}, { status: 'stale' }), false);
   assert.equal(shouldShowGithubButton({}, { status: 'working', _privacy: { visibility: 'hidden' } }), false);
   assert.equal(shouldShowGithubButton({}, { status: 'working', _privacy: { visibility: 'name-only' } }), false);
+});
+
+// ── pickActiveSession (multi-session stickiness) ───────────────────────
+const IDLE = 60_000;
+test('pickActiveSession: empty → nulls', () => {
+  assert.deepEqual(pickActiveSession([], null, 1_000_000, IDLE), { state: null, sessionId: null, liveCount: 0 });
+});
+
+test('pickActiveSession: single session is always shown', () => {
+  const now = 1_000_000;
+  const r = pickActiveSession([{ sessionId: 'a', lastActivity: now, cwd: '/a' }], null, now, IDLE);
+  assert.equal(r.sessionId, 'a');
+  assert.equal(r.liveCount, 1);
+});
+
+test('pickActiveSession: sticks to the shown session while it stays active', () => {
+  const now = 1_000_000;
+  const states = [
+    { sessionId: 'a', lastActivity: now - 5_000 },  // shown, still active
+    { sessionId: 'b', lastActivity: now - 1_000 },  // slightly more recent
+  ];
+  // Already showing 'a' and it's still within the idle window → DON'T thrash to b.
+  const r = pickActiveSession(states, 'a', now, IDLE);
+  assert.equal(r.sessionId, 'a', 'stays on a (no flip-flop while you work in it)');
+  assert.equal(r.liveCount, 2);
+});
+
+test('pickActiveSession: switches once the shown session goes idle', () => {
+  const now = 1_000_000;
+  const states = [
+    { sessionId: 'a', lastActivity: now - 90_000 }, // shown, now idle (> IDLE)
+    { sessionId: 'b', lastActivity: now - 2_000 },  // active elsewhere
+  ];
+  const r = pickActiveSession(states, 'a', now, IDLE);
+  assert.equal(r.sessionId, 'b', 'switches to where you are now active');
+  assert.equal(r.liveCount, 1, 'only b is live');
+});
+
+test('pickActiveSession: with no prior selection, shows the most-recently-active', () => {
+  const now = 1_000_000;
+  const states = [
+    { sessionId: 'a', lastActivity: now - 30_000 },
+    { sessionId: 'b', lastActivity: now - 3_000 },
+  ];
+  assert.equal(pickActiveSession(states, null, now, IDLE).sessionId, 'b');
+});
+
+test('pickActiveSession: all idle → follows the most-recent rather than blanking', () => {
+  const now = 1_000_000;
+  const states = [
+    { sessionId: 'a', lastActivity: now - 200_000 },
+    { sessionId: 'b', lastActivity: now - 120_000 },
+  ];
+  const r = pickActiveSession(states, 'x', now, IDLE);
+  assert.equal(r.sessionId, 'b', 'most-recent overall when none are live');
+  assert.equal(r.liveCount, 0);
 });

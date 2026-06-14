@@ -2,8 +2,8 @@
 import { writeFileSync, readFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { Client } from './discord-ipc.js';
-import { readState, sweepStaleStateTmp } from './state.js';
-import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton } from './presence.js';
+import { readState, sweepStaleStateTmp, listSessionStates, sweepStaleSessionStates } from './state.js';
+import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession } from './presence.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
@@ -96,6 +96,9 @@ let reconnectDelayMs    = RECONNECT_BASE_MS;
 // 12-frame rotation into a single-frame working state and back, producing a
 // jarring "blank tick" until modulo aligns.
 const rotationCursor = makeRotationCursor();
+// Which concurrent session's card we're currently showing. pickActiveSession
+// keeps it sticky — see resolvePresence.
+let displayedSessionId = null;
 // Stabilizes Discord's elapsed timer: applyIdle can synthesize a sessionStart
 // from a moving transcript mtime, and missing-hook scenarios leave it null —
 // either case would make startTimestamp jump on every rotation.
@@ -121,8 +124,10 @@ try {
 } catch { /* unreadable PID file — fall through and claim it */ }
 writeFileSync(PID_PATH, String(process.pid));
 
-// Reclaim any per-pid state tmp files orphaned by a hard-killed writer.
+// Reclaim any per-pid state tmp files orphaned by a hard-killed writer, plus
+// per-session state files from sessions that ended long ago.
 sweepStaleStateTmp();
+sweepStaleSessionStates();
 
 // pickFrames / selectFrame / resolveLargeImageKey now live in presence.js (pure
 // + unit-tested). The rotation cursor (rotationCursor) is owned here and passed
@@ -135,7 +140,25 @@ sweepStaleStateTmp();
 // previously this chain ran twice and only buildActivity applied the trigger
 // overlay, so the two could diverge.
 function resolvePresence(opts = {}) {
-  let state = opts.state || readState();
+  let state;
+  if (opts.state) {
+    state = opts.state; // standalone caller (preview/api) passes an explicit state
+  } else {
+    // Multi-session: each session writes its own state-<id>.json. Pick which one
+    // to show, sticking with the current session while it's active so the card
+    // doesn't thrash between projects (which also stabilizes the elapsed timer
+    // and the GitHub button — both follow the displayed session). Fall back to
+    // the legacy global state.json when there are no per-session files.
+    const sessions = listSessionStates();
+    if (sessions.length) {
+      const idleMs = Math.max(30_000, (config.idleThresholdSec || 60) * 1000);
+      const picked = pickActiveSession(sessions, displayedSessionId, Date.now(), idleMs);
+      displayedSessionId = picked.sessionId;
+      state = picked.state || readState();
+    } else {
+      state = readState();
+    }
+  }
   // Attach live sessions BEFORE applyIdle so the stale/idle decision can
   // see ongoing transcript activity, not just this daemon's hook state.
   state.liveSessions = opts.liveSessions || liveSessions;

@@ -23,8 +23,10 @@ process.env.TMPDIR = TMP;
 // state file). Tests run serially within this file, so we reset between.
 
 const { processHookEvent, classifyShip } = await import('../src/hook.js');
-const { readState } = await import('../src/state.js');
+const { readState, listSessionStates, statePathFor } = await import('../src/state.js');
+const { pickActiveSession } = await import('../src/presence.js');
 const { STATE_PATH } = await import('../src/paths.js');
+const { unlinkSync } = await import('node:fs');
 
 function resetStateFile() {
   if (existsSync(STATE_PATH)) {
@@ -277,4 +279,43 @@ test('classifyShip: separators inside quotes do not create fake segments', () =>
   assert.equal(classifyShip('git commit -m "x" && git push'), 'push');
   // Unbalanced quote — string is left as-is, detection still works.
   assert.equal(classifyShip('git commit -m "unterminated'), 'commit');
+});
+
+// ── per-session state (concurrent sessions) ─────────────────────────────
+test('per-session: concurrent sessions write separate files; selection sticks then switches', () => {
+  const A = 'itestA-' + process.pid, B = 'itestB-' + process.pid;
+  try {
+    // Two sessions in different projects, B's hook firing last.
+    processHookEvent('SessionStart', { session_id: A, cwd: '/projA' });
+    processHookEvent('PreToolUse',  { session_id: A, cwd: '/projA', tool_name: 'Edit', tool_input: { file_path: '/projA/x.js' } });
+    processHookEvent('SessionStart', { session_id: B, cwd: '/projB' });
+    processHookEvent('PreToolUse',  { session_id: B, cwd: '/projB', tool_name: 'Bash', tool_input: { command: 'ls' } });
+
+    const mine = () => listSessionStates().filter((s) => s.sessionId === A || s.sessionId === B);
+    const states = mine();
+    assert.equal(states.length, 2, 'each session has its own state file');
+    assert.equal(states.find((s) => s.sessionId === A).cwd, '/projA');
+    assert.equal(states.find((s) => s.sessionId === B).status, 'working');
+
+    const now = Date.now();
+    // No prior selection → a live session (which of A/B is sub-ms timing, so
+    // don't pin it); both are active right now.
+    const initial = pickActiveSession(states, null, now, 60_000);
+    assert.ok([A, B].includes(initial.sessionId), 'picks one of the live sessions');
+    assert.equal(initial.liveCount, 2, 'both counted live');
+    // Showing B; A pings again → STICK to B (no thrash while B is active).
+    processHookEvent('PreToolUse', { session_id: A, cwd: '/projA', tool_name: 'Edit', tool_input: { file_path: '/projA/y.js' } });
+    assert.equal(pickActiveSession(mine(), B, Date.now(), 60_000).sessionId, B, 'sticks to B');
+    // B goes idle → switch to where the user is now active (A).
+    const aged = mine().map((s) => s.sessionId === B ? { ...s, lastActivity: Date.now() - 90_000 } : s);
+    assert.equal(pickActiveSession(aged, B, Date.now(), 60_000).sessionId, A, 'switches once B idles');
+    // B ends → excluded from the live count and selection.
+    processHookEvent('SessionEnd', { session_id: B, cwd: '/projB' });
+    const after = pickActiveSession(mine(), B, Date.now(), 60_000);
+    assert.equal(after.sessionId, A, 'a closed session is not shown');
+    assert.equal(mine().filter((s) => s.sessionId === A).length, 1);
+  } finally {
+    try { unlinkSync(statePathFor(A)); } catch { /* ignore */ }
+    try { unlinkSync(statePathFor(B)); } catch { /* ignore */ }
+  }
 });

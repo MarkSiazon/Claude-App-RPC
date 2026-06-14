@@ -55,6 +55,34 @@ export function selectFrame(rawFrames, vars, status, cursor, intervalMs, framePa
   return frames[cursor.index % frames.length] || {};
 }
 
+// Pick which session's card to show when several Claude sessions run at once.
+// Each session writes its own state-<id>.json (lastActivity stamped on every
+// hook), so `states` is one entry per session. Behavior: STICK to the currently
+// shown session while it's still active (lastActivity within idleMs), so the
+// card doesn't thrash between sessions while you're working in one; only once
+// the shown session goes idle do we switch to the most-recently-active session.
+// Returns { state, sessionId, liveCount } — liveCount feeds the "N sessions"
+// party field so it stays consistent with what's displayed.
+export function pickActiveSession(states, displayedId, now, idleMs) {
+  const list = (states || []).filter((s) => s && s.sessionId);
+  if (!list.length) return { state: null, sessionId: null, liveCount: 0 };
+  // A just-ended session (SessionEnd → claudeClosed) stamps a recent
+  // lastActivity but is gone — never count it live or stick to it.
+  const isLive = (s) => !s.claudeClosed && now - (s.lastActivity || 0) <= idleMs;
+  const liveCount = list.filter(isLive).length;
+  const byRecent = [...list].sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+  // Stickiness: keep the shown session while it's still active.
+  const current = list.find((s) => s.sessionId === displayedId);
+  if (current && isLive(current)) {
+    return { state: current, sessionId: current.sessionId, liveCount };
+  }
+  // Otherwise show the most-recently-active live session — or, if none are live,
+  // the most-recent overall so the card follows the last session into idle/stale
+  // rather than blanking.
+  const chosen = byRecent.find(isLive) || byRecent[0];
+  return { state: chosen, sessionId: chosen.sessionId, liveCount };
+}
+
 // Should the daemon auto-add a "View on GitHub →" button for this cwd? The
 // button URL is read from .git/config (no `gh` needed), but private-repo
 // detection DOES need the gh CLI — so on a machine without gh a private repo

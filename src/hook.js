@@ -125,9 +125,17 @@ function parseInput() {
 // directly (avoids spawning a child process per hook).
 export function processHookEvent(event, input = {}) {
   const now = Date.now();
+  // Each session writes its OWN state file (state-<sessionId>.json) so concurrent
+  // sessions stop clobbering one shared state.json — that thrash made the card
+  // jump between projects, the timer reset, and counters over-count. Subagent
+  // hooks carry the parent's session_id, so their activity rolls up correctly.
+  // No id (legacy payload) → the global state.json, preserving old behavior.
+  const sid = input.session_id || input.sessionId || null;
+  const update = (fn) => updateState(fn, sid);
+  const reset = (seed) => resetState(seed, sid);
 
   function setActivity(patch) {
-    updateState((s) => {
+    update((s) => {
       Object.assign(s, patch);
       s.lastActivity = now;
       // Any hook firing means Claude Code is alive — clear the closed flag
@@ -140,7 +148,7 @@ export function processHookEvent(event, input = {}) {
 
   switch (event) {
     case 'SessionStart': {
-      resetState({
+      reset({
         cwd: input.cwd || process.cwd(),
         model: input.model?.id || input.model || 'claude',
         status: 'idle',
@@ -148,7 +156,7 @@ export function processHookEvent(event, input = {}) {
       break;
     }
     case 'UserPromptSubmit': {
-      updateState((s) => {
+      update((s) => {
         s.messages += 1;
         s.lastUserPrompt = now;
         s.lastActivity = now;
@@ -164,7 +172,7 @@ export function processHookEvent(event, input = {}) {
       const toolName = input.tool_name || input.toolName || 'tool';
       const toolInput = input.tool_input || input.toolInput || {};
       const file = toolInput.file_path || toolInput.path || toolInput.notebook_path || null;
-      updateState((s) => {
+      update((s) => {
         s.tools += 1;
         s.toolBreakdown[toolName] = (s.toolBreakdown[toolName] || 0) + 1;
         s.currentTool = toolName;
@@ -211,7 +219,7 @@ export function processHookEvent(event, input = {}) {
           }
         }
       }
-      updateState((s) => {
+      update((s) => {
         s.currentTool = null;
         s.toolStartedAt = null;
         s.lastActivity = now;
@@ -236,7 +244,7 @@ export function processHookEvent(event, input = {}) {
       break;
     }
     case 'Notification': {
-      updateState((s) => {
+      update((s) => {
         s.status = 'notification';
         s.lastNotification = now;
         s.lastActivity = now;
@@ -254,7 +262,7 @@ export function processHookEvent(event, input = {}) {
       // rewriting earlier context, not advancing a turn. Surface it as its
       // own state so the card stops reading "Thinking…" for the 10-60s
       // compactions can take on big sessions.
-      updateState((s) => {
+      update((s) => {
         s.status = 'compacting';
         s.compactStartedAt = now;
         s.compactTrigger = input.trigger || input.matcher || null;
@@ -276,7 +284,7 @@ export function processHookEvent(event, input = {}) {
       // staleSessionMin timeout. applyIdle short-circuits to stale when it
       // sees claudeClosed=true. Any subsequent hook from another live
       // session will flip the flag back to false.
-      updateState((s) => {
+      update((s) => {
         s.status = 'stale';
         s.claudeClosed = true;
         s.currentTool = null;
