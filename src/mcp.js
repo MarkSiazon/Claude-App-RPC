@@ -8,9 +8,6 @@
 // without standing up the transport.
 
 import { readAggregate, dayKey } from './scanner.js';
-import { buildVars } from './format.js';
-import { readState } from './state.js';
-import { loadConfig } from './config.js';
 import { VERSION } from './version.js';
 
 function fmtH(ms) { const h = (ms || 0) / 3_600_000; return h < 1 ? `${Math.round(h * 60)}m` : `${h.toFixed(1)}h`; }

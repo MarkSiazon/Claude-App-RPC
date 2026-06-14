@@ -9,8 +9,9 @@ import {
   unlinkSync,
   statSync,
   fstatSync,
+  readdirSync,
 } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { STATE_PATH, STATE_DIR } from './paths.js';
 
 const DEFAULT_STATE = {
@@ -165,6 +166,22 @@ export function writeState(next) {
   const tmp = `${STATE_PATH}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(next, null, 2));
   renameSync(tmp, STATE_PATH);
+}
+
+// Best-effort sweep of orphaned per-pid tmp files (`state.json.<pid>.tmp`) left
+// behind when a writer was SIGKILLed between writeFileSync and renameSync —
+// they never self-clean otherwise. Call once on daemon startup, NOT in
+// ensureDir (the hot write path). 60s grace so we never race a live writer.
+export function sweepStaleStateTmp(now = Date.now()) {
+  try {
+    const re = new RegExp(`^${basename(STATE_PATH).replace(/\./g, '\\.')}\\.\\d+\\.tmp$`);
+    for (const name of readdirSync(STATE_DIR)) {
+      if (!re.test(name)) continue;
+      const full = join(STATE_DIR, name);
+      try { if (now - statSync(full).mtimeMs > 60_000) unlinkSync(full); }
+      catch { /* vanished or locked — best-effort */ }
+    }
+  } catch { /* STATE_DIR missing / unreadable — nothing to sweep */ }
 }
 
 export function updateState(mutator) {

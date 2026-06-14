@@ -2,7 +2,7 @@
 import { writeFileSync, readFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { Client } from './discord-ipc.js';
-import { readState } from './state.js';
+import { readState, sweepStaleStateTmp } from './state.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
@@ -121,6 +121,9 @@ try {
   }
 } catch { /* unreadable PID file — fall through and claim it */ }
 writeFileSync(PID_PATH, String(process.pid));
+
+// Reclaim any per-pid state tmp files orphaned by a hard-killed writer.
+sweepStaleStateTmp();
 
 function maybeAdvanceRotation(rotation, intervalMs) {
   if (!Array.isArray(rotation) || rotation.length === 0) return undefined;

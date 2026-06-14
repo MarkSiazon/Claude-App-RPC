@@ -12,7 +12,6 @@ import { buildVars, applyIdle, humanProject } from './format.js';
 import { loadConfig } from './config.js';
 import { PID_PATH } from './paths.js';
 import { fmtCost } from './pricing.js';
-import { generateInsights } from './insights.js';
 import { heat } from './ui.js';
 
 // ── ANSI ────────────────────────────────────────────────────────────────────
@@ -79,13 +78,9 @@ function rule(w) { return C.gray + '─'.repeat(w - 4) + C.reset; }
 function bar(value, max, w = 16) {
   if (!max || max <= 0) return ''.padEnd(w);
   const filled = Math.max(0, Math.min(w, Math.round((value / max) * w)));
-  return `${heat(value / max) || C.magenta}${'█'.repeat(filled)}${C.reset}` + ' '.repeat(w - filled);
-}
-
-// Pad a (possibly ANSI-colored) line with spaces so its VISIBLE width hits n.
-function padR(s, n) {
-  const len = visLen(s);
-  return len >= n ? s : s + ' '.repeat(n - len);
+  // heat() is NO_COLOR-aware (returns '' when color is off); the old
+  // `|| C.magenta` fallback wasn't, so it injected a raw escape under NO_COLOR.
+  return `${heat(value / max)}${'█'.repeat(filled)}${C.reset}` + ' '.repeat(w - filled);
 }
 
 // Wrap each content line with a 2-space left margin.

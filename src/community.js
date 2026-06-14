@@ -82,11 +82,11 @@ export function buildPayload(aggregate, cursor, { instanceId, now = Date.now() }
 }
 
 // ── leaderboard profile flush ──────────────────────────────────────────
-// Publishes the opt-in public profile (identity + server-validated usage
-// deltas) to the worker's /profile endpoint. Reuses the anonymous community
-// instanceId as the profile's row key, and its own cursor (which also tracks
-// activeMs). Same three guarantees as flushCommunity: never throws, sends only
-// the documented fields, never advances the cursor on a failed flush.
+// Publishes the opt-in public profile (identity + lifetime totals) to the
+// worker's /profile endpoint. Reuses the anonymous community instanceId as the
+// profile's row key. Unlike flushCommunity this is cursor-free and idempotent —
+// it POSTs absolute totals, so the worker SETs (never accumulates) and a resend
+// is a no-op. Same safety guarantees: never throws, sends only documented fields.
 
 function totalTokens(aggregate) {
   return (aggregate?.inputTokens || 0)

@@ -15,7 +15,7 @@ import { readState } from './state.js';
 import { buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses, fmtNum } from './format.js';
 import { scan, readAggregate, findLiveSessions, dayKey, weekKey } from './scanner.js';
 import { runHookCli } from './hook.js';
-import { install as runInstall, uninstall as runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, mcpServerCommand, setupOutro } from './install.js';
+import { install as runInstall, uninstall as runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, setupOutro } from './install.js';
 import { startTui } from './tui.js';
 import { generateInsights } from './insights.js';
 import { maybeNudge, pickTodayMilestone } from './nudge.js';
