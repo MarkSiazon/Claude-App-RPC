@@ -51,8 +51,56 @@ function migrateInPlace(cfg) {
     }
     if (changed) added.push('presence.buttons[] → CTA');
   }
+  // Frame reconciliation: append default rotation frames the user is missing,
+  // but only onto a still-default-derived rotation. Mirrors install.js.
+  const frameId = (f) => (Array.isArray(f?.requires) && f.requires.length)
+    ? 'r:' + [...f.requires].map(String).sort().join('|')
+    : 't:' + (f?.details ?? '') + ' ' + (f?.state ?? '');
+  const dflBy = DEFAULT_CONFIG.presence?.byStatus || {};
+  const usrBy = cfg.presence.byStatus || {};
+  let framesAdded = 0;
+  for (const status of Object.keys(dflBy)) {
+    const dRot = dflBy[status]?.rotation, uEntry = usrBy[status], uRot = uEntry?.rotation;
+    if (!Array.isArray(dRot) || !dRot.length || !Array.isArray(uRot) || !uRot.length) continue;
+    const dIds = new Set(dRot.map(frameId));
+    if (!uRot.every((f) => dIds.has(frameId(f)))) continue; // user customized: hands off
+    const uIds = new Set(uRot.map(frameId));
+    const missing = dRot.filter((f) => !uIds.has(frameId(f)));
+    if (missing.length) { uEntry.rotation = [...uRot, ...missing.map((f) => JSON.parse(JSON.stringify(f)))]; framesAdded += missing.length; }
+  }
+  if (framesAdded) added.push(`+${framesAdded} frames`);
   return added;
 }
+
+test('reconcile: a default-derived idle rotation gains newly-shipped frames', () => {
+  const dfl = DEFAULT_CONFIG.presence.byStatus;
+  // User seeded an older, shorter idle rotation (first 5 default frames only).
+  const cfg = { presence: { byStatus: { idle: { ...JSON.parse(JSON.stringify(dfl.idle)),
+    rotation: dfl.idle.rotation.slice(0, 5).map((f) => JSON.parse(JSON.stringify(f))) } } } };
+  migrateInPlace(cfg);
+  assert.equal(cfg.presence.byStatus.idle.rotation.length, dfl.idle.rotation.length, 'backfilled to current count');
+  assert.ok(cfg.presence.byStatus.idle.rotation.some((f) => (f.requires || []).includes('usageWeeklyPct')),
+    'the v0.16 usage frame reaches an existing user');
+  assert.deepEqual(cfg.presence.byStatus.idle.rotation.slice(0, 5), dfl.idle.rotation.slice(0, 5),
+    'existing frames are preserved in order, new ones appended');
+});
+
+test('reconcile: a customized rotation is left untouched', () => {
+  const dfl = DEFAULT_CONFIG.presence.byStatus;
+  const cfg = { presence: { byStatus: { idle: { ...JSON.parse(JSON.stringify(dfl.idle)),
+    rotation: [{ details: 'my own frame', state: 'x' }, JSON.parse(JSON.stringify(dfl.idle.rotation[0]))] } } } };
+  const added = migrateInPlace(cfg);
+  assert.equal(cfg.presence.byStatus.idle.rotation.length, 2, 'no frames injected into a customized rotation');
+  assert.ok(!added.some((a) => a.includes('frames')));
+});
+
+test('reconcile: an already-current rotation is idempotent', () => {
+  const dfl = DEFAULT_CONFIG.presence.byStatus;
+  const cfg = { presence: { byStatus: { idle: JSON.parse(JSON.stringify(dfl.idle)) } } };
+  const added = migrateInPlace(cfg);
+  assert.equal(cfg.presence.byStatus.idle.rotation.length, dfl.idle.rotation.length);
+  assert.ok(!added.some((a) => a.includes('frames')), 'nothing to add when already current');
+});
 
 test('migrate: legacy v0.3.0 config gains byStatus + appName', () => {
   const cfg = {

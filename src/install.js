@@ -410,6 +410,37 @@ export function migrateConfig({ silent = false } = {}) {
     if (changed) added.push('presence.buttons[] → CTA');
   }
 
+  // Frame reconciliation. byStatus.<status>.rotation arrays are seeded once and
+  // never reconciled (arrays REPLACE on merge), so default frames shipped in
+  // later versions — the v0.16 usage / cost / churn / goal / budget frames —
+  // never reach an existing user just by bumping the package. For each status
+  // whose rotation is still default-derived (every frame the user has is a
+  // current default frame — they haven't added their own), append the default
+  // frames they're missing, in default order. A frame's `requires` signature is
+  // its stable identity, so a text tweak to an existing frame doesn't block it;
+  // anyone who added a custom frame is left entirely alone.
+  const frameId = (f) => (Array.isArray(f?.requires) && f.requires.length)
+    ? 'r:' + [...f.requires].map(String).sort().join('|')
+    : 't:' + (f?.details ?? '') + ' ' + (f?.state ?? '');
+  const dflBy = DEFAULT_CONFIG.presence?.byStatus || {};
+  const usrBy = cfg.presence.byStatus || {};
+  let framesAdded = 0;
+  for (const status of Object.keys(dflBy)) {
+    const dRot = dflBy[status]?.rotation;
+    const uEntry = usrBy[status];
+    const uRot = uEntry?.rotation;
+    if (!Array.isArray(dRot) || !dRot.length || !Array.isArray(uRot) || !uRot.length) continue;
+    const dIds = new Set(dRot.map(frameId));
+    if (!uRot.every((f) => dIds.has(frameId(f)))) continue; // user customized — hands off
+    const uIds = new Set(uRot.map(frameId));
+    const missing = dRot.filter((f) => !uIds.has(frameId(f)));
+    if (missing.length) {
+      uEntry.rotation = [...uRot, ...missing.map((f) => JSON.parse(JSON.stringify(f)))];
+      framesAdded += missing.length;
+    }
+  }
+  if (framesAdded) added.push(`+${framesAdded} default rotation frame${framesAdded === 1 ? '' : 's'}`);
+
   if (added.length === 0) return false;
   writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
   if (!silent) dirtyStep(SYM_OK, 'config migrated', `added: ${added.join(', ')}`);
