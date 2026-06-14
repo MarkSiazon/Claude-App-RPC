@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey } =
+const { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton } =
   await import('../src/presence.js');
 
 // ── pickFrames ─────────────────────────────────────────────────────────
@@ -108,4 +108,21 @@ test('resolveLargeImageKey: never uses model art when stale; global fallback', (
   assert.equal(resolveLargeImageKey(config, { largeImageKey: 'global' }, 'stale', 'claude-opus-4-8'), 'global');
   assert.equal(resolveLargeImageKey({}, { largeImageKey: 'global' }, 'idle', 'claude-opus-4-8'), 'global');
   assert.equal(resolveLargeImageKey({}, {}, 'idle', null), null);
+});
+
+// ── shouldShowGithubButton ─────────────────────────────────────────────
+test('shouldShowGithubButton: default shows for a public, non-stale cwd', () => {
+  assert.equal(shouldShowGithubButton({}, { status: 'working', _privacy: { visibility: 'public' } }), true);
+  assert.equal(shouldShowGithubButton({}, { status: 'idle' }), true);
+});
+
+test('shouldShowGithubButton: presence.githubButton:false is an absolute off switch', () => {
+  // The privacy fix: kills the button even on a public repo with no gh CLI.
+  assert.equal(shouldShowGithubButton({ githubButton: false }, { status: 'working', _privacy: { visibility: 'public' } }), false);
+});
+
+test('shouldShowGithubButton: suppressed when stale or under any non-public privacy verdict', () => {
+  assert.equal(shouldShowGithubButton({}, { status: 'stale' }), false);
+  assert.equal(shouldShowGithubButton({}, { status: 'working', _privacy: { visibility: 'hidden' } }), false);
+  assert.equal(shouldShowGithubButton({}, { status: 'working', _privacy: { visibility: 'name-only' } }), false);
 });

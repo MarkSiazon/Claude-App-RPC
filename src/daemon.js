@@ -3,7 +3,7 @@ import { writeFileSync, readFileSync, existsSync, unlinkSync, watch, appendFileS
 import { basename, dirname } from 'node:path';
 import { Client } from './discord-ipc.js';
 import { readState, sweepStaleStateTmp } from './state.js';
-import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey } from './presence.js';
+import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton } from './presence.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
@@ -238,12 +238,12 @@ function buildActivity(opts = {}) {
   if (typeof config.activityType === 'number') activity.type = config.activityType;
 
   // Buttons: static configured set, optionally augmented with a per-project
-  // GitHub button when the current cwd has a github origin. Privacy mode
-  // suppresses the GitHub button entirely (else clicking it leaks the
-  // project name we're trying to hide).
-  const isPrivacyConstrained = state._privacy && state._privacy.visibility !== 'public';
+  // GitHub button when the current cwd has a github origin. Suppressed under any
+  // non-public privacy verdict (else the link leaks the project we're hiding),
+  // while stale, and when presence.githubButton is set to false (the explicit
+  // off switch — works even without the gh CLI that private-repo detection needs).
   const buttons = Array.isArray(p.buttons) ? p.buttons.slice() : [];
-  const gh = (!isPrivacyConstrained && state.status !== 'stale') ? detectGithubUrl(state.cwd) : null;
+  const gh = shouldShowGithubButton(p, state) ? detectGithubUrl(state.cwd) : null;
   if (gh && !buttons.some((b) => /github\.com/i.test(b.url || ''))) {
     buttons.unshift({ label: 'View on GitHub →', url: gh });
   }

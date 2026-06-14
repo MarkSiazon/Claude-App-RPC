@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.17.1] - 2026-06-14
+
+**Fixed**
+
+- **A private repo's GitHub link could appear on the Discord card.** The "View on GitHub →" button URL is read straight from `.git/config` (no tooling required), but auto-hiding a *private* repo relies on the `gh` CLI (`gh repo view --json isPrivate`). On a machine without `gh` installed/authenticated, claude-rpc couldn't tell the repo was private, fell back to treating it as public, and showed the button — leaking the repo. Two changes close the gap: a new **`presence.githubButton: false`** kill switch that suppresses the auto button unconditionally (no `gh` needed), and a **`doctor` warning** ("private-repo guard") that fires when the current directory is a GitHub repo, the button would show, and `gh` can't confirm the repo is public — pointing at `gh auth login`, the new toggle, or `claude-rpc private`. The button-visibility decision moved into `src/presence.js` (`shouldShowGithubButton`) with unit coverage. Workarounds for an affected repo without upgrading: `gh auth login`, `claude-rpc private`, or a `.claude-rpc.json` with `{ "visibility": "name-only" }`.
+
 ## [0.17.0] - 2026-06-14
 
 A broad correctness, reliability, and security pass driven by a full-codebase audit — 34 findings fixed across the daemon, hook, scanner, CLI, local server, Cloudflare worker, and docs — plus testability work (the presence-render core and the rotation logic are now unit-tested).

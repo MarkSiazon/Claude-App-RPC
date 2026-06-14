@@ -178,7 +178,7 @@ export function listVisibility() {
 
 // ── GitHub-private detection (best-effort, gh CLI) ──────────────────────
 
-function detectGithubPrivate(cwd) {
+export function detectGithubPrivate(cwd) {
   if (!cwd) return null;
   const cached = ghPrivateCache.get(cwd);
   if (cached && Date.now() - cached.ts < TTL_MS) return cached.value;

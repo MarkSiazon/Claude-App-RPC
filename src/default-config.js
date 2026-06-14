@@ -204,6 +204,12 @@ export const DEFAULT_CONFIG = {
       },
     },
 
+    // Auto-prepend a "View on GitHub →" button when the cwd is a github repo.
+    // Set false to never show it — the privacy-safe off switch for machines
+    // without the `gh` CLI, where private repos can't be auto-detected and would
+    // otherwise have their link appear on the card.
+    githubButton: true,
+
     buttons: [
       // The card others see in Discord is the project's main distribution
       // surface — make the button a real call-to-action, not a bare repo link.

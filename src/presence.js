@@ -55,6 +55,19 @@ export function selectFrame(rawFrames, vars, status, cursor, intervalMs, framePa
   return frames[cursor.index % frames.length] || {};
 }
 
+// Should the daemon auto-add a "View on GitHub →" button for this cwd? The
+// button URL is read from .git/config (no `gh` needed), but private-repo
+// detection DOES need the gh CLI — so on a machine without gh a private repo
+// can't be detected and its link would leak onto the card. This is the explicit
+// kill switch (`presence.githubButton: false`), independent of gh; it also stays
+// suppressed while stale or under any non-public privacy verdict.
+export function shouldShowGithubButton(p, state) {
+  if (p.githubButton === false) return false;
+  if (!state || state.status === 'stale') return false;
+  if (state._privacy && state._privacy.visibility !== 'public') return false;
+  return true;
+}
+
 // Large-image key precedence (returns the TEMPLATE string; the caller fills it):
 //   1. statusAssets[status]          per-status art ("working" gif, etc.)
 //   2. modelAssets[fable|opus|sonnet|haiku|default]   per-model art, never stale

@@ -15,7 +15,8 @@ import {
   CLAUDE_HOME, CLAUDE_PROJECTS, CLAUDE_SETTINGS,
 } from './paths.js';
 import { findLiveSessions } from './scanner.js';
-import { resolveVisibility, listPrivateCwds } from './privacy.js';
+import { detectGithubUrl } from './git.js';
+import { resolveVisibility, listPrivateCwds, detectGithubPrivate } from './privacy.js';
 import { readClaudeCredentials, readUsageCache } from './usage.js';
 import { c, check as uiCheck } from './ui.js';
 
@@ -329,6 +330,18 @@ function checkPrivacy(cfg) {
       check('private-list entries', 'pass', `${listed.length} ${listed.length === 1 ? 'path' : 'paths'} marked private`);
     } else {
       check('private-list entries', 'pass', 'none');
+    }
+    // Private-repo guard. The "View on GitHub →" button URL is read from
+    // .git/config (no gh needed), but auto-hiding a PRIVATE repo needs the gh
+    // CLI. On a github repo here where the button would show (public verdict,
+    // button enabled) and gh can't answer, a private repo's link could leak.
+    const ghUrl = detectGithubUrl(cwd);
+    if (ghUrl && visibility === 'public' && cfg?.presence?.githubButton !== false
+        && cfg?.privacy?.autoDetectGithubPrivate !== false
+        && detectGithubPrivate(cwd) === null) {
+      check('private-repo guard', 'warn',
+        'gh CLI unavailable — a private repo here can\'t be auto-detected, so its GitHub link may appear on the card',
+        'run `gh auth login`, set presence.githubButton:false, or `claude-rpc private` in private repos');
     }
   } catch (e) {
     check('privacy check', 'warn', `lookup failed: ${e.message}`);
