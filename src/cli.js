@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, watchFile, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, watchFile, unlinkSync, mkdirSync } from 'node:fs';
 import process from 'node:process';
 
 // Force the console code page to UTF-8 (65001) on Windows so Unicode box
@@ -30,7 +30,7 @@ import { VERSION } from './version.js';
 import { fail, tailLines, heat, sparkline, fmtDelta, topPercentile, EX_USER_ERROR, EX_BAD_STATE, EX_SYS_ERROR } from './ui.js';
 import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
-import { basename, join } from 'node:path';
+import { basename, join, dirname } from 'node:path';
 
 const cmd = process.argv[2];
 
@@ -54,6 +54,29 @@ const visibleLen = (s) => String(s).replace(ansiRe, '').length;
 function readJson(path, fallback) {
   if (!existsSync(path)) return fallback;
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
+}
+
+// Persist a mutated config.json. The config dir doesn't exist until `setup`
+// runs (npm/npx install no install script), so a bare writeFileSync threw an
+// uncaught ENOENT for any config-mutating command run before setup
+// (`profile set`, `community on`, `link`, …). mkdirSync first.
+function writeUserConfig(userCfg) {
+  mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+  writeUserConfig(userCfg);
+}
+
+// Validate a flag's value taken with `argv[++i]`. A value that's missing or
+// itself looks like a flag (`--out --gist` → out='--gist') is almost always a
+// forgotten argument, so fail loudly instead of silently doing the wrong thing.
+// The `--flag=value` form stays the escape hatch for legit `-`-leading values.
+function takeValue(v, flag) {
+  if (v === undefined || (typeof v === 'string' && v.startsWith('-'))) {
+    fail(`${flag} needs a value`, {
+      hint: v === undefined ? 'nothing followed it' : `got \`${v}\` — use ${flag}=<value> if the value really starts with "-"`,
+      code: EX_USER_ERROR,
+    });
+  }
+  return v;
 }
 
 function isAlive(pid) {
@@ -98,12 +121,23 @@ function stopDaemon({ quiet = false } = {}) {
 }
 
 function restartDaemon() {
-  if (stopDaemon({ quiet: true })) {
-    // wait briefly for the OS to release the pid file, then spawn fresh
-    setTimeout(() => startDaemon(), 600);
-  } else {
-    startDaemon();
-  }
+  if (!stopDaemon({ quiet: true })) { startDaemon(); return; }
+  // Poll for the old daemon to release the PID file rather than guessing with a
+  // fixed sleep — under load 600ms wasn't always enough, and startDaemon would
+  // then see it "still up" and no-op, leaving NO daemon running once the old
+  // one exited. Give up after ~3s, force-kill the wedged pid, and start anyway.
+  const deadline = Date.now() + 3000;
+  const tick = () => {
+    if (!daemonPid()) { startDaemon(); return; }
+    if (Date.now() >= deadline) {
+      const pid = daemonPid();
+      if (pid) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
+      startDaemon();
+      return;
+    }
+    setTimeout(tick, 50);
+  };
+  setTimeout(tick, 50);
 }
 
 // ── Box drawing — auto-widens to fit longest line ────────────────────────────
@@ -795,10 +829,10 @@ function parseBadgeArgs(argv) {
   const out = { metric: 'hours', range: '7d', out: '', gist: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--metric' || a === '-m') out.metric = argv[++i];
-    else if (a === '--range' || a === '-r') out.range = argv[++i];
-    else if (a === '--out' || a === '-o') out.out = argv[++i];
-    else if (a === '--label' || a === '-l') out.label = argv[++i];
+    if (a === '--metric' || a === '-m') out.metric = takeValue(argv[++i], '--metric');
+    else if (a === '--range' || a === '-r') out.range = takeValue(argv[++i], '--range');
+    else if (a === '--out' || a === '-o') out.out = takeValue(argv[++i], '--out');
+    else if (a === '--label' || a === '-l') out.label = takeValue(argv[++i], '--label');
     else if (a === '--gist') out.gist = true;
   }
   return out;
@@ -851,7 +885,7 @@ async function publishBadgeToGist(svg, opts) {
       filename,
     };
     if (stored.public !== undefined) userCfg.gist.public = stored.public;
-    writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+    writeUserConfig(userCfg);
     const wasUpdate = !!stored.id;
     console.log('');
     console.log(`  ${c.green}✓${c.reset}  ${wasUpdate ? 'updated' : 'created'} gist ${c.cyan}${result.id}${c.reset}`);
@@ -876,8 +910,8 @@ function parseCardArgs(argv) {
   const out = { range: 'year', out: '' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--range' || a === '-r') out.range = argv[++i];
-    else if (a === '--out' || a === '-o') out.out = argv[++i];
+    if (a === '--range' || a === '-r') out.range = takeValue(argv[++i], '--range');
+    else if (a === '--out' || a === '-o') out.out = takeValue(argv[++i], '--out');
   }
   return out;
 }
@@ -906,8 +940,8 @@ function parseGithubStatArgs(argv) {
   const out = { out: '', gist: false, handle: '' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--out' || a === '-o') out.out = argv[++i];
-    else if (a === '--handle' || a === '-u') out.handle = argv[++i];
+    if (a === '--out' || a === '-o') out.out = takeValue(argv[++i], '--out');
+    else if (a === '--handle' || a === '-u') out.handle = takeValue(argv[++i], '--handle');
     else if (a === '--gist') out.gist = true;
   }
   return out;
@@ -950,7 +984,7 @@ function liveVars() {
 function doStatusline(argv) {
   let tpl = '{statusVerbose} · {project} · {modelPretty}{tokensLabelPad}';
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--template' || argv[i] === '-t') tpl = argv[++i] || tpl;
+    if (argv[i] === '--template' || argv[i] === '-t') tpl = takeValue(argv[++i], '--template');
   }
   const { vars } = liveVars();
   vars.tokensLabelPad = vars.tokensLabel ? ` · ${vars.tokensLabel}` : '';
@@ -961,7 +995,7 @@ function doStatusline(argv) {
 async function doCalendar(argv) {
   const opts = { out: '', gist: false };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--out' || argv[i] === '-o') opts.out = argv[++i];
+    if (argv[i] === '--out' || argv[i] === '-o') opts.out = takeValue(argv[++i], '--out');
     else if (argv[i] === '--gist') opts.gist = true;
   }
   const aggregate = readAggregate();
@@ -979,7 +1013,7 @@ async function doCalendar(argv) {
 async function doSessionCard(argv) {
   const opts = { out: '' };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--out' || argv[i] === '-o') opts.out = argv[++i];
+    if (argv[i] === '--out' || argv[i] === '-o') opts.out = takeValue(argv[++i], '--out');
   }
   const { vars } = liveVars();
   const { renderSessionCard } = await import('./session-card.js');
@@ -1170,16 +1204,27 @@ function squadAuth() {
       code: EX_BAD_STATE,
     });
   }
+  const netFail = (e) => fail(`couldn't reach the squads service: ${e.message}`, {
+    hint: 'check your connection and retry — this never blocks Claude Code',
+    code: EX_SYS_ERROR,
+  });
   const post = async (path, body) => {
-    const res = await fetch(endpoint + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instanceId, ...body }),
-    });
+    let res;
+    try {
+      res = await fetch(endpoint + path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instanceId, ...body }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (e) { return netFail(e); }
     return { status: res.status, json: await res.json().catch(() => ({})) };
   };
   const get = async (path) => {
-    const res = await fetch(endpoint + path);
+    let res;
+    try {
+      res = await fetch(endpoint + path, { signal: AbortSignal.timeout(10_000) });
+    } catch (e) { return netFail(e); }
     return { status: res.status, json: await res.json().catch(() => ({})) };
   };
   return { cfg, endpoint, instanceId, post, get };
@@ -1334,7 +1379,7 @@ async function doLink(argv) {
   // Mirror the verified identity locally so `profile status` agrees.
   const userCfg = readJson(CONFIG_PATH, {});
   userCfg.profile = { ...(userCfg.profile || {}), githubUser: r.json.githubUser, verified: true };
-  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  writeUserConfig(userCfg);
   console.log(`  ${c.green}✓${c.reset}  linked as ${c.cyan}@${r.json.githubUser}${c.reset} — profile verified, squads unlocked in the browser`);
   if (r.json.merged) {
     // This machine joined an existing identity: its stats now roll up under the
@@ -1422,7 +1467,7 @@ async function communityOn() {
     instanceId: userCfg.community?.instanceId || community.instanceId || randomUUID(),
   };
   userCfg.community = next;
-  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  writeUserConfig(userCfg);
   console.log('');
   console.log(`  ${c.green}✓${c.reset} community totals enabled`);
   console.log(`    ${c.dim}id: …${next.instanceId.slice(-8)}${c.reset}`);
@@ -1437,7 +1482,7 @@ function communityOff() {
     return;
   }
   userCfg.community = { ...userCfg.community, enabled: false };
-  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  writeUserConfig(userCfg);
   console.log(`  ${c.green}✓${c.reset}  community totals disabled ${c.dim}(instanceId retained for re-enable continuity)${c.reset}`);
 }
 
@@ -1465,7 +1510,10 @@ async function communityReport() {
 // daemon flush runs with profile.enabled + a valid handle (Phase 2).
 function readFlag(argv, name) {
   const i = argv.indexOf(`--${name}`);
-  if (i !== -1 && i + 1 < argv.length) return argv[i + 1];
+  // Don't consume the next token as the value when it's itself a flag
+  // (`profile set --handle --name x` must not save handle '--name'); fall
+  // through to the --name=value form, which stays the escape hatch.
+  if (i !== -1 && i + 1 < argv.length && !argv[i + 1].startsWith('-')) return argv[i + 1];
   const eq = argv.find((a) => a.startsWith(`--${name}=`));
   return eq ? eq.slice(name.length + 3) : undefined;
 }
@@ -1572,7 +1620,7 @@ function profileSet(argv) {
   }
 
   userCfg.profile = next;
-  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  writeUserConfig(userCfg);
   // One-line confirmation + a pointer at the next step. The full dashboard
   // stays behind `claude-rpc profile` — mutations shouldn't re-render it.
   const saved = [];
@@ -1604,7 +1652,7 @@ function profileEnable(on) {
     }
   }
   userCfg.profile = next;
-  writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+  writeUserConfig(userCfg);
   if (on) {
     console.log(`  ${c.green}✓${c.reset}  publishing enabled  ${c.dim}— board syncs on the next flush, or now: ${c.reset}${c.cyan}claude-rpc profile publish${c.reset}`);
     profileNextStep();
@@ -1699,7 +1747,7 @@ async function profileVerify() {
       // profile checklist and future publishes match what got verified.
       const userCfg = readJson(CONFIG_PATH, {});
       userCfg.profile = { ...(userCfg.profile || {}), ...(who ? { githubUser: who } : {}), verified: true };
-      writeFileSync(CONFIG_PATH, JSON.stringify(userCfg, null, 2));
+      writeUserConfig(userCfg);
       console.log(`  ${c.green}✓${c.reset}  verified as ${c.cyan}@${who}${c.reset} — you'll show the ✓ on the board`);
       if (who && profile.githubUser && who.toLowerCase() !== profile.githubUser.toLowerCase()) {
         console.log(`     ${c.dim}(your gist is owned by @${who}, so the profile now uses that account)${c.reset}`);
@@ -1845,7 +1893,7 @@ function help() {
     ['start',     'Start the Discord RPC daemon (detached)'],
     ['stop',      'Stop the daemon'],
     ['restart',   'Stop then start the daemon'],
-    ['status',    'Print current session + all-time stats'],
+    ['status',    'Interactive stats TUI; --dump (or piped) prints static text'],
     ['today',     'Focus view: today\'s stats + 24h activity histogram'],
     ['week',      'Focus view: this week, daily breakdown'],
     ['usage',     'Subscription limits — session + weekly % (what /usage shows)'],
@@ -1862,6 +1910,7 @@ function help() {
     ['calendar',  'Year activity heatmap SVG (--out --gist)'],
     ['session-card', 'Recap card for the current session (--out)'],
     ['mcp install', 'Wire the stats MCP server into Claude Code (one command)'],
+    ['mcp uninstall', 'Remove the stats MCP server from Claude Code'],
     ['mcp',       'Run the MCP server (stdio) — exposes your stats to Claude'],
     ['wrapped',   'Open your animated year-in-review (Claude Wrapped)'],
     ['pause',     'Snooze the Discord card globally (pause [30m|2h], default 1h)'],
@@ -1902,6 +1951,14 @@ function help() {
 // `claude-rpc.exe hook PreToolUse` → handle hook.
 // Dev mode keeps the original `help` fallback so behavior is unchanged.
 const packagedDefault = IS_PACKAGED && !cmd;
+
+// Floor for any rejection that escapes a command handler (a bare `await fetch`
+// going offline, etc.): the rejected IIFE promise lands here instead of
+// printing a raw stack + an unhandled-rejection warning, keeping the documented
+// 0/1/2/3 exit-code contract intact.
+process.on('unhandledRejection', (e) => {
+  fail(`unexpected error: ${e?.message || e}`, { code: EX_SYS_ERROR });
+});
 
 // Wrapped in an async IIFE so the same source compiles cleanly under both
 // ESM (dev) and CommonJS (esbuild → SEA bundle) — CJS doesn't allow
