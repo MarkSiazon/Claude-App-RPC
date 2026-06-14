@@ -7,6 +7,22 @@ import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
 
 /**
+ * Strip shell/PowerShell metacharacters from a label before it's interpolated
+ * into a notifier command or webhook body. The win32 path below puts text
+ * inside a double-quoted PowerShell string, where `$(...)` and backtick are
+ * evaluated and JSON.stringify escapes neither — so an unsanitized project
+ * name (a directory literally named `x$(calc.exe)`) could execute. Allow only
+ * unicode letters/numbers + space/._- : plenty for a readable label, and it
+ * neutralizes the PowerShell, osascript, and webhook sinks alike. Callers
+ * passing any cwd-derived text MUST run it through this first.
+ * @param {string} s
+ * @returns {string}
+ */
+export function sanitizeLabel(s) {
+  return String(s || '').replace(/[^\p{L}\p{N} ._-]/gu, '');
+}
+
+/**
  * Best-effort native desktop notification (osascript / PowerShell / notify-send).
  * Never throws — a missing notifier binary is swallowed.
  * @param {string} title - Notification title.

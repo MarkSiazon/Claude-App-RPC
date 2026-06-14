@@ -11,7 +11,7 @@ const { runMcpServer, toolList } = await import('../src/mcp.js');
 const { calendarSvg } = await import('../src/calendar.js');
 const { cardSvg } = await import('../src/card.js');
 const { sessionCardSvg } = await import('../src/session-card.js');
-const { postWebhook, desktopNotify } = await import('../src/notify.js');
+const { postWebhook, desktopNotify, sanitizeLabel } = await import('../src/notify.js');
 const { runDoctor, fixPlan } = await import('../src/doctor.js');
 
 const fakeAgg = {
@@ -128,6 +128,17 @@ test('desktopNotify: returns a boolean and never throws (missing binary is swall
   let result;
   assert.doesNotThrow(() => { result = desktopNotify('claude-rpc', 'test body'); });
   assert.equal(typeof result, 'boolean');
+});
+
+test('sanitizeLabel: strips shell/PowerShell metacharacters, keeps readable text', () => {
+  // The injection vector: a project dir named to trigger PowerShell evaluation.
+  assert.equal(sanitizeLabel('proj$(calc.exe)'), 'projcalc.exe');
+  assert.equal(sanitizeLabel('a`whoami`b'), 'awhoamib');
+  assert.equal(sanitizeLabel('x"; rm -rf /'), 'x rm -rf ');
+  // Benign names — including unicode — survive intact.
+  assert.equal(sanitizeLabel('my-project_v2.0'), 'my-project_v2.0');
+  assert.equal(sanitizeLabel('café'), 'café');
+  assert.equal(sanitizeLabel(null), '');
 });
 
 // ── runDoctor ─────────────────────────────────────────────────────────

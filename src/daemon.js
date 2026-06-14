@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { Client } from './discord-ipc.js';
 import { readState } from './state.js';
@@ -10,7 +10,7 @@ import { applyPrivacy } from './privacy.js';
 import { pauseUntil } from './pause.js';
 import { loadConfig } from './config.js';
 import { migrateConfig } from './install.js';
-import { desktopNotify, postWebhook, shouldWebhook, shouldNotify } from './notify.js';
+import { desktopNotify, postWebhook, shouldWebhook, shouldNotify, sanitizeLabel } from './notify.js';
 import { humanProject } from './format.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH, PAUSE_PATH } from './paths.js';
 import { readUsageCache, pollUsage } from './usage.js';
@@ -102,6 +102,24 @@ let effectiveSessionStart = null;
 // jarring "blank tick" until modulo aligns.
 let rotationStatus = null;
 
+// Single-instance guard. The CLI checks before spawning, but off-path launches
+// (a login-startup entry racing a manual start; a packaged exe beside a dev
+// run) could start a second daemon that fights over setActivity every ~4s and
+// double-counts the additive community total. If a live daemon already owns the
+// PID file, step aside; a stale PID (owner gone) means take over.
+try {
+  if (existsSync(PID_PATH)) {
+    const existing = parseInt(readFileSync(PID_PATH, 'utf8'), 10);
+    if (existing && existing !== process.pid) {
+      let alive = false;
+      try { process.kill(existing, 0); alive = true; } catch { /* stale PID — take over */ }
+      if (alive) {
+        log(`Another daemon (pid ${existing}) is already running — exiting.`);
+        process.exit(0);
+      }
+    }
+  }
+} catch { /* unreadable PID file — fall through and claim it */ }
 writeFileSync(PID_PATH, String(process.pid));
 
 function maybeAdvanceRotation(rotation, intervalMs) {
@@ -304,13 +322,20 @@ function buildActivity(opts = {}) {
 }
 
 // Fire desktop-notification + webhook on a status transition (once per change).
-function fireStatusSideEffects(resolved) {
+// When `suppressed` (paused / privacy=hidden), we still advance the transition
+// cursor — so resume doesn't replay a stale notification — but stay silent, or
+// the webhook/toast would leak the project name and defeat the snooze.
+function fireStatusSideEffects(resolved, suppressed = false) {
   const status = resolved.status;
   if (status === lastNotifiedStatus) return;
   const prev = lastNotifiedStatus;
   lastNotifiedStatus = status;
+  if (suppressed) return;
   try {
-    const project = humanProject(resolved.cwd) || 'Claude Code';
+    // Sanitize the cwd-derived project name before it reaches a notifier or
+    // webhook — see sanitizeLabel (closes a win32 PowerShell injection via a
+    // maliciously-named directory).
+    const project = sanitizeLabel(humanProject(resolved.cwd)) || 'Claude Code';
     if (shouldNotify(config.notify, prev, status)) {
       desktopNotify('Claude Code needs you', `Waiting on you in ${project}`);
       log(`desktop notification raised (status=${status})`);
@@ -338,17 +363,21 @@ async function pushPresence() {
     // for the decision and the frame to disagree.
     const resolved = resolvePresence();
 
-    // Outbound side-effects on a status TRANSITION (fire once per change):
-    // a desktop notification when Claude needs you, and an opt-in webhook POST.
-    fireStatusSideEffects(resolved);
-
     const hideWhenStale = config.hideWhenStale !== false;
     const privacyHidden = resolved._privacy?.visibility === 'hidden';
     // Global snooze (`claude-rpc pause`) — clears the card while the deadline
     // is in the future. Re-checked every tick, so expiry resumes presence
     // automatically (the 'cleared' stamp differs from the next frame's hash).
     const pausedUntil = pauseUntil();
-    if ((resolved.status === 'stale' && hideWhenStale) || privacyHidden || pausedUntil) {
+    const suppressed = privacyHidden || !!pausedUntil || (resolved.status === 'stale' && hideWhenStale);
+
+    // Outbound side-effects on a status TRANSITION (fire once per change): a
+    // desktop notification when Claude needs you, and an opt-in webhook POST.
+    // Suppressed while paused / privacy=hidden — those snooze the card, and a
+    // toast or webhook leaking the project name would defeat that.
+    fireStatusSideEffects(resolved, suppressed);
+
+    if (suppressed) {
       const stamp = 'cleared';
       if (lastPayloadHash === stamp) return;
       lastPayloadHash = stamp;

@@ -36,6 +36,21 @@ function gitSubcommand(args) {
   return null;
 }
 
+// First two gh positionals (noun, verb), skipping global flags so the canonical
+// targeted form `gh -R owner/repo pr create` still classifies. -R/--repo take a
+// value; other globals here don't precede a create, so skipping the rest is safe.
+function ghSubcommand(args) {
+  const pos = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '-R' || a === '--repo') { i++; continue; } // flag that takes a value
+    if (a.startsWith('-')) continue;
+    pos.push(a.toLowerCase());
+    if (pos.length === 2) break;
+  }
+  return { noun: pos[0], verb: pos[1] };
+}
+
 function shipKindForSegment(seg) {
   const toks = tokenizeSegment(seg);
   if (!toks.length) return null;
@@ -44,9 +59,10 @@ function shipKindForSegment(seg) {
     if (sub === 'push') return 'push';
     if (sub === 'commit') return 'commit';
   } else if (toks[0] === 'gh') {
-    if (toks[1] === 'pr' && toks[2] === 'create') return 'pr';
-    if (toks[1] === 'issue' && toks[2] === 'create') return 'issue';
-    if (toks[1] === 'release' && toks[2] === 'create') return 'tag';
+    const { noun, verb } = ghSubcommand(toks.slice(1));
+    if (noun === 'pr' && verb === 'create') return 'pr';
+    if (noun === 'issue' && verb === 'create') return 'issue';
+    if (noun === 'release' && verb === 'create') return 'tag';
   }
   return null;
 }
@@ -211,13 +227,10 @@ export function processHookEvent(event, input = {}) {
           s.justShippedSubject = shipSubject;
           s.justShippedBranch = shipBranch;
         }
-        const usage = input.tool_response?.usage || input.usage;
-        if (usage) {
-          s.tokens.input += usage.input_tokens || 0;
-          s.tokens.output += usage.output_tokens || 0;
-          s.tokens.cacheRead += usage.cache_read_input_tokens || 0;
-          s.tokens.cacheWrite += usage.cache_creation_input_tokens || 0;
-        }
+        // NOTE: PostToolUse tool_response carries no model usage, so this
+        // never fired (the daemon overrides state.tokens from the transcript —
+        // the documented single source of truth). Removed to kill a latent
+        // double-count if a future Claude Code version did attach usage here.
         return s;
       });
       break;
@@ -293,9 +306,17 @@ export function processHookEvent(event, input = {}) {
 }
 
 // Stdin-driven CLI form: read JSON event payload from stdin, dispatch, ack.
+// The `{continue:true}` ack is a documented contract (SECURITY.md) — Claude
+// Code reads it on every hook — so a state-write failure (full/unwritable
+// tmpdir) must never stop us from emitting it. Dispatch is best-effort; the
+// ack always goes out.
 export function runHookCli(event) {
-  processHookEvent(event, parseInput());
-  process.stdout.write(JSON.stringify({ continue: true }));
+  try {
+    processHookEvent(event, parseInput());
+  } catch { /* presence is best-effort; never break the user's turn */ }
+  finally {
+    try { process.stdout.write(JSON.stringify({ continue: true })); } catch { /* stdout closed */ }
+  }
 }
 
 // Run directly when invoked as `node src/hook.js <event>`. Detection is based
