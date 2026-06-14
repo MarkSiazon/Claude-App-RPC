@@ -73,6 +73,7 @@ export function postWebhook(url, payload) {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(4000), // fire-and-forget; don't let a hung webhook leak a socket
     }).catch(() => {});
   } catch {
     /* best-effort */

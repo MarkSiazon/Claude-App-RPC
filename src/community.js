@@ -140,6 +140,7 @@ export async function flushProfile(cfg, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000), // bare fetch never times out; a hung peer would wedge the 30-min flush loop
     });
   } catch (e) {
     return { ok: false, reason: 'network', error: e.message };
@@ -182,6 +183,7 @@ export async function flushCommunity(cfg, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000), // bare fetch never times out; a hung peer would wedge the 30-min flush loop
     });
   } catch (e) {
     return { ok: false, reason: 'network', error: e.message };

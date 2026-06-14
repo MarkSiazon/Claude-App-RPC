@@ -59,10 +59,21 @@ export function windowedAggregate(agg, range) {
     cacheWriteTokens += day.cacheWriteTokens || 0;
   }
 
+  // Prior identical window (the `days` days immediately before this one) so the
+  // range card can show a "vs prior" delta like the today card does. Finite
+  // windows only — the 'all' branch returned early above. Bounded (days<=366).
+  let priorActiveMs = 0;
+  for (let i = days; i < days * 2; i++) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const day = (agg.byDay || {})[dayKey(d.getTime())];
+    if (day) priorActiveMs += day.activeMs || 0;
+  }
+
   return {
     range,
     byDay,
     activeMs,
+    priorActiveMs,
     userMessages: prompts,
     toolCalls,
     linesAdded: lines,

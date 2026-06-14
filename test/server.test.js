@@ -149,6 +149,7 @@ test('windowedAggregate trims to range and recomputes roll-ups', async () => {
     byDay: {
       [ago(0)]:  { activeMs: 3600_000, userMessages: 1, cost: 0.1 },
       [ago(5)]:  { activeMs: 7200_000, userMessages: 2, cost: 0.2 },
+      [ago(9)]:  { activeMs: 1800_000 }, // in the prior 7d window (days 7-13)
       [ago(40)]: { activeMs: 5400_000, userMessages: 3, cost: 0.3 },
     },
     streak: 1,
@@ -158,6 +159,7 @@ test('windowedAggregate trims to range and recomputes roll-ups', async () => {
   assert.equal(win.activeMs, 3600_000 + 7200_000);
   assert.equal(win.userMessages, 3);
   assert.ok(win.estimatedCost > 0);
+  assert.equal(win.priorActiveMs, 1800_000, 'prior identical window summed for the range delta');
 });
 
 test('rangeToDays parses range tokens', async () => {

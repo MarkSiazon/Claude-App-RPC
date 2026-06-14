@@ -17,6 +17,25 @@ import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// `gh` on Windows is gh.cmd/gh.exe — a bare 'gh' spawn (no shell) won't resolve
+// the extension, so detection and publish silently fell through to the REST
+// path (which then needs GH_TOKEN). Run via the shell on win32 so PATHEXT
+// resolves it. shell:true does NOT auto-quote, and our args include a
+// space-bearing --desc, so quote anything with whitespace/quotes ourselves.
+const WIN = process.platform === 'win32';
+function ghQuote(a) {
+  return /[\s"]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a;
+}
+function gh(args, opts = {}) {
+  return WIN
+    ? spawnSync('gh', args.map(ghQuote), { ...opts, shell: true })
+    : spawnSync('gh', args, opts);
+}
+
+// Bare fetch has no total timeout; a stalled GitHub endpoint would hang the
+// publish forever. 10s is plenty for a gist round-trip.
+const FETCH_TIMEOUT_MS = 10_000;
+
 // Extract { owner, id } from a "https://gist.github.com/<user>/<hash>"
 // URL. Returns null on no match — callers throw with the raw output so
 // debugging an unparseable gh response is straightforward.
@@ -43,7 +62,7 @@ export function gistMarkdown({ owner, id, filename, label = 'Claude' }) {
 
 export function hasGh() {
   try {
-    const r = spawnSync('gh', ['--version'], { stdio: 'ignore' });
+    const r = gh(['--version'], { stdio: 'ignore' });
     return r.status === 0;
   } catch {
     // gh missing entirely → spawn throws on some platforms instead of
@@ -55,7 +74,7 @@ export function hasGh() {
 function ghCreate(filePath, description, isPublic) {
   const args = ['gist', 'create', filePath, '--desc', description];
   if (isPublic) args.push('--public');
-  const r = spawnSync('gh', args, { encoding: 'utf8' });
+  const r = gh(args, { encoding: 'utf8' });
   if (r.status !== 0) {
     throw new Error(`gh gist create failed: ${(r.stderr || r.stdout || '').trim()}`);
   }
@@ -69,7 +88,7 @@ function ghCreate(filePath, description, isPublic) {
 }
 
 function ghEdit(gistId, filePath) {
-  const r = spawnSync('gh', ['gist', 'edit', gistId, filePath], { encoding: 'utf8' });
+  const r = gh(['gist', 'edit', gistId, filePath], { encoding: 'utf8' });
   if (r.status !== 0) {
     throw new Error(`gh gist edit failed: ${(r.stderr || r.stdout || '').trim()}`);
   }
@@ -89,6 +108,7 @@ async function restCreate({ svg, filename, description, isPublic, token }) {
       public: !!isPublic,
       files: { [filename]: { content: svg } },
     }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -108,6 +128,7 @@ async function restEdit({ svg, filename, gistId, token }) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ files: { [filename]: { content: svg } } }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');

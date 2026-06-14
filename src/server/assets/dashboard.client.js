@@ -466,9 +466,14 @@
     $('range-unit').textContent = ru === 'h' ? 'hrs' : ru;
     $('range-sub').textContent = fmtN(aggData.userMessages || 0) + ' prompts · ' + fmtN(aggData.grandTokens || 0) + ' tok';
 
-    // Range delta vs prior identical window
-    // (approximation: today's value minus same-day-of-week last range)
-    setDelta($('range-delta'), 0, 'range');
+    // Range delta vs the prior identical window (server-computed priorActiveMs).
+    // Neutral when there's no prior data (fresh install / the 'all' range), so
+    // we don't show a misleading full-height arrow against an empty baseline.
+    if (aggData.priorActiveMs > 0) {
+      setDelta($('range-delta'), (aggData.activeMs || 0) - aggData.priorActiveMs, 'vs prior');
+    } else {
+      setDelta($('range-delta'), 0, '');
+    }
 
     // Cost card
     $('cost-num').textContent = fmtCost(aggData.estimatedCost || 0);
