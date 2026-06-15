@@ -2,6 +2,24 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.20.2] - 2026-06-15
+
+**Fixed**
+
+- **Lifetime stats can no longer be silently corrupted by a rewritten transcript.** The scanner's incremental-append fast-path only checked that a file was at least as large as the last *consumed offset*, so a transcript rewritten to a size between that offset and its previous size was treated as an append onto now-stale counts — quietly carrying dead data into your all-time totals with no recovery short of `rescan`. It now requires the file to be at least as large as it was at the previous parse (the same guard `readSessionTokens` already used) and falls back to a full re-parse otherwise.
+
+**Added**
+
+- **`subagentActiveMs` — delegated active time is tracked on its own.** Subagent runs already contributed their tokens/cost/lines to lifetime totals, but their active time was dropped entirely (a naive sum would double-count, since subagent wall-time overlaps the parent session). The aggregate now exposes subagent active time as its own field, leaving `activeMs` an honest interactive-session measure.
+
+**Performance**
+
+- **Faster CLI startup for the common commands.** `claude-rpc --version` / `--help` / `start` / `stop` / `restart` no longer eagerly load the full stats/format/install module graph they never use (~60ms of imports); it's lazy-loaded only for commands that actually fan out into it.
+
+**Leaderboard service** (deployed separately, not part of the npm package)
+
+- Duplicate-handle repair never drops a contested row — it prefers the verified claim when the `handle:` pointer is unresolvable, instead of dropping every row for the handle. Community deltas must now be whole integers. The per-machine squad index dedups on write, and squad/profile reads fan out concurrently instead of one serial KV get at a time.
+
 ## [0.20.1] - 2026-06-15
 
 **Added**
