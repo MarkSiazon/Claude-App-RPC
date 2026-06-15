@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 260" width="1000" height="260" role="img" aria-labelledby="t d">
   <title id="t">claude-rpc</title>
-  <desc id="d">claude-rpc — Discord Rich Presence for Claude Code. Live model, project, tokens, and lifetime stats, driven by the hooks Claude Code already fires. Install with: npx claude-rpc setup. Shown beside an example Discord rich-presence card: Claude Code, Working in claude-rpc, Bash · running tests · 2.5min, with Get claude-rpc and View on GitHub buttons.</desc>
+  <desc id="d">claude-rpc — Discord Rich Presence for Claude Code. Live model, project, tokens, and lifetime stats, driven by the hooks Claude Code already fires. Install with: npx claude-rpc setup. Shown beside an example Discord rich-presence card with the claude-rpc app art (the "clawd" builder), Claude Code, Working in claude-rpc, Bash · running tests · 2.5min, and Get claude-rpc / View on GitHub buttons.</desc>
   <defs>
     <style>
       .disp { font-family: "Space Grotesk", "Inter Tight", system-ui, sans-serif; }
@@ -9,6 +9,7 @@
     <pattern id="dots" width="26" height="26" patternUnits="userSpaceOnUse">
       <circle cx="2" cy="2" r="1.6" fill="#2b2722" fill-opacity="0.05"/>
     </pattern>
+    <clipPath id="tile"><rect x="20" y="42" width="58" height="58" rx="12"/></clipPath>
   </defs>
 
   <!-- paper + dot grid + terracotta top rule -->
@@ -16,7 +17,7 @@
   <rect width="1000" height="260" fill="url(#dots)"/>
   <rect width="1000" height="7" fill="#d97757"/>
 
-  <!-- ── left: masthead ── -->
+  <!-- left: masthead -->
   <text x="55" y="54" class="mono" font-size="14" font-weight="700" letter-spacing="4" fill="#b8552f">DISCORD RICH PRESENCE</text>
   <text x="52" y="126" class="disp" font-size="70" font-weight="800" letter-spacing="-2" fill="#2b2722">claude-<tspan fill="#d97757">rpc</tspan></text>
   <text x="55" y="160" class="disp" font-size="20" font-weight="500" fill="#2b2722">Claude Code, live on Discord</text>
@@ -28,21 +29,17 @@
 
   <text x="56" y="252" class="mono" font-size="11" fill="#9a9183">MIT · macOS · Windows · Linux · zero runtime dependencies</text>
 
-  <!-- ── right: an authentic (dark) Discord rich-presence card ── -->
+  <!-- right: an authentic (dark) Discord rich-presence card -->
   <g transform="translate(610 24)">
     <rect x="7" y="8" width="348" height="212" rx="14" fill="#2b2722" opacity="0.18"/>
     <rect width="348" height="212" rx="14" fill="#232428" stroke="#15161a" stroke-width="1.5"/>
 
     <text x="20" y="30" class="mono" font-size="9" font-weight="700" letter-spacing="1.5" fill="#949ba4">PLAYING A GAME</text>
 
-    <!-- large image (app art) + Claude sparkle + status badge -->
-    <rect x="20" y="42" width="58" height="58" rx="12" fill="#d97757"/>
-    <g stroke="#f4ede0" stroke-width="3.2" stroke-linecap="round">
-      <line x1="49" y1="56" x2="49" y2="86"/>
-      <line x1="34" y1="71" x2="64" y2="71"/>
-      <line x1="42.3" y1="64.3" x2="55.7" y2="77.7"/>
-      <line x1="55.7" y1="64.3" x2="42.3" y2="77.7"/>
-    </g>
+    <!-- large image = the actual clawd "working" frame, clipped to the tile + status badge -->
+    <rect x="20" y="42" width="58" height="58" rx="12" fill="#111114"/>
+    <image x="20" y="42" width="58" height="58" clip-path="url(#tile)" preserveAspectRatio="xMidYMid slice" href="data:image/png;base64,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"/>
+    <rect x="20" y="42" width="58" height="58" rx="12" fill="none" stroke="#3a3c43" stroke-width="1.5"/>
     <circle cx="72" cy="94" r="9" fill="#23a55a" stroke="#232428" stroke-width="3.5"/>
 
     <!-- activity text -->
