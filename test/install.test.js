@@ -399,3 +399,24 @@ test('mcpServerCommand: resolves a runnable {command, args} ending in mcp', () =
   assert.ok(Array.isArray(r.args));
   assert.equal(r.args[r.args.length - 1], 'mcp', 'last arg is the mcp subcommand');
 });
+
+// ── boot/login autostart file builders (macOS launchd, Linux systemd) ────
+const { systemdUnit, launchdPlist } = await import('../src/install.js');
+
+test('systemdUnit: valid --user service that launches the daemon at login', () => {
+  const u = systemdUnit({ exe: '/abs/node', args: ['/abs/daemon.js'] });
+  assert.match(u, /^\[Unit\]/m);
+  assert.match(u, /^\[Service\]/m);
+  assert.match(u, /^ExecStart="\/abs\/node" "\/abs\/daemon\.js"$/m, 'absolute node + daemon.js, each quoted');
+  assert.match(u, /^Restart=on-failure$/m, 'restart on crash, but never fight a clean `stop`');
+  assert.match(u, /^WantedBy=default\.target$/m, 'enables at login');
+});
+
+test('launchdPlist: RunAtLoad LaunchAgent carrying the daemon args', () => {
+  const p = launchdPlist({ exe: '/abs/node', args: ['/abs/daemon.js'] });
+  assert.match(p, /<plist version="1\.0">/);
+  assert.match(p, /<key>Label<\/key><string>com\.claude-rpc\.daemon<\/string>/);
+  assert.match(p, /<key>RunAtLoad<\/key><true\/>/, 'starts at login');
+  assert.match(p, /<string>\/abs\/node<\/string>/);
+  assert.match(p, /<string>\/abs\/daemon\.js<\/string>/);
+});

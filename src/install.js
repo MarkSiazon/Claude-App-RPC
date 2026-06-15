@@ -8,12 +8,14 @@ import {
   readdirSync, unlinkSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR, ROOT,
   HOOK_SCRIPT, IS_PACKAGED, IS_NPM_INSTALL, IS_NPX,
   CANONICAL_EXE, CANONICAL_INSTALL_DIR, CANONICAL_EXE_NAME, VERSION_STAMP,
+  DAEMON_SCRIPT,
 } from './paths.js';
 import { DEFAULT_CONFIG } from './default-config.js';
 import { VERSION } from './version.js';
@@ -153,7 +155,129 @@ function regCommand(args) {
 
 const STARTUP_VBS = join(CANONICAL_INSTALL_DIR, 'claude-rpc-daemon.vbs');
 
+// macOS LaunchAgent + Linux systemd --user paths/labels.
+const LAUNCHD_LABEL = 'com.claude-rpc.daemon';
+const LAUNCHD_PLIST = join(homedir(), 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
+const SYSTEMD_UNIT_NAME = 'claude-rpc.service';
+const SYSTEMD_UNIT = join(homedir(), '.config', 'systemd', 'user', SYSTEMD_UNIT_NAME);
+
+// The daemon launch command, shared by every autostart mechanism so login/boot
+// starts the daemon exactly like `start` and the hook do:
+//   packaged → "<exe>" daemon ;  npm/dev → "<abs node>" "<abs daemon.js>"
+// (absolute node, like the hooks — login shells under nvm have no node on PATH).
+function daemonLaunch(exePath) {
+  if (IS_PACKAGED) return { exe: exePath, args: ['daemon'] };
+  return { exe: process.execPath, args: [DAEMON_SCRIPT] };
+}
+
+function xmlEscape(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function systemctlUser(args) {
+  try { return spawnSync('systemctl', ['--user', ...args], { stdio: 'ignore' }); }
+  catch { return { status: 1 }; }
+}
+
+// Pure file-content builders — exported so the generated plist/unit are
+// unit-testable without touching launchctl/systemctl or the real filesystem.
+export function launchdPlist({ exe, args }) {
+  const progArgs = [exe, ...args].map((a) => `    <string>${xmlEscape(a)}</string>`).join('\n');
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    '<dict>',
+    `  <key>Label</key><string>${LAUNCHD_LABEL}</string>`,
+    '  <key>ProgramArguments</key>',
+    '  <array>',
+    progArgs,
+    '  </array>',
+    '  <key>RunAtLoad</key><true/>',
+    // KeepAlive false: start at login, but don't fight a manual `claude-rpc stop`.
+    '  <key>KeepAlive</key><false/>',
+    '  <key>ProcessType</key><string>Background</string>',
+    '</dict>',
+    '</plist>',
+    '',
+  ].join('\n');
+}
+
+export function systemdUnit({ exe, args }) {
+  const execStart = [exe, ...args].map((a) => `"${a}"`).join(' '); // quote each token (paths with spaces)
+  return [
+    '[Unit]',
+    'Description=claude-rpc — Discord Rich Presence for Claude Code',
+    'After=default.target',
+    '',
+    '[Service]',
+    'Type=simple',
+    `ExecStart=${execStart}`,
+    // on-failure (not always): a clean exit when another daemon already owns the
+    // instance must NOT be restarted, and neither should a `claude-rpc stop`.
+    'Restart=on-failure',
+    'RestartSec=5',
+    '',
+    '[Install]',
+    'WantedBy=default.target',
+    '',
+  ].join('\n');
+}
+
+// ── macOS: launchd LaunchAgent (per-user, starts at login) ────────────────────
+function addStartupEntryMac(exePath) {
+  const plist = launchdPlist(daemonLaunch(exePath));
+  try {
+    mkdirSync(dirname(LAUNCHD_PLIST), { recursive: true });
+    writeFileSync(LAUNCHD_PLIST, plist);
+  } catch (e) {
+    step(SYM_WARN, 'startup entry', `couldn't write LaunchAgent (${e.message}) — the session self-heal still starts the daemon`, console.warn);
+    return;
+  }
+  // Load so it's active now and at every login. `load -w` is deprecated but
+  // portable across the macOS versions we target; a failure is non-fatal — the
+  // plist alone starts it next login, and SessionStart self-heal covers the gap.
+  try { spawnSync('launchctl', ['unload', LAUNCHD_PLIST], { stdio: 'ignore' }); } catch { /* not loaded yet */ }
+  try { spawnSync('launchctl', ['load', '-w', LAUNCHD_PLIST], { stdio: 'ignore' }); } catch { /* deferred to next login */ }
+  dirtyStep(SYM_OK, 'startup entry', `LaunchAgent ${LAUNCHD_LABEL} — daemon starts at login`);
+}
+
+function removeStartupEntryMac() {
+  try { spawnSync('launchctl', ['unload', '-w', LAUNCHD_PLIST], { stdio: 'ignore' }); } catch { /* not loaded */ }
+  try { if (existsSync(LAUNCHD_PLIST)) { unlinkSync(LAUNCHD_PLIST); step(SYM_OK, 'startup entry', 'removed (LaunchAgent)'); } }
+  catch { /* already gone */ }
+}
+
+// ── Linux: systemd --user service (starts at login) ───────────────────────────
+function addStartupEntryLinux(exePath) {
+  const unit = systemdUnit(daemonLaunch(exePath));
+  try {
+    mkdirSync(dirname(SYSTEMD_UNIT), { recursive: true });
+    writeFileSync(SYSTEMD_UNIT, unit);
+  } catch (e) {
+    step(SYM_WARN, 'startup entry', `couldn't write systemd unit (${e.message}) — the session self-heal still starts the daemon`, console.warn);
+    return;
+  }
+  // Enable + start now. Non-fatal if there's no systemd --user session (some
+  // containers / minimal WSL): the SessionStart self-heal still brings it up.
+  systemctlUser(['daemon-reload']);
+  const r = systemctlUser(['enable', '--now', SYSTEMD_UNIT_NAME]);
+  if (r && r.status === 0) dirtyStep(SYM_OK, 'startup entry', `systemd --user ${SYSTEMD_UNIT_NAME} — daemon starts at login`);
+  else dirtyStep(SYM_INFO, 'startup entry', `systemd unit written — enable with: systemctl --user enable --now ${SYSTEMD_UNIT_NAME}`);
+}
+
+function removeStartupEntryLinux() {
+  systemctlUser(['disable', '--now', SYSTEMD_UNIT_NAME]);
+  try { if (existsSync(SYSTEMD_UNIT)) { unlinkSync(SYSTEMD_UNIT); step(SYM_OK, 'startup entry', 'removed (systemd unit)'); } }
+  catch { /* already gone */ }
+  systemctlUser(['daemon-reload']);
+}
+
 export async function addStartupEntry(exePath) {
+  if (process.platform === 'darwin') return addStartupEntryMac(exePath);
+  if (process.platform === 'linux') return addStartupEntryLinux(exePath);
+  if (process.platform !== 'win32') {
+    if (runDirty) step(SYM_INFO, 'startup entry', `skipped — no login-autostart for ${process.platform}`);
+    return;
+  }
+  // ── Windows: HKCU Run-key + windowless .vbs shim ──
   // The packaged exe is a console-subsystem node.exe, so a bare Run-key entry
   // (`"<exe>" daemon`) makes Explorer pop a console window at every login that
   // persists for the daemon's whole (weeks-long) life — closing it kills the
@@ -178,6 +302,9 @@ export async function addStartupEntry(exePath) {
 }
 
 export async function removeStartupEntry() {
+  if (process.platform === 'darwin') return removeStartupEntryMac();
+  if (process.platform === 'linux') return removeStartupEntryLinux();
+  if (process.platform !== 'win32') return;
   try {
     await regCommand(['delete', STARTUP_KEY, '/v', STARTUP_VALUE, '/f']);
     step(SYM_OK, 'startup entry', 'removed');
@@ -628,12 +755,11 @@ export async function install({ exePath, withStartup = true } = {}) {
   // row lands under this heading; setupOutro() then closes the screen.
   phase('daemon');
   if (withStartup) {
-    if (process.platform === 'win32') {
-      try { await addStartupEntry(target); }
-      catch (e) { step(SYM_WARN, 'startup entry', `failed: ${e.message}`, console.warn); }
-    } else if (runDirty) {
-      step(SYM_INFO, 'startup entry', 'skipped — login autostart is Windows-only');
-    }
+    // Cross-platform login autostart: Windows Run-key, macOS LaunchAgent, Linux
+    // systemd --user. Best-effort — a failure leaves the SessionStart self-heal
+    // as the (already reliable) fallback, so setup never fails on this.
+    try { await addStartupEntry(target); }
+    catch (e) { step(SYM_WARN, 'startup entry', `failed: ${e.message} — session self-heal still covers it`, console.warn); }
   }
   // Nothing changed: the checklist above stayed silent, so say so in one line.
   if (!runDirty && probe.ok) {
@@ -664,7 +790,7 @@ export async function uninstall() {
   console.log(`  ${c.bold}${c.magenta}◆ claude-rpc uninstall${c.reset}`);
   console.log('');
   uninstallHooks();
-  if (process.platform === 'win32') await removeStartupEntry();
+  await removeStartupEntry();
   console.log('');
   console.log(`  ${SYM_OK}  ${c.bold}uninstalled${c.reset} — config at ${c.cyan}${USER_CONFIG_DIR}${c.reset} ${c.dim}left intact; delete it manually if you want.${c.reset}`);
   console.log('');
