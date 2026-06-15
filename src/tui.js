@@ -85,6 +85,13 @@ function bar(ratio, w) {
   return `${heat(r)}${'█'.repeat(filled)}${C.reset}${' '.repeat(w - filled)}`;
 }
 
+// Centre a (possibly ANSI) string within width `w` (left pad only; row() right-pads).
+function center(s, w) {
+  const len = visLen(s);
+  if (len >= w) return s;
+  return ' '.repeat(Math.floor((w - len) / 2)) + s;
+}
+
 // ── Panels & columns ──────────────────────────────────────────────────────────
 // A bordered panel of exact total width `w`, title embedded in the top border.
 // Returns an array of lines (height = body.length + 2).
@@ -414,35 +421,55 @@ function sepLine(w) { return `${C.gray}${BX.sl}${BX.h.repeat(w - 2)}${BX.sr}${C.
 function row(content, w) { return `${C.gray}${BX.v}${C.reset} ${fit(content, w - 4)} ${C.gray}${BX.v}${C.reset}`; }
 
 export function renderFrame(data, { width, height, tab }) {
-  const w = Math.max(64, Math.min(160, width || 100));
-  const h = Math.max(20, height || 30);
+  const w = Math.max(64, Math.min(120, width || 100));
+  const h = Math.max(20, Math.min(32, height || 28));
   const cw = w - 4;
 
   const status = data.pid
     ? `${C.green}●${C.reset} ${C.dim}running · pid ${data.pid}${C.reset}`
     : `${C.red}○${C.reset} ${C.dim}daemon not running${C.reset}`;
   const tabBar = TABS.map((t, i) => (i === tab
-    ? `${C.bold}${C.cyan}‹${t.label}›${C.reset}`
-    : `${C.dim}${t.label}${C.reset}`)).join('  ');
+    ? `${C.bold}${C.cyan}‹ ${t.label} ›${C.reset}`
+    : `${C.dim}${t.label}${C.reset}`)).join('    ');
   const footer = `${C.dim}1-7${C.reset} jump   ${C.gray}·${C.reset}   ${C.dim}←→ h l${C.reset} tab   ${C.gray}·${C.reset}   ${C.dim}r${C.reset} refresh   ${C.gray}·${C.reset}   ${C.dim}q${C.reset} quit`;
 
-  const B = Math.max(1, h - 6); // top + tab + sep + sep + footer + bottom = 6
+  // Header breathes: blank line, centred tab bar, blank line, then the rule —
+  // so the top reads as a header band with air, not a squished edge strip.
+  const B = Math.max(1, h - 8); // header(border+blank+tabs+blank+rule=5) + footer(rule+keys+border=3)
   const bodyContent = TAB_RENDERERS[tab](data, cw);
   const body = bodyContent.slice(0, B);
   while (body.length < B) body.push('');
 
-  const lines = [topBorder(w, 'claude-rpc', status), row(tabBar, w), sepLine(w)];
+  const lines = [
+    topBorder(w, 'claude-rpc', status),
+    row('', w),
+    row(center(tabBar, cw), w),
+    row('', w),
+    sepLine(w),
+  ];
   for (const b of body) lines.push(row(b, w));
-  lines.push(sepLine(w), row(footer, w), bottomBorder(w));
+  lines.push(sepLine(w), row(center(footer, cw), w), bottomBorder(w));
   return lines.join('\n');
 }
 
 // ── Live render / input / lifecycle ───────────────────────────────────────────
-function width()  { return Math.max(64, Math.min(160, process.stdout.columns || 100)); }
-function height() { return Math.max(20, process.stdout.rows || 30); }
+// Frame size + centring margins. The frame caps out (max 120×32) and centres
+// in the terminal, so a big full-screen window reads as a centred dashboard with
+// breathing room instead of a frame glued to the top-left edge.
+function frameLayout(termW, termH) {
+  const w = Math.max(64, Math.min(120, termW - 4));
+  const h = Math.max(20, Math.min(28, termH - 2));
+  return { w, h, left: Math.max(0, (termW - w) >> 1), top: Math.max(0, (termH - h) >> 1) };
+}
 
 function render() {
-  process.stdout.write(CLEAR + renderFrame(loadSnapshot(), { width: width(), height: height(), tab: currentTab }));
+  const termW = process.stdout.columns || 100;
+  const termH = process.stdout.rows || 30;
+  const { w, h, left, top } = frameLayout(termW, termH);
+  const pad = ' '.repeat(left);
+  const frame = renderFrame(loadSnapshot(), { width: w, height: h, tab: currentTab })
+    .split('\n').map((l) => pad + l).join('\n');
+  process.stdout.write(CLEAR + '\n'.repeat(top) + frame);
 }
 
 function cleanup() {
