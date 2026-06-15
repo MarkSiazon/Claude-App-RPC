@@ -10,7 +10,8 @@ import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
 import { pauseUntil } from './pause.js';
 import { loadConfig } from './config.js';
-import { migrateConfig } from './install.js';
+import { selfHealOnUpdate } from './install.js';
+import { VERSION } from './version.js';
 import { desktopNotify, postWebhook, shouldWebhook, shouldNotify, sanitizeLabel } from './notify.js';
 import { humanProject } from './format.js';
 import { CONFIG_PATH, STATE_PATH, PID_PATH, LOG_PATH, STATE_DIR, AGGREGATE_PATH, PAUSE_PATH } from './paths.js';
@@ -79,12 +80,20 @@ function loadConfigWithLog() {
 // move. Idempotent: only writes when something actually changes, so steady-state
 // restarts are a no-op and can't loop the config watcher. Best-effort — a
 // migration failure must never stop the daemon from starting.
+// Self-heal on update — when this daemon is a newer version than the last one
+// that ran, re-wire hooks (their command/path drifts across versions) and
+// migrate config to the current shape, then stamp the version. This is how an
+// `npm update` reaches users who never re-run setup: there is no install script
+// (by design), so the daemon — itself brought up by the SessionStart self-heal —
+// carries the update forward. A since-0.1.0 install converges to the current
+// hooks + config the first time it's used after updating.
 try {
-  if (migrateConfig({ silent: true })) {
-    log('config.json migrated to current defaults on startup');
+  const healed = selfHealOnUpdate({ silent: true });
+  if (healed.changed) {
+    log(`self-heal on update: ${healed.from || 'fresh'} → ${VERSION} (hooks ${healed.rewired ? 're-wired' : 'already current'}, config migrated)`);
   }
 } catch (e) {
-  log('startup config migration failed (continuing):', e?.message || String(e));
+  log('startup self-heal failed (continuing):', e?.message || String(e));
 }
 
 let config = loadConfigWithLog();

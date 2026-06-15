@@ -91,6 +91,10 @@ export const DATA_DIR = join(homedir(), '.claude-rpc');
 export const AGGREGATE_PATH = join(DATA_DIR, 'aggregate.json');
 export const SCAN_CACHE_PATH = join(DATA_DIR, 'scan-cache.json');
 export const EVENTS_LOG_PATH = join(DATA_DIR, 'events.jsonl');
+// Last claude-rpc version that ran the on-update self-heal (hook re-wire + config
+// migrate). Persistent (under ~/.claude-rpc) so an update is detected across
+// reboots — see install.selfHealOnUpdate.
+export const VERSION_STAMP = join(DATA_DIR, 'version');
 export const CLAUDE_HOME = join(homedir(), '.claude');
 export const CLAUDE_PROJECTS = join(CLAUDE_HOME, 'projects');
 export const CLAUDE_SETTINGS = join(CLAUDE_HOME, 'settings.json');

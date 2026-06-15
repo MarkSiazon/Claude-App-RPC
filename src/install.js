@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import {
   CLAUDE_SETTINGS, CONFIG_PATH, USER_CONFIG_DIR, ROOT,
   HOOK_SCRIPT, IS_PACKAGED, IS_NPM_INSTALL, IS_NPX,
-  CANONICAL_EXE, CANONICAL_INSTALL_DIR, CANONICAL_EXE_NAME,
+  CANONICAL_EXE, CANONICAL_INSTALL_DIR, CANONICAL_EXE_NAME, VERSION_STAMP,
 } from './paths.js';
 import { DEFAULT_CONFIG } from './default-config.js';
 import { VERSION } from './version.js';
@@ -83,7 +83,7 @@ export function isOurHook(h) {
   return !!h && (h._claudeRpc === true || isOurHookCommand(h.command));
 }
 
-export function installHooks(exePath) {
+export function installHooks(exePath, { silent = false } = {}) {
   const settings = readJson(CLAUDE_SETTINGS, {});
   const before = JSON.stringify(settings.hooks || {});
   settings.hooks = settings.hooks || {};
@@ -118,11 +118,11 @@ export function installHooks(exePath) {
     }
   }
   if (JSON.stringify(settings.hooks) === before) {
-    noop(`hooks wired (${EVENTS.length} events)`);
+    if (!silent) noop(`hooks wired (${EVENTS.length} events)`);
     return false;
   }
   writeJson(CLAUDE_SETTINGS, settings);
-  dirtyStep(SYM_OK, 'hooks wired', `${EVENTS.length} events → ${CLAUDE_SETTINGS}`);
+  if (!silent) dirtyStep(SYM_OK, 'hooks wired', `${EVENTS.length} events → ${CLAUDE_SETTINGS}`);
   return true;
 }
 
@@ -555,6 +555,30 @@ function warnIfStale() {
       hintLine('for the newest version, stop here and re-run: npx claude-rpc@latest setup', process.stderr);
     }
   } catch { /* offline or npm missing — a version check must never block setup */ }
+}
+
+// Self-heal an install across an update. There is NO npm install script (by
+// design — `npm install` must run nothing), so an `npm update` swaps the files
+// but re-wires nothing: a long-lived user keeps stale hook commands and old
+// config and never gets the new behaviour. The daemon — itself brought up by the
+// SessionStart self-heal — calls this on startup: when the stamped version
+// differs from the running one, re-wire the hooks (their command/path drifts
+// across versions) and migrate config to the current shape, then stamp the
+// version. Best-effort and quiet by default; never throws into the caller.
+// Returns { changed, from, rewired }.
+export function selfHealOnUpdate({ exePath = null, silent = true } = {}) {
+  let from = null;
+  try { from = (readFileSync(VERSION_STAMP, 'utf8') || '').trim() || null; } catch { /* first run / unreadable — treat as needing a heal */ }
+  if (from === VERSION) return { changed: false, from, rewired: false };
+  const exe = exePath || ((IS_PACKAGED && existsSync(CANONICAL_EXE)) ? CANONICAL_EXE : process.execPath);
+  let rewired = false;
+  try { rewired = installHooks(exe, { silent }); } catch { /* best-effort — a hook re-wire must never block daemon startup */ }
+  try { migrateConfig({ silent }); } catch { /* best-effort */ }
+  try {
+    mkdirSync(dirname(VERSION_STAMP), { recursive: true });
+    writeFileSync(VERSION_STAMP, VERSION + '\n');
+  } catch { /* unwritable — we'll just self-heal again next start, which is harmless (idempotent) */ }
+  return { changed: true, from, rewired };
 }
 
 export async function install({ exePath, withStartup = true } = {}) {
