@@ -144,7 +144,11 @@ claude-rpc card  --range year                 --out year-on-claude.svg
 ```
 
 <div align="center">
-  <img src="site/examples/year-on-claude.svg" width="560" alt="Year-on-claude card — hours, prompts, tokens, lines, cost, daily activity strip" />
+  <img src="site/examples/week-on-claude.svg"  width="270" alt="Week-on-claude summary card" />
+  <img src="site/examples/month-on-claude.svg" width="270" alt="Month-on-claude summary card" />
+  <img src="site/examples/year-on-claude.svg"  width="270" alt="Year-on-claude summary card — hours, prompts, tokens, lines, cost, daily activity strip" />
+  <br/>
+  <sub><code>card --range week · month · year</code> (also <code>all</code>) — live at <code>/api/card.svg</code> while the daemon's up</sub>
 </div>
 
 `badge --gist` writes the SVG to your own GitHub gist (creates one on first run, updates it after — id remembered in `config.json`). The URL printed back is README-ready and updates every time you re-run the command. Uses `gh` if available, else `GH_TOKEN` with `gist` scope.
@@ -173,21 +177,9 @@ For a complete account of the sensitive things claude-rpc does — startup persi
 
 ## three pieces, glued by json files
 
-```
-   Claude Code                                          Discord desktop
-        │                                                     ▲
-        │ lifecycle event (stdin JSON)                        │ IPC frame
-        ▼                                                     │
-   ┌──────────┐    state.json    ┌──────────┐                 │
-   │ hook.js  │ ───────────────▶ │ daemon.js│ ────────────────┘
-   └──────────┘                  └──────────┘
-                                       ▲
-                                       │ aggregate.json
-                                       │
-                                ┌────────────┐
-                                │ scanner.js │ ◀── ~/.claude/projects/*.jsonl
-                                └────────────┘
-```
+<div align="center">
+  <img src="docs/architecture.svg" width="760" alt="Architecture: Claude Code fires a lifecycle event (stdin JSON) into hook.js, which writes state.json; daemon.js reads it and pushes an IPC frame to the Discord desktop client. scanner.js reads the ~/.claude/projects transcripts and feeds aggregate.json into daemon.js." />
+</div>
 
 No database, no message bus, no background polling when Claude Code isn't running. State on disk you can `cat` and `jq`. **Zero runtime dependencies** — even the Discord Rich Presence IPC client is hand-rolled (`src/discord-ipc.js`).
 
