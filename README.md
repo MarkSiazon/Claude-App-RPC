@@ -1,16 +1,21 @@
 <div align="center">
 
-<img src="https://cdn.qualit.ly/clawd-working-building.gif" width="120" alt="working" />
-<img src="https://cdn.qualit.ly/clawd-working-typing.gif" width="120" alt="thinking" />
-<img src="https://cdn.qualit.ly/clawd-notification.gif" width="120" alt="notification" />
-<img src="https://cdn.qualit.ly/clawd-sleeping.gif" width="120" alt="idle" />
+<img src="docs/header.svg" width="820" alt="claude-rpc — Discord Rich Presence for Claude Code: live model, project, tokens, and lifetime stats, driven by the hooks Claude Code already fires. Install with: npx claude-rpc setup" />
 
-# claude-rpc
+<br/><br/>
 
-**Discord Rich Presence (RPC) for [Claude Code](https://claude.com/claude-code).**
-Your live model, project, current tool, tokens, and lifetime stats — in your Discord profile. Driven by the hooks Claude Code already fires. Zero polling between sessions.
+<img src="https://cdn.qualit.ly/clawd-working-building.gif" width="104" alt="working" />
+<img src="https://cdn.qualit.ly/clawd-working-typing.gif" width="104" alt="thinking" />
+<img src="https://cdn.qualit.ly/clawd-notification.gif" width="104" alt="waiting on you" />
+<img src="https://cdn.qualit.ly/clawd-sleeping.gif" width="104" alt="idle" />
 
-**→ [claude-rpc.vercel.app](https://claude-rpc.vercel.app)** — what it looks like, in one page.
+<sub>the card's live states — <b>working</b> · <b>thinking</b> · <b>waiting</b> · <b>idle</b></sub>
+
+<br/>
+
+**Discord Rich Presence for [Claude Code](https://claude.com/claude-code)** — your live model, project, tokens, and lifetime stats, driven by the hooks Claude Code already fires.
+
+**[claude-rpc.vercel.app →](https://claude-rpc.vercel.app)** — see it in one page.
 
 [![community · sessions](https://claude-rpc-totals.claude-rpc.workers.dev/sessions.svg)](#community-totals) &nbsp; [![community · tokens](https://claude-rpc-totals.claude-rpc.workers.dev/tokens.svg)](#community-totals)
 
@@ -255,6 +260,13 @@ The full default config is in [`src/default-config.js`](src/default-config.js) �
 
 ## commands
 
+`claude-rpc --help` lists them all — and after `setup` you rarely need any.
+
+<details>
+<summary><b>full command reference</b></summary>
+
+<br/>
+
 | Command          | What it does |
 | ---------------- | ------------ |
 | `setup`          | Install Claude Code hooks (test-fires one synthetic SessionStart to prove the pipe works) |
@@ -287,19 +299,28 @@ The full default config is in [`src/default-config.js`](src/default-config.js) �
 
 Exit codes: `0` ok · `1` user error · `2` system error · `3` wrong state. `--version` and `--help` work as expected.
 
+</details>
+
 ## troubleshooting
 
-**First step is always `claude-rpc doctor`.** It checks Node version, hook registration, daemon liveness, Discord IPC connection, aggregate freshness, and privacy resolution — with a one-line fix hint per failure.
+**First step is always `claude-rpc doctor`** — it checks Node, hook registration, daemon liveness, Discord IPC, aggregate freshness, and privacy resolution, with a one-line fix hint per failure.
+
+<details>
+<summary><b>common issues</b></summary>
+
+<br/>
 
 - **Discord doesn't show anything.** Discord *desktop* must be running. The browser client doesn't expose the local IPC bridge. `claude-rpc tail` shows what the daemon is actually doing.
 - **Hooks don't fire.** `claude-rpc setup` re-registers them and now test-fires a synthetic `SessionStart` end-to-end, so a broken hook command surfaces immediately. Restart Claude Code afterwards so it re-reads its hook config.
 - **Config error.** Bad JSON in `config.json` no longer crashes anything — the daemon logs one line and falls back to baked defaults. `claude-rpc tail` shows the parse error verbatim.
 - **Old binary path baked into hooks.** Common after manual exe replacement. `claude-rpc setup` rewrites hook entries to point at the canonical install location.
 
+</details>
+
 ## development
 
 ```sh
-npm test                  # 270+ tests, ~2s
+npm test                  # 430+ tests, ~2s
 npm run lint              # eslint over src + test
 npm run start             # run daemon in foreground
 npm run serve             # web dashboard against your real data
@@ -307,9 +328,7 @@ npm run dashboard         # Electron settings GUI (dev mode)
 npm run build:exe         # SEA single-file binary for the current OS
 ```
 
-Tests are `node --test` with zero deps. The CI pipeline ([release.yml](.github/workflows/release.yml)) runs the suite (plus the Cloudflare Worker's own tests) across Node 18/20/22 and gates the matrix build and the npm publish behind it. Every pure/logic module in `src/*.js` is unit-tested, including the MCP transport and the SVG renderers; the long-running daemon, the TUI, and the CLI dispatcher are covered by integration and manual smoke testing rather than unit tests.
-
-Where the project is headed (and what it will deliberately never do) lives in [`ROADMAP.md`](ROADMAP.md).
+Tests are `node --test`, zero deps; CI ([release.yml](.github/workflows/release.yml)) runs the suite (+ the Worker's) across Node 18/20/22 and gates the matrix build and npm publish. Where the project's headed (and what it'll deliberately never do): [`ROADMAP.md`](ROADMAP.md).
 
 ## license
 
