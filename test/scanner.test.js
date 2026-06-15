@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 
 const {
   parseTranscript, readSessionTokens, cleanProjectName,
-  discoverAltProjectDirs, findLiveSessions,
+  discoverAltProjectDirs, findLiveSessions, aggregateFrom,
 } = await import('../src/scanner.js');
 
 function makeTranscript(records) {
@@ -345,4 +345,21 @@ test('parseTranscript: trailing partial line is left for the next read', () => {
   const s = parseTranscript(path, prev);
   assert.equal(s.inputTokens, 15, 'completed line counted exactly once');
   rmSync(dir, { recursive: true });
+});
+
+test('aggregateFrom: subagent active time is tracked separately, not folded into activeMs', () => {
+  // Two cached summaries: one top-level session, one subagent run. activeMs must
+  // stay an interactive-session measure (top-level only), while subagent active
+  // time surfaces in its own field — see the ACTIVE_GAP_CAP_MS double-count note
+  // in scanner.js. isSubagent is set explicitly so this doesn't depend on paths.
+  const agg = aggregateFrom({
+    files: {
+      '/p/top.jsonl': { isSubagent: false, activeMs: 1000, firstTs: 1700000000000, lastTs: 1700000001000 },
+      '/p/uuid/subagents/agent-1.jsonl': { isSubagent: true, activeMs: 500 },
+    },
+  });
+  assert.equal(agg.activeMs, 1000, 'activeMs counts the top-level session only');
+  assert.equal(agg.subagentActiveMs, 500, 'subagent active time tracked separately');
+  assert.equal(agg.sessions, 1, 'a subagent is not a session');
+  assert.equal(agg.subagentRuns, 1, 'subagent run counted');
 });

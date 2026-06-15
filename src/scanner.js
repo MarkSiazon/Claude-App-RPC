@@ -721,10 +721,11 @@ export function readAggregate() {
 
 export { dayKey, weekKey, hourKey };
 
-function aggregateFrom(cache) {
+export function aggregateFrom(cache) {
   const agg = {
     sessions: 0,
     subagentRuns: 0,
+    subagentActiveMs: 0,
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -814,6 +815,15 @@ function aggregateFrom(cache) {
     }
     if (isSub) {
       agg.subagentRuns += 1;
+      // Subagent active time is tracked separately and deliberately NOT folded
+      // into agg.activeMs. A subagent's wall-time overlaps its parent session
+      // (and parallel subagents overlap each other), and gaps >=5min are already
+      // excluded from the parent's activeMs (see ACTIVE_GAP_CAP_MS) — so summing
+      // the scalar would double-count short subagents. agg.activeMs stays an
+      // interactive-session measure; subagentActiveMs exposes delegated work as
+      // its own honest number. A single unified figure would need interval-union
+      // across parent+subagents, not scalar sums.
+      agg.subagentActiveMs += summary.activeMs || 0;
       // Subagents still contribute tokens/tools/lines/cost to per-day/week/hour buckets.
       const mergeSubBuckets = (srcMap, destMap) => {
         for (const [k, src] of Object.entries(srcMap || {})) {
