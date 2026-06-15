@@ -76,6 +76,24 @@ test('applyIdle: notification expires after window', () => {
   assert.notEqual(r.status, 'notification', 'should fall through after window');
 });
 
+test('applyIdle: notification→idle wipes current-activity slots', () => {
+  const s = baseState({
+    status: 'notification',
+    lastNotification: now() - 30_000, // past the 8s window
+    lastActivity: now() - 1_000,      // fresh → lands on idle, not stale
+    currentTool: 'Bash', currentFile: 'a.js',
+    filesEdited: ['a.js'], filesRead: ['b.js'], filesOpened: ['c.js'],
+    liveSessions: [{ cwd: '/tmp/proj', mtime: now() }],
+  });
+  const r = applyIdle(s, { notificationWindowSec: 8, idleThresholdSec: 60, staleSessionMin: 5 });
+  assert.equal(r.status, 'idle');
+  assert.equal(r.currentTool, null);
+  assert.equal(r.currentFile, null);
+  assert.deepEqual(r.filesEdited, [], 'stale file list cleared on idle');
+  assert.deepEqual(r.filesRead, []);
+  assert.deepEqual(r.filesOpened, []);
+});
+
 test('applyIdle: stale when no activity AND no live sessions', () => {
   const past = now() - 10 * 60 * 1000; // 10 minutes ago
   const s = baseState({ lastActivity: past, liveSessions: [] });

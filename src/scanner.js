@@ -699,18 +699,22 @@ function writeCache(cache) {
 // Per-day notification counts come from a hook-side append log, since
 // transcripts don't carry Notification events reliably.
 function readNotificationsByDay() {
-  if (!existsSync(EVENTS_LOG_PATH)) return {};
   const out = {};
-  try {
-    const raw = readFileSync(EVENTS_LOG_PATH, 'utf8');
-    for (const line of raw.split('\n')) {
-      if (!line) continue;
-      const e = safeJson(line);
-      if (!e || e.type !== 'notification' || !e.ts) continue;
-      const k = dayKey(e.ts);
-      out[k] = (out[k] || 0) + 1;
-    }
-  } catch { /* events log unreadable/truncated — return whatever we got, the aggregate will just under-count notifications */ }
+  // The hook rotates events.jsonl to `.1` at 5MB; read both (oldest first) so a
+  // rotation doesn't silently drop a day's notification counts.
+  for (const path of [EVENTS_LOG_PATH + '.1', EVENTS_LOG_PATH]) {
+    if (!existsSync(path)) continue;
+    try {
+      const raw = readFileSync(path, 'utf8');
+      for (const line of raw.split('\n')) {
+        if (!line) continue;
+        const e = safeJson(line);
+        if (!e || e.type !== 'notification' || !e.ts) continue;
+        const k = dayKey(e.ts);
+        out[k] = (out[k] || 0) + 1;
+      }
+    } catch { /* a rotation file unreadable/truncated — count what we can */ }
+  }
   return out;
 }
 

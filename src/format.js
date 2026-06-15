@@ -870,7 +870,9 @@ export function applyIdle(state, cfg = {}) {
   if (state.status === 'notification') {
     const notifAge = now - (state.lastNotification || 0);
     if (notifAge <= notificationMs) return state;
-    state = { ...state, status: 'idle' };
+    // Going idle after a notification — wipe the current-activity slots so idle
+    // frames don't render stale file/tool names (same as the idle path below).
+    state = { ...state, status: 'idle', currentTool: null, currentFile: null, filesOpened: [], filesEdited: [], filesRead: [] };
   }
 
   // Truly dormant: no live transcripts AND local state is old → stale.

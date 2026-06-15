@@ -2,6 +2,14 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.20.3] - 2026-06-15
+
+**Fixed**
+
+- **Notification counts no longer drop a day when the events log rotates.** `events.jsonl` rotates to `.1` at 5 MB, but the scanner only read the live file — so lifetime notification counts silently lost everything in the rotated half. It now reads both halves (oldest first).
+- **Idle frames no longer show stale file/tool names after a notification.** When a `Notification` state expired to idle, the current-tool / current-file / edited-files slots were left populated, so an idle rotation frame could still display the last file you touched. They're now cleared on that transition, matching the normal idle path.
+- **Daemon-liveness check no longer misreads a permission error as "not running."** The CLI carried its own `process.kill(pid, 0)` probe whose `catch` treated `EPERM` (process exists but owned by another user) as dead; it now uses the shared `daemonAlive` helper (`EPERM` → alive) — the same one the self-heal and single-instance guard already use.
+
 ## [0.20.2] - 2026-06-15
 
 **Fixed**

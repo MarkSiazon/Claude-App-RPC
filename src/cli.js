@@ -10,12 +10,12 @@ import process from 'node:process';
 if (process.platform === 'win32' && process.stdout.isTTY) {
   try { spawnSync('chcp.com', ['65001'], { stdio: 'ignore', windowsHide: true }); } catch { /* chcp absent (Wine, custom shell) — accept whatever code page is set */ }
 }
-import { DAEMON_SCRIPT, PID_PATH, STATE_PATH, LOG_PATH, AGGREGATE_PATH, CONFIG_PATH, IS_PACKAGED, IS_NPX, EXE_PATH } from './paths.js';
+import { DAEMON_SCRIPT, STATE_PATH, LOG_PATH, AGGREGATE_PATH, CONFIG_PATH, IS_PACKAGED, IS_NPX, EXE_PATH } from './paths.js';
 import { readActiveState } from './state.js';
 import { runHookCli } from './hook.js';
 import { parseDuration, setPause, clearPause, pauseUntil } from './pause.js';
 import { loadConfig, hasUserConfig } from './config.js';
-import { spawnDaemonDetached } from './ensure-daemon.js';
+import { spawnDaemonDetached, daemonAlive } from './ensure-daemon.js';
 
 // ── Lazy-loaded heavy module graph ───────────────────────────────────────────
 // format→scanner→pricing→languages→git→usage (plus install/tui/insights/nudge/
@@ -116,18 +116,8 @@ function takeValue(v, flag) {
   return v;
 }
 
-function isAlive(pid) {
-  try { process.kill(pid, 0); return true; } catch { return false; }
-}
-
-function daemonPid() {
-  if (!existsSync(PID_PATH)) return null;
-  const pid = Number(readFileSync(PID_PATH, 'utf8'));
-  return pid && isAlive(pid) ? pid : null;
-}
-
 function startDaemon({ quiet = false } = {}) {
-  const pid = daemonPid();
+  const pid = daemonAlive();
   if (pid) {
     if (!quiet) console.log(`  ${c.yellow}!${c.reset}  ${'daemon running'.padEnd(16)}${c.dim}already up (pid ${pid}) · bounce it with ${c.reset}${c.cyan}claude-rpc restart${c.reset}`);
     return false;
@@ -154,7 +144,7 @@ async function confirmDaemonUp({ timeoutMs = 3000, intervalMs = 100 } = {}) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     await new Promise((r) => setTimeout(r, intervalMs));
-    if (daemonPid()) {
+    if (daemonAlive()) {
       console.log(`  ${c.green}✓${c.reset}  ${'daemon confirmed'.padEnd(16)}${c.dim}up — connecting to Discord${c.reset}`);
       return true;
     }
@@ -166,7 +156,7 @@ async function confirmDaemonUp({ timeoutMs = 3000, intervalMs = 100 } = {}) {
 }
 
 function stopDaemon({ quiet = false } = {}) {
-  const pid = daemonPid();
+  const pid = daemonAlive();
   if (!pid) { if (!quiet) console.log(`  ${c.cyan}·${c.reset}  daemon not running`); return false; }
   try {
     process.kill(pid, 'SIGTERM');
@@ -186,9 +176,9 @@ function restartDaemon() {
   // one exited. Give up after ~3s, force-kill the wedged pid, and start anyway.
   const deadline = Date.now() + 3000;
   const tick = () => {
-    if (!daemonPid()) { startDaemon(); return; }
+    if (!daemonAlive()) { startDaemon(); return; }
     if (Date.now() >= deadline) {
-      const pid = daemonPid();
+      const pid = daemonAlive();
       if (pid) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
       startDaemon();
       return;
@@ -411,7 +401,7 @@ function showStatus() {
   state.liveSessions = live;
   state.usage = readUsageCache();
   const vars = buildVars(state, config, aggregate);
-  const pid = daemonPid();
+  const pid = daemonAlive();
 
   console.log('');
   console.log(`  ${c.bold}${c.magenta}◆ Claude RPC${c.reset}  ${c.dim}— Discord Rich Presence for Claude Code${c.reset}`);
@@ -1863,7 +1853,7 @@ function tailLog() {
 function overview() {
   const setUp = hasUserConfig();
   const cfg = loadConfig();
-  const pid = daemonPid();
+  const pid = daemonAlive();
 
   console.log('');
   console.log(`  ${c.bold}${c.magenta}◆ claude-rpc${c.reset}  ${c.dim}v${VERSION} — Discord Rich Presence for Claude Code${c.reset}`);
@@ -2045,7 +2035,7 @@ process.on('unhandledRejection', (e) => {
           // console, the grandchild node allocates a fresh one, and Windows 11
           // pops it as a visible Windows Terminal window whose closure kills
           // the daemon.
-          if (!daemonPid()) {
+          if (!daemonAlive()) {
             let script = null;
             try {
               const r = spawnSync('npm', ['root', '-g'], {
@@ -2065,7 +2055,7 @@ process.on('unhandledRejection', (e) => {
             child.unref();
             console.log(`  ${c.green}✓${c.reset}  ${'daemon launched'.padEnd(16)}${c.dim}pid ${c.reset}${c.cyan}${child.pid}${c.reset}${c.dim} · log ${shortPath(LOG_PATH)}${c.reset}`);
           } else {
-            console.log(`  ${c.cyan}·${c.reset}  ${'daemon running'.padEnd(16)}${c.dim}pid ${daemonPid()}${c.reset}`);
+            console.log(`  ${c.cyan}·${c.reset}  ${'daemon running'.padEnd(16)}${c.dim}pid ${daemonAlive()}${c.reset}`);
           }
         } else {
           startDaemon();
