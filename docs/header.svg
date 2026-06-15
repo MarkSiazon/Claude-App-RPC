@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 250" width="1000" height="250" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 260" width="1000" height="260" role="img" aria-labelledby="t d">
   <title id="t">claude-rpc</title>
-  <desc id="d">claude-rpc — Discord Rich Presence for Claude Code. Live model, project, tokens, and lifetime stats, driven by the hooks Claude Code already fires. Install with: npx claude-rpc setup.</desc>
+  <desc id="d">claude-rpc — Discord Rich Presence for Claude Code. Live model, project, tokens, and lifetime stats, driven by the hooks Claude Code already fires. Install with: npx claude-rpc setup. Shown beside an example Discord rich-presence card: Claude Code, Working in claude-rpc, Bash · running tests · 2.5min, with Get claude-rpc and View on GitHub buttons.</desc>
   <defs>
     <style>
       .disp { font-family: "Space Grotesk", "Inter Tight", system-ui, sans-serif; }
@@ -12,34 +12,49 @@
   </defs>
 
   <!-- paper + dot grid + terracotta top rule -->
-  <rect width="1000" height="250" fill="#f4ede0"/>
-  <rect width="1000" height="250" fill="url(#dots)"/>
+  <rect width="1000" height="260" fill="#f4ede0"/>
+  <rect width="1000" height="260" fill="url(#dots)"/>
   <rect width="1000" height="7" fill="#d97757"/>
 
-  <!-- ── left: wordmark + pitch + install chip ── -->
-  <text x="55" y="56" class="mono" font-size="14" font-weight="700" letter-spacing="4" fill="#b8552f">DISCORD RICH PRESENCE</text>
+  <!-- ── left: masthead ── -->
+  <text x="55" y="54" class="mono" font-size="14" font-weight="700" letter-spacing="4" fill="#b8552f">DISCORD RICH PRESENCE</text>
+  <text x="52" y="126" class="disp" font-size="70" font-weight="800" letter-spacing="-2" fill="#2b2722">claude-<tspan fill="#d97757">rpc</tspan></text>
+  <text x="55" y="160" class="disp" font-size="20" font-weight="500" fill="#2b2722">Claude Code, live on Discord</text>
+  <text x="55" y="185" class="mono" font-size="12.5" fill="#6b6357">live model · project · tokens · lifetime stats — driven by hooks</text>
 
-  <text x="52" y="128" class="disp" font-size="70" font-weight="800" letter-spacing="-2" fill="#2b2722">claude-<tspan fill="#d97757">rpc</tspan></text>
+  <rect x="55" y="202" width="292" height="32" rx="4" fill="#2b2722"/>
+  <text x="71" y="223" class="mono" font-size="15" fill="#d97757">$</text>
+  <text x="88" y="223" class="mono" font-size="15" fill="#f4ede0">npx claude-rpc setup</text>
 
-  <text x="55" y="163" class="disp" font-size="21" font-weight="500" fill="#2b2722">Claude Code, live on Discord</text>
-  <text x="55" y="189" class="mono" font-size="13" fill="#6b6357">live model · project · tokens · lifetime stats — driven by hooks</text>
+  <text x="56" y="252" class="mono" font-size="11" fill="#9a9183">MIT · macOS · Windows · Linux · zero runtime dependencies</text>
 
-  <rect x="55" y="206" width="298" height="32" rx="4" fill="#2b2722"/>
-  <text x="71" y="227" class="mono" font-size="15" fill="#d97757">$</text>
-  <text x="88" y="227" class="mono" font-size="15" fill="#f4ede0">npx claude-rpc setup</text>
+  <!-- ── right: an authentic (dark) Discord rich-presence card ── -->
+  <g transform="translate(610 24)">
+    <rect x="7" y="8" width="348" height="212" rx="14" fill="#2b2722" opacity="0.18"/>
+    <rect width="348" height="212" rx="14" fill="#232428" stroke="#15161a" stroke-width="1.5"/>
 
-  <!-- ── right: live presence-card motif ── -->
-  <g transform="translate(648 42)">
-    <rect x="6" y="7" width="300" height="186" rx="8" fill="#e1d6c0"/>
-    <rect width="300" height="186" rx="8" fill="#ebe2d2" stroke="#2b2722" stroke-width="2.5"/>
-    <rect x="22" y="24" width="60" height="60" rx="10" fill="#d97757"/>
-    <circle cx="76" cy="80" r="10" fill="#5a7d4f" stroke="#ebe2d2" stroke-width="3"/>
-    <text x="100" y="42" class="mono" font-size="15" font-weight="700" fill="#2b2722">Claude Code</text>
-    <text x="100" y="64" class="mono" font-size="13" fill="#6b6357">Editing src/daemon.js</text>
-    <text x="100" y="84" class="mono" font-size="12" fill="#9a9183">claude-rpc · Opus 4.8</text>
-    <rect x="22" y="112" width="256" height="28" rx="4" fill="#f4ede0" stroke="#2b2722" stroke-width="1.5"/>
-    <text x="33" y="131" class="mono" font-size="12" fill="#6b6357">3.2h · 1.4M tokens · 12d streak</text>
-    <rect x="22" y="150" width="126" height="26" rx="4" fill="#5865F2"/>
-    <text x="85" y="168" class="mono" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Get claude-rpc</text>
+    <text x="20" y="30" class="mono" font-size="9" font-weight="700" letter-spacing="1.5" fill="#949ba4">PLAYING A GAME</text>
+
+    <!-- large image (app art) + Claude sparkle + status badge -->
+    <rect x="20" y="42" width="58" height="58" rx="12" fill="#d97757"/>
+    <g stroke="#f4ede0" stroke-width="3.2" stroke-linecap="round">
+      <line x1="49" y1="56" x2="49" y2="86"/>
+      <line x1="34" y1="71" x2="64" y2="71"/>
+      <line x1="42.3" y1="64.3" x2="55.7" y2="77.7"/>
+      <line x1="55.7" y1="64.3" x2="42.3" y2="77.7"/>
+    </g>
+    <circle cx="72" cy="94" r="9" fill="#23a55a" stroke="#232428" stroke-width="3.5"/>
+
+    <!-- activity text -->
+    <text x="92" y="58" class="disp" font-size="14.5" font-weight="700" fill="#f2f3f5">Claude Code</text>
+    <text x="92" y="77" class="mono" font-size="12.5" fill="#dbdee1">Working in claude-rpc</text>
+    <text x="92" y="94" class="mono" font-size="12" fill="#b5bac1">Bash · running tests · 2.5min</text>
+    <text x="92" y="111" class="mono" font-size="11" fill="#949ba4">03:14:22 elapsed</text>
+
+    <!-- buttons (the daemon's real defaults) -->
+    <rect x="20" y="124" width="308" height="32" rx="6" fill="#5865f2"/>
+    <text x="174" y="145" class="disp" font-size="12.5" font-weight="600" fill="#ffffff" text-anchor="middle">Get claude-rpc →</text>
+    <rect x="20" y="164" width="308" height="32" rx="6" fill="#3a3c43"/>
+    <text x="174" y="185" class="disp" font-size="12.5" font-weight="600" fill="#dbdee1" text-anchor="middle">View on GitHub →</text>
   </g>
 </svg>
