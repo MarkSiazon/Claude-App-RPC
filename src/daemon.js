@@ -90,7 +90,7 @@ function loadConfigWithLog() {
 try {
   const healed = selfHealOnUpdate({ silent: true });
   if (healed.changed) {
-    log(`self-heal on update: ${healed.from || 'fresh'} → ${VERSION} (hooks ${healed.rewired ? 're-wired' : 'already current'}, config migrated)`);
+    log(`self-heal on update: ${healed.from || 'fresh'} → ${VERSION} (hooks ${healed.rewired ? 're-wired' : 'already current'}, config migrated${healed.autostart ? ', login autostart ensured' : ''})`);
   }
 } catch (e) {
   log('startup self-heal failed (continuing):', e?.message || String(e));

@@ -16,7 +16,7 @@ fetch-and-execute anywhere in `src/`.
 
 | Behavior | Where | Scope | Reversible? |
 | --- | --- | --- | --- |
-| Startup persistence | `src/install.js` → `addStartupEntry` (Windows Run key); `src/hook.js` → `ensureDaemonRunning` (SessionStart self-heal, all platforms) | `HKCU` Run key (no admin) + a detached daemon (re)launched when you start a Claude Code session | Yes — `claude-rpc uninstall` / `removeStartupEntry`; disable self-heal with `autostart:false` |
+| Startup persistence | `src/install.js` → `addStartupEntry` (Windows Run key, macOS LaunchAgent, Linux `systemd --user`) + `selfHealOnUpdate` (installs it on update); `src/hook.js` → `ensureDaemonRunning` (SessionStart self-heal) | Per-user login autostart (no admin/root/system service) + a detached daemon (re)launched when you start a Claude Code session | Yes — `claude-rpc uninstall` / `removeStartupEntry`; disable every auto-start path with `autostart:false` |
 | Hook injection | `src/install.js` → `installHooks` | Only into Claude Code's own `settings.json`, only our own commands | Yes — `uninstallHooks` removes exactly what it added |
 | Outbound network | `src/community.js`, `src/gist.js`, `src/usage.js`, `src/notify.js`, `default-config.js` | Anonymous counters + (opt-in) profile/gist/webhook + own read-only OAuth-usage poll + GIF assets | Telemetry: `community off`. Profile: `profile off`. Gist/webhook: opt-in only. Usage: `usage.enabled:false`. |
 | Local subprocess | `reg.exe`, `wscript`, the daemon itself (`node`/packaged exe — via the Run key and the SessionStart self-heal), `git`, `gh`, `npm`, `claude`, `security`, notifiers | Static or escaped args, no shell interpolation of untrusted input | n/a |
@@ -25,9 +25,10 @@ No credential access beyond the read-only Claude Code OAuth-token read for usage
 polling (§3d), no filesystem scanning outside `~/.claude-rpc` and Claude Code
 transcripts, no keylogging, no clipboard access, no AV/EDR evasion.
 
-## 1. Startup persistence (Windows Run key)
+## 1. Startup persistence (login autostart, all platforms)
 
-**Source:** `src/install.js`, `addStartupEntry` / `removeStartupEntry`.
+**Source:** `src/install.js`, `addStartupEntry` / `removeStartupEntry`; the
+on-update install path lives in `selfHealOnUpdate`.
 
 On Windows, `setup` writes one value:
 
@@ -47,16 +48,38 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run
   not at wherever you happened to run the installer from — see
   `ensureCanonicalExe`.
 
-Non-Windows platforms get **no** Run-key/login registration (`install()` warns
-and skips it). Instead — on every platform, Windows included — the
-`SessionStart` hook **self-heals** the daemon: if none is running when you start
-a Claude Code session, the hook spawns one (detached, windowless), so presence
-is restored after a reboot, crash, or OS sleep exactly when you next use Claude.
-It is the same long-lived daemon launched the same way (`src/ensure-daemon.js` →
+**macOS and Linux** now get login autostart too, at per-user parity with Windows:
+
+```
+macOS  ~/Library/LaunchAgents/com.claude-rpc.daemon.plist   (launchctl, RunAtLoad)
+Linux  ~/.config/systemd/user/claude-rpc.service            (systemctl --user enable)
+```
+
+- **Scope:** per-user only — a user LaunchAgent / `systemctl --user` unit, never
+  a root/system daemon, LaunchDaemon, or system-wide service. No admin, no `sudo`.
+- **Reverse it:** `claude-rpc uninstall` removes the plist/unit and unloads it
+  (`removeStartupEntry`); or delete the file and `launchctl unload` /
+  `systemctl --user disable` by hand.
+
+**A login-autostart entry can appear on UPDATE, not only at `setup`.** Because
+npm runs no install script (see intro), an `npm update` reaches you through the
+daemon: the first time it starts after an update, `selfHealOnUpdate` re-wires
+hooks, migrates config, **and installs the login-autostart entry above** so the
+daemon comes up at login on the new version. This is the one place a
+background-start entry is created without an explicit `setup`. It is gated by
+`autostart` (default on) — set `autostart:false` to opt out of every auto-start
+path — and is best-effort: if `launchctl`/`systemctl`/`reg` fails, nothing
+breaks (the session self-heal below still covers startup).
+
+Underneath all of this, on every platform, the `SessionStart` hook also
+**self-heals** the daemon: if none is running when you start a Claude Code
+session, the hook spawns one (detached, windowless), so presence is restored
+after a reboot, crash, or OS sleep exactly when you next use Claude. It is the
+same long-lived daemon launched the same way (`src/ensure-daemon.js` →
 `spawnDaemonDetached`), a no-op when a daemon is already running, and
 cooldown-guarded against spawn storms; the daemon's atomic single-instance claim
-reaps any duplicate. Disable it with `autostart:false` in config (then manage
-the daemon yourself via `claude-rpc start` / `stop`).
+reaps any duplicate. Disable everything with `autostart:false` in config (then
+manage the daemon yourself via `claude-rpc start` / `stop`).
 
 ## 2. Hook injection into Claude Code
 
@@ -256,6 +279,10 @@ untrusted or remote input into a shell:
 
 - `reg.exe add/delete` — the Windows Run key (`src/install.js`).
 - `wscript.exe` — runs the generated windowless startup shim (`src/install.js`).
+- `launchctl load/unload` — the macOS LaunchAgent (`src/install.js`); args are
+  the fixed plist path.
+- `systemctl --user enable/disable/daemon-reload` — the Linux user service
+  (`src/install.js`); args are the fixed unit name.
 - `chcp.com 65001` — set the console to UTF-8 on Windows TTYs (`src/cli.js`).
 - `git` — read last commit subject / branch for the "just shipped" card
   (`src/git.js`).

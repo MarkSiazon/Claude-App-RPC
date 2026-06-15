@@ -701,11 +701,24 @@ export function selfHealOnUpdate({ exePath = null, silent = true } = {}) {
   let rewired = false;
   try { rewired = installHooks(exe, { silent }); } catch { /* best-effort — a hook re-wire must never block daemon startup */ }
   try { migrateConfig({ silent }); } catch { /* best-effort */ }
+  // Carry the login autostart forward too — an update should leave the daemon
+  // coming up at login, not only on the next Claude Code session — unless the
+  // user opted out with autostart:false. Best-effort + fire-and-forget; a
+  // failure just falls back to the SessionStart self-heal. In the detached
+  // daemon, addStartupEntry's console output lands in ignored stdio. This is
+  // disclosed in SECURITY.md (a login-autostart service can appear on update).
+  let autostart = false;
+  try {
+    if (readJson(CONFIG_PATH, {}).autostart !== false) {
+      autostart = true;
+      Promise.resolve(addStartupEntry(exe)).catch(() => {});
+    }
+  } catch { /* best-effort */ }
   try {
     mkdirSync(dirname(VERSION_STAMP), { recursive: true });
     writeFileSync(VERSION_STAMP, VERSION + '\n');
   } catch { /* unwritable — we'll just self-heal again next start, which is harmless (idempotent) */ }
-  return { changed: true, from, rewired };
+  return { changed: true, from, rewired, autostart };
 }
 
 export async function install({ exePath, withStartup = true } = {}) {
