@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession } =
+const { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession, throttleDecision } =
   await import('../src/presence.js');
 
 // ── pickFrames ─────────────────────────────────────────────────────────
@@ -181,4 +181,52 @@ test('pickActiveSession: all idle → follows the most-recent rather than blanki
   const r = pickActiveSession(states, 'x', now, IDLE);
   assert.equal(r.sessionId, 'b', 'most-recent overall when none are live');
   assert.equal(r.liveCount, 0);
+});
+
+// ── throttleDecision (Discord SET_ACTIVITY rate-limit guard) ───────────
+const GAP = 4000;
+
+test('throttleDecision: identical hash → skip (wire already shows it)', () => {
+  const d = throttleDecision({ hash: 'A', lastSentHash: 'A', lastSentAt: 1000, now: 9_999_999, gapMs: GAP, flushPending: false });
+  assert.deepEqual(d, { action: 'skip', waitMs: 0 });
+});
+
+test('throttleDecision: first write ever (lastSentAt 0) sends immediately', () => {
+  const d = throttleDecision({ hash: 'A', lastSentHash: '', lastSentAt: 0, now: 50_000, gapMs: GAP, flushPending: false });
+  assert.equal(d.action, 'send');
+});
+
+test('throttleDecision: gap elapsed, nothing queued → send', () => {
+  const now = 100_000;
+  const d = throttleDecision({ hash: 'B', lastSentHash: 'A', lastSentAt: now - GAP, now, gapMs: GAP, flushPending: false });
+  assert.equal(d.action, 'send');
+});
+
+test('throttleDecision: inside the gap → defer with the remaining wait', () => {
+  const now = 100_000;
+  const d = throttleDecision({ hash: 'B', lastSentHash: 'A', lastSentAt: now - 1000, now, gapMs: GAP, flushPending: false });
+  assert.equal(d.action, 'defer');
+  assert.equal(d.waitMs, GAP - 1000, 'flushes when the gap expires');
+});
+
+test('throttleDecision: gap elapsed but a flush is already queued → still defer (no double-send)', () => {
+  const now = 100_000;
+  const d = throttleDecision({ hash: 'C', lastSentHash: 'A', lastSentAt: now - GAP, now, gapMs: GAP, flushPending: true });
+  assert.equal(d.action, 'defer');
+  assert.equal(d.waitMs, 0, 'the armed flush fires this tick with the latest payload');
+});
+
+test('throttleDecision: a burst coalesces — each change re-defers to the latest, one flush', () => {
+  // Simulate the daemon: first change sends (lastSentAt then becomes `base`);
+  // the next changes within the gap all defer (the daemon overwrites
+  // pendingSend with the latest each time and arms exactly one flush timer).
+  const base = 1_000_000;
+  const sent = throttleDecision({ hash: 'h1', lastSentHash: '', lastSentAt: 0, now: base, gapMs: GAP, flushPending: false });
+  assert.equal(sent.action, 'send');
+  let flushPending = false;
+  for (let i = 2; i <= 10; i++) {
+    const d = throttleDecision({ hash: `h${i}`, lastSentHash: 'h1', lastSentAt: base, now: base + i * 100, gapMs: GAP, flushPending });
+    assert.equal(d.action, 'defer', `change ${i} defers rather than hammering Discord`);
+    flushPending = true; // the daemon arms exactly one timer for the burst
+  }
 });

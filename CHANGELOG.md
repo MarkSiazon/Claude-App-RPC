@@ -2,6 +2,13 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.19.2] - 2026-06-15
+
+**Fixed**
+
+- **The card no longer goes blank or sticks on a stale frame during active work — the daemon now respects Discord's activity rate limit.** Discord hard-limits `SET_ACTIVITY` (~5 writes per 20s) and *punishes* a burst: ~10 writes in 5s makes the client **empty the presence and stop updating** until the writes stop ([discord-api-docs#668](https://github.com/discord/discord-api-docs/issues/668)). The Game SDK claims to coalesce for you; we speak **raw IPC** (zero cushion) and were writing on *every* hook-driven state change — so a flurry of quick `Read`/`Edit`/`Bash` tools (each firing `PreToolUse`+`PostToolUse`, flipping `currentTool`/`currentFile`) drove several writes a second, far past the limit. That is the "it sometimes seems a bit buggy" users saw: the card froze, blanked, or lagged behind reality. The daemon now throttles itself with a leading+trailing coalescer — the first change after a quiet gap writes immediately (snappy `idle`→`thinking`→`working`), and changes inside the gap collapse to the **latest** and flush once when it expires, so the final state of every burst always lands at a wire rate that stays under the limit (a pathological 200-changes-in-20s run drops from 200 writes to ~6). Tunable via the new `minActivityGapMs` config key (default `4000`).
+- **A dropped or rate-limited presence write is now retried instead of being stranded.** `pushPresence` advanced its payload-dedup hash *before* awaiting the write and only reset it on connection errors — so a write that failed for any other reason (a rate-limit rejection, a transient app error) was recorded as if it had succeeded, and the card stuck on the previous frame until the state next changed. The hash now advances **only after a confirmed write**, so the periodic tick re-sends the current frame on the next pass; this compounded the rate-limit blanking above.
+
 ## [0.19.1] - 2026-06-15
 
 **Fixed**

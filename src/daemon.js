@@ -3,7 +3,7 @@ import { writeFileSync, readFileSync, existsSync, unlinkSync, watch, appendFileS
 import { basename, dirname } from 'node:path';
 import { Client } from './discord-ipc.js';
 import { readState, sweepStaleStateTmp, listSessionStates, sweepStaleSessionStates } from './state.js';
-import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession } from './presence.js';
+import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession, throttleDecision } from './presence.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
 import { detectGithubUrl } from './git.js';
@@ -79,7 +79,21 @@ let liveSessions = [];
 let client = null;
 let connected = false;
 let connecting = false; // login() in flight — see the watchdog note in connect()
-let lastPayloadHash = '';
+// ── Outbound presence throttle ──────────────────────────────────────────────
+// Discord rate-limits SET_ACTIVITY hard (~5 writes per 20s); a burst past it
+// makes the client blank the presence until the writes stop — the actual
+// mechanism behind "the card sometimes looks buggy", since Claude fires hooks
+// in flurries. We never write faster than activityGapMs(): the first change
+// after a quiet gap goes out at once, and changes inside the gap coalesce to
+// the LATEST and flush once when it expires. See presence.throttleDecision.
+// `lastSentHash` is what we believe is on the wire — advanced ONLY after a
+// confirmed write, so a dropped/rate-limited write self-heals on the next push
+// instead of being recorded as success and stranded (the old optimistic-hash
+// bug, which stuck the card on a stale frame).
+let lastSentHash = '';
+let lastSentAt = 0;       // ms of the last write ATTEMPT (success or fail → back off either way)
+let pendingSend = null;   // { kind, activity, hash, logMsg } coalesced during the gap; latest wins
+let flushTimer = null;
 // Last status we acted on for outbound side-effects (webhook / desktop notify).
 // Tracked separately from the render hash so we fire once per transition.
 let lastNotifiedStatus = null;
@@ -330,7 +344,12 @@ function fireStatusSideEffects(resolved, suppressed = false) {
   }
 }
 
-async function pushPresence() {
+// Compute the desired presence for the current state and hand it to the
+// throttle. Called from many triggers (hook-driven state changes, the periodic
+// tick, config/scan/session refreshes); transmit() collapses that into at most
+// one Discord write per activityGapMs(), so callers never have to think about
+// the rate limit. Best-effort throughout — presence must never crash the daemon.
+function pushPresence() {
   if (!connected || !client?.user) return;
   try {
     // Resolve state ONCE — this same object decides clear-vs-push, drives the
@@ -342,7 +361,7 @@ async function pushPresence() {
     const privacyHidden = resolved._privacy?.visibility === 'hidden';
     // Global snooze (`claude-rpc pause`) — clears the card while the deadline
     // is in the future. Re-checked every tick, so expiry resumes presence
-    // automatically (the 'cleared' stamp differs from the next frame's hash).
+    // automatically (the next frame's hash differs from the cleared sentinel).
     const pausedUntil = pauseUntil();
     const suppressed = privacyHidden || !!pausedUntil || (resolved.status === 'stale' && hideWhenStale);
 
@@ -353,42 +372,98 @@ async function pushPresence() {
     fireStatusSideEffects(resolved, suppressed);
 
     if (suppressed) {
-      const stamp = 'cleared';
-      if (lastPayloadHash === stamp) return;
-      lastPayloadHash = stamp;
       // Wipe effectiveSessionStart so the next active push gets a fresh
       // elapsed timer rather than counting from a previous session.
       effectiveSessionStart = null;
-      await client.user.clearActivity();
       const reason = pausedUntil
         ? `paused until ${new Date(pausedUntil).toLocaleTimeString()}`
         : privacyHidden ? 'privacy=hidden in this project' : 'stale — Claude Code not running';
-      log(`Presence cleared (${reason})`);
+      transmit('clear', null, `Presence cleared (${reason})`);
       return;
     }
 
     const activity = buildActivity({ resolved });
-    const hash = JSON.stringify(activity);
-    if (hash === lastPayloadHash) return;
-    lastPayloadHash = hash;
-    await client.user.setActivity(activity);
-    log('Presence updated:', activity.details || '-', '|', activity.state || '-');
+    transmit('set', activity, `Presence updated: ${activity.details || '-'} | ${activity.state || '-'}`);
+  } catch (e) {
+    log('pushPresence failed:', e.message);
+  }
+}
+
+// Minimum gap between Discord writes, read live so a config reload takes effect.
+// Floored at 2s as a sanity minimum; the 4s default keeps us under Discord's
+// ~5-per-20s SET_ACTIVITY limit (see default-config.minActivityGapMs).
+function activityGapMs() {
+  return Math.max(2000, config.minActivityGapMs || 4000);
+}
+
+// Sentinel for a clear — can never collide with a real activity hash, since
+// JSON.stringify of an activity object always begins with '{'.
+const CLEAR_HASH = 'cleared';
+
+// Route a desired payload (kind:'set'|'clear') through the rate-limit throttle.
+// 'send' writes now; 'defer' stashes the LATEST payload and arms a single flush
+// timer; 'skip' means the wire already shows this exact frame.
+function transmit(kind, activity, logMsg) {
+  const hash = kind === 'clear' ? CLEAR_HASH : JSON.stringify(activity);
+  const d = throttleDecision({
+    hash, lastSentHash, lastSentAt,
+    now: Date.now(), gapMs: activityGapMs(), flushPending: !!flushTimer,
+  });
+  if (d.action === 'skip') { pendingSend = null; return; }
+  if (d.action === 'send') { doSend({ kind, activity, hash, logMsg }); return; }
+  // defer — remember the LATEST payload and flush it once when the gap expires.
+  pendingSend = { kind, activity, hash, logMsg };
+  if (!flushTimer) {
+    flushTimer = setTimeout(flushPendingSend, d.waitMs);
+    if (flushTimer.unref) flushTimer.unref();
+  }
+}
+
+function flushPendingSend() {
+  flushTimer = null;
+  const p = pendingSend;
+  pendingSend = null;
+  if (!p || !connected || !client?.user) return;
+  if (p.hash === lastSentHash) return; // state reverted to what's already shown
+  doSend(p);
+}
+
+// The single point that actually writes to Discord. lastSentAt advances on every
+// ATTEMPT (so a failure backs off a full gap before retrying); lastSentHash
+// advances ONLY on success — a dropped/rate-limited write is therefore retried
+// by the next push rather than being recorded as success and stranded.
+async function doSend({ kind, activity, hash, logMsg }) {
+  lastSentAt = Date.now();
+  try {
+    if (kind === 'clear') await client.user.clearActivity();
+    else await client.user.setActivity(activity);
+    lastSentHash = hash;
+    log(logMsg);
   } catch (e) {
     log('setActivity failed:', e.message, '|', e.stack?.split('\n').slice(0, 3).join(' | '));
-    // A failed setActivity usually means the IPC pipe died WITHOUT the client
-    // emitting a 'disconnected' event (Discord restart, socket reset, OS
-    // sleep). Left alone, `connected` stays true and the daemon goes silently
-    // dark forever. Tear the client down and force a backoff reconnect so we
-    // self-heal. Guarded to connection-shaped errors so a one-off API hiccup
-    // doesn't needlessly bounce a healthy socket.
+    // A failed write usually means the IPC pipe died WITHOUT a 'disconnected'
+    // event (Discord restart, socket reset, OS sleep). Left alone, `connected`
+    // stays true and the daemon goes silently dark forever. Tear down and force
+    // a backoff reconnect so we self-heal — guarded to connection-shaped errors
+    // so a one-off app error (e.g. a rate-limit rejection) just waits for the
+    // next push's retry instead of needlessly bouncing a healthy socket.
     if (isConnectionError(e)) {
       log('setActivity error looks connection-level — forcing reconnect');
       connected = false;
-      lastPayloadHash = '';
+      resetTransmit();
       try { client?.destroy(); } catch { /* already gone */ }
       scheduleReconnect('setActivity failed');
     }
   }
+}
+
+// Force the next pushPresence to write even if the activity is byte-identical,
+// and drop any queued flush. Called when an input changed (config/aggregate/
+// scan/sessions) or the connection bounced — the new frame must go out fresh.
+function resetTransmit() {
+  lastSentHash = '';
+  pendingSend = null;
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
 }
 
 // Heuristic: does this error indicate the IPC transport itself is dead
@@ -417,7 +492,7 @@ async function connect() {
     // Reset backoff so the next outage also starts at RECONNECT_BASE_MS.
     reconnectDelayMs = RECONNECT_BASE_MS;
     log('Discord RPC connected as', client.user?.username);
-    lastPayloadHash = '';
+    resetTransmit();
     pushPresence();
   });
   client.on('disconnected', () => {
@@ -459,12 +534,12 @@ function watchFiles() {
     { path: CONFIG_PATH, label: 'config', onChange: () => {
       log('Config changed — reloading');
       config = loadConfigWithLog();
-      lastPayloadHash = '';
+      resetTransmit();
       pushPresence();
     } },
     { path: AGGREGATE_PATH, label: 'aggregate', onChange: () => {
       aggregate = readAggregate() || aggregate;
-      lastPayloadHash = '';
+      resetTransmit();
       pushPresence();
     } },
   ];
@@ -542,7 +617,7 @@ async function runBackgroundScan({ force = false } = {}) {
     const { aggregate: agg, scanned, skipped, removed, total } = scan({ force });
     aggregate = agg;
     log(`Scan complete: ${scanned} parsed / ${skipped} cached / ${removed} removed / ${total} total in ${Date.now() - t0}ms — allHours=${(agg.activeMs / 3_600_000).toFixed(1)}, sessions=${agg.sessions}, tokens=${(agg.inputTokens + agg.outputTokens)}`);
-    lastPayloadHash = '';
+    resetTransmit();
     pushPresence();
   } catch (e) {
     log('Scan failed:', e.message);
@@ -594,7 +669,7 @@ function refreshLiveSessions() {
     liveSessions = next;
     if (next.length !== prevCount) {
       log('Concurrent sessions:', next.length, next.map((s) => `${s.project}(${s.ageSec}s)`).join(', '));
-      lastPayloadHash = '';
+      resetTransmit();
       pushPresence();
     }
   } catch (e) {

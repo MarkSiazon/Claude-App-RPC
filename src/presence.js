@@ -96,6 +96,30 @@ export function shouldShowGithubButton(p, state) {
   return true;
 }
 
+// Decide how to transmit a candidate presence payload without tripping Discord's
+// SET_ACTIVITY rate limit. Discord hard-limits activity writes (~5 per 20s) and
+// punishes a burst — calling it ~10× in 5s makes the client EMPTY the presence
+// and stop updating until the writes stop (discord-api-docs#668). Claude Code
+// fires PreToolUse/PostToolUse hooks back-to-back through a flurry of quick
+// Reads/Edits, so the daemon would otherwise write many times a second. The
+// Game SDK claims to coalesce-and-queue for you; raw IPC (what we speak) gives
+// no such cushion, so we throttle ourselves.
+//
+// This is the leading+trailing decision — pure so it's unit-testable; the daemon
+// owns the wall clock, the last-sent bookkeeping, and the flush timer:
+//   - 'skip'  : byte-identical to what's already on the wire — do nothing
+//   - 'send'  : the gap has elapsed and nothing is queued — write immediately
+//               (snappy idle→thinking→working transitions)
+//   - 'defer' : inside the gap, or a flush is already queued — coalesce to the
+//               LATEST payload and let the caller flush it in `waitMs`, so the
+//               final state of every burst still lands, once, under the limit
+export function throttleDecision({ hash, lastSentHash, lastSentAt, now, gapMs, flushPending }) {
+  if (hash === lastSentHash) return { action: 'skip', waitMs: 0 };
+  const waitMs = Math.max(0, (lastSentAt || 0) + gapMs - now);
+  if (waitMs === 0 && !flushPending) return { action: 'send', waitMs: 0 };
+  return { action: 'defer', waitMs };
+}
+
 // Large-image key precedence (returns the TEMPLATE string; the caller fills it):
 //   1. statusAssets[status]          per-status art ("working" gif, etc.)
 //   2. modelAssets[fable|opus|sonnet|haiku|default]   per-model art, never stale

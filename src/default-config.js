@@ -14,6 +14,14 @@ export const DEFAULT_CONFIG = {
   appName: "Claude Code",
   updateIntervalMs: 4000,
   rotationIntervalMs: 12000,
+  // Minimum gap (ms) between Discord SET_ACTIVITY writes. Discord hard-limits
+  // activity updates (~5 per 20s); blowing past it makes the client EMPTY the
+  // presence and stop updating until the writes stop. Claude Code fires hooks
+  // in bursts, so the daemon coalesces rapid changes and never writes faster
+  // than this — the first change after a quiet gap goes out at once, the rest
+  // collapse to the latest and flush when the gap expires. 4s stays safely
+  // under the limit; lower values risk Discord throttling the card.
+  minActivityGapMs: 4000,
   rescanIntervalSec: 300,
   idleThresholdSec: 60,
   // Time (minutes) of no hook activity AND no live transcripts on disk before
