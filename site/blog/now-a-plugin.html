@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>now you can install it from inside Claude Code · claude-rpc</title>
+<meta name="description" content="claude-rpc now ships as a Claude Code plugin: two lines inside the editor and the Discord card shows up on your next session. A thin bootstrapper over the same one-command install." />
+<link rel="canonical" href="https://claude-rpc.vercel.app/blog/now-a-plugin" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="now you can install it from inside Claude Code" />
+<meta property="og:description" content="claude-rpc is now a Claude Code plugin. Two lines in the editor, and your sessions show up live on Discord. The fifth way to install the same tool." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://claude-rpc.vercel.app/blog/now-a-plugin" />
+<meta property="og:image" content="https://claude-rpc.vercel.app/img/og-plugin.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="now you can install it from inside Claude Code" />
+<meta name="twitter:description" content="claude-rpc is now a Claude Code plugin. Two lines in the editor, and your sessions show up live on Discord." />
+<meta name="twitter:image" content="https://claude-rpc.vercel.app/img/og-plugin.png" />
+
+<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --ink: #2b2722; --ink-mute: #6b6357;
+    --ink-faint: #9a9183; --rust: #d97757; --rust-3: #b8552f; --grass: #5a7d4f;
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.04) 1px, transparent 1px);
+    background-size: 22px 22px;
+    min-height: 100vh; display: flex; flex-direction: column;
+  }
+  .wrap { max-width: 700px; margin: 0 auto; padding: 64px 24px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker {
+    font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3);
+  }
+  h1 { font-family: var(--font-disp); font-size: clamp(1.8rem, 4.5vw, 2.7rem); margin: 8px 0 6px; line-height: 1.08; }
+  .date { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); letter-spacing: 0.08em; }
+  .prose { margin-top: 28px; }
+  .prose p { line-height: 1.75; font-size: 1.0rem; }
+  .prose h2 { font-family: var(--font-disp); font-size: 1.3rem; margin: 38px 0 10px; }
+  .prose code {
+    font-family: var(--font-mono); font-size: 0.85em; background: var(--paper-2);
+    border: 1px solid rgba(43,39,34,0.25); padding: 1px 5px;
+  }
+  .prose pre {
+    background: var(--ink); color: var(--paper); border: 1.5px solid var(--ink);
+    box-shadow: var(--shadow); padding: 18px 20px; overflow-x: auto;
+    font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.65;
+  }
+  .prose pre code { background: transparent; border: 0; padding: 0; color: inherit; }
+  .prose ul { line-height: 1.75; }
+  .back { font-family: var(--font-mono); font-size: 0.78rem; display: inline-block; margin-top: 36px; }
+  footer { text-align: center; padding: 28px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+  footer a { color: var(--ink-mute); }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <span class="kicker">posts</span>
+    <h1>now you can install it from inside Claude Code</h1>
+    <span class="date">2026-06-16</span>
+
+    <div class="prose">
+      <p>As of today, claude-rpc installs as a Claude Code plugin. Open Claude Code and run two lines:</p>
+      <pre><code>/plugin marketplace add rar-file/claude-rpc
+/plugin install claude-rpc@claude-rpc</code></pre>
+      <p>That is the whole thing. The Discord card shows up on your next session.</p>
+
+      <h2>if you are new here</h2>
+      <p>claude-rpc is a small Node daemon that takes the lifecycle events Claude Code already fires — session start, each tool call, token counts — and pipes them into the Discord Rich Presence card on your profile. Your friends see what you are building; you get lifetime stats. It is free, open source, has zero runtime dependencies, and I built it solo on weekends.</p>
+
+      <h2>what the plugin actually does</h2>
+      <p>Almost nothing, on purpose. It is one <code>SessionStart</code> hook that runs the same installer you would run by hand — <code>npx claude-rpc@latest setup</code> — once, in the background, then gets out of the way. No second daemon, no model-context cost; Claude Code itself measures the plugin at about zero tokens per session. The real package still does the real work: wiring the hooks, holding Discord's local socket, starting at login. The plugin is just a friendlier front door, and it is four small files if you want to read it first: <a href="https://github.com/rar-file/claude-rpc/tree/main/plugin">the plugin source</a>.</p>
+
+      <h2>why add it if the install is identical</h2>
+      <p>Discovery, mostly. The plugin marketplace is a place people already look, and installing from inside the editor is one less context switch than copy-pasting a shell command. It is now the fifth way in — <code>npx</code>, the <code>curl</code> one-liner, Homebrew, the Windows exe, and this — so pick whichever fits your setup. They all land in the same place.</p>
+
+      <h2>the honest part</h2>
+      <p>Numbers, because this is a build log: claude-rpc gets a little over seven thousand installs a month. It has, as I write this, seven GitHub stars. I am not going to pretend that gap does not keep me up — but it also means thousands of these cards are quietly running in Discord right now, which is the actual point. If yours is one of them, a <a href="https://github.com/rar-file/claude-rpc">star</a> is the cheapest possible way to tell me it is working. And if you have never tried it, the door has never been easier to open:</p>
+      <pre><code>/plugin marketplace add rar-file/claude-rpc
+/plugin install claude-rpc@claude-rpc</code></pre>
+      <p>Source, all five install paths, and a full security write-up: <a href="https://github.com/rar-file/claude-rpc">github.com/rar-file/claude-rpc</a>.</p>
+    </div>
+
+    <a class="back" href="/blog">&larr; all posts</a>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.vercel.app</a> &middot; <a href="/blog">posts</a> &middot; <a href="https://github.com/rar-file/claude-rpc">github</a> &middot; built solo
+  </footer>
+</body>
+</html>
