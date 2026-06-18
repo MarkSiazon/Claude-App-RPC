@@ -2,6 +2,21 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-06-18
+
+First stable release — the public surface is now a semver-governed contract.
+
+**Added**
+
+- **`VERSIONING.md`** — names the stable contracts (worker HTTP API; CLI commands, flags, and exit codes; the `config.json` schema; the `claude-rpc vars` template variables; and the local data formats `aggregate.json` / `/total.json` / `export`) versus the internal ones (daemon internals, scan cache, worker KV layout, exact insight wording). From 1.0 on, breaking a stable surface requires a major bump.
+- **`docs/WORKER-API.md`** — full HTTP reference for the community worker (every path, param, and response). All existing paths are unchanged; the worker stays additive-only.
+
+**Changed**
+
+- **README + ROADMAP refreshed to reality** — the web layer, the live `/badge/<handle>.svg` and `/card/<handle>.svg` endpoints, the Claude Code plugin, the MCP server, and the subscription-usage readout are now documented. A new Platform support note marks macOS/Linux first-class and honestly describes the Windows `fs.watch`→mtime-poll fallback. The deliberate "never" list is unchanged.
+
+No code or behavior changed from 0.24.1 — this release is the stability commitment and its documentation.
+
 ## [0.24.1] - 2026-06-18
 
 **Fixed**
