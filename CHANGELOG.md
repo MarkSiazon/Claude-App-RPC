@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.24.0] - 2026-06-18
+
+**Changed**
+
+- **`claude-rpc insights` is far richer and now rotates.** The engine went from 8 fixed checks (printed in the same order every run) to ~20 generators covering chronotype (night-owl / early-bird from your peak hour), personal-best day, weekend-vs-weekday rhythm, output as book pages, top project, top tool, top shell command, model mix, cache-reuse %, tenure/anniversary milestones, session cadence, and more — on top of the originals (trend, peak weekday, cost pace, hotspot, streak, language, subagents, notifications). Each line carries a priority weight plus a small seeded jitter, so the strongest signals still lead but the mid-tier **rotates — a fresh mix each run** instead of the same five. Near-duplicates (two streak lines, peak-weekday + weekday-rhythm) are de-duplicated by topic. Same surfaces as before (the `insights` command, the web `/api/insights` route, and the TUI); pass a seed for a deterministic order.
+
 ## [0.23.0] - 2026-06-18
 
 **Added**
