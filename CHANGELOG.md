@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.23.0] - 2026-06-18
+
+**Added**
+
+- **Live, auto-updating stat CARD for your README.** New worker endpoint `GET /card/<handle>.svg` renders a paper/terracotta card (tokens · sessions · active hours · streak, plus your handle and a verified ✓ stamp) straight from your published profile — the bigger sibling of the per-user badge. Paste the markdown once and it refreshes itself as the daemon flushes (~every 30 min); no gist, no `gh`, no local re-running. An unknown handle renders a neutral placeholder card so a README `<img>` never breaks. `claude-rpc readme` now leads with the card, the profile page `/u/<handle>` previews it with one-click copy, and the card image is read-only (adds no KV writes).
+
 ## [0.22.1] - 2026-06-18
 
 **Fixed**

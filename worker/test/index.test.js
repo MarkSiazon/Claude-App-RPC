@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { validateReport, handleReport, handleBadge, handleUserBadge, handleJson, handleRef, handleRefs,
+const { validateReport, handleReport, handleBadge, handleUserBadge, handleUserCard, handleJson, handleRef, handleRefs,
   validateProfile, handleProfile, handleLeaderboard, handleVerifyStart, handleVerifyCheck,
   handleProfileGet, pruneBoardIndex } = await import('../src/index.js');
 const worker = (await import('../src/index.js')).default;
@@ -332,6 +332,47 @@ test('handleUserBadge: routes through the worker entry point', async () => {
   assert.equal(res.status, 200);
   const body = await res.text();
   assert.match(body, /2\.00M/);
+});
+
+// ── handleUserCard (per-user stat card) ──────────────────────────────────
+
+test('handleUserCard: renders all four metrics from the profile', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { displayName: 'Archer', tokens: 1_500_000, sessions: 42, activeMs: 9_000_000, streak: 7 });
+  const res = await handleUserCard('archer', env);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('Content-Type'), /image\/svg/);
+  const body = await res.text();
+  assert.match(body, /<svg /);
+  assert.match(body, /Archer/, 'shows the display name');
+  assert.match(body, /1\.50M/, 'tokens');
+  assert.match(body, />42</, 'sessions');
+  assert.match(body, /2\.5h/, 'hours from activeMs');
+  assert.match(body, />7d</, 'streak');
+});
+
+test('handleUserCard: verified profile draws the verified stamp', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { tokens: 1, verified: true });
+  const body = await (await handleUserCard('archer', env)).text();
+  assert.match(body, /Claude Code · verified/);
+});
+
+test('handleUserCard: unknown handle → placeholder card (200, not broken image)', async () => {
+  const env = makeEnv();
+  const res = await handleUserCard('nobody', env);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('Content-Type'), /image\/svg/);
+  const body = await res.text();
+  assert.match(body, /no public profile yet/);
+});
+
+test('handleUserCard: routes through the worker entry point', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { tokens: 2_000_000 });
+  const res = await worker.fetch(new Request('http://localhost/card/archer.svg'), env);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /2\.00M/);
 });
 
 // ── handleJson ─────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@
 //   GET  /sessions.svg   — shields-style community badge for the README
 //   GET  /tokens.svg     — same, for tokens
 //   GET  /badge/<handle>.svg — live per-user badge (?metric=tokens|sessions|hours|streak)
+//   GET  /card/<handle>.svg  — live per-user stat card (the four profile metrics)
 //   GET  /total.json     — JSON for arbitrary consumers / dashboards
 //   GET  /ref?s=<src>    — referral beacon (counts an allowlisted source)
 //   GET  /refs.json      — referral breakdown by source
@@ -45,6 +46,7 @@
 // credential; bearer-authed requests resolve to it server-side via gh:<login>.
 
 import { renderBadge, fmtNum, fmtHours } from './badge.js';
+import { renderProfileCard } from './card.js';
 import { mintToken, verifyToken, SESSION_TTL_MS, STATE_TTL_MS } from './auth.js';
 
 const SCHEMA_VERSION = 1;
@@ -331,6 +333,20 @@ export async function handleUserBadge(rawHandle, url, env) {
   if (!p) return placeholder();
   const label = cleanName(url.searchParams.get('label')) || metric.label;
   return svgBadgeResponse(renderBadge({ label, value: metric.value(p), color: metric.color }));
+}
+
+// Per-user stat CARD — the richer sibling of the badge, same data source (the
+// four metrics a public profile stores). Always returns an SVG; an unknown
+// handle renders a neutral placeholder card so a README <img> never breaks.
+export async function handleUserCard(rawHandle, env) {
+  const handle = normHandle(rawHandle);
+  let p = null;
+  if (handle) {
+    const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+    const prof = owner ? await getProfile(env, owner) : null;
+    if (prof) p = publicProfile(prof); // safe allowlist — never the machines map
+  }
+  return svgBadgeResponse(renderProfileCard(p), p ? 300 : 60);
 }
 
 // Record a referral hit. Returns 204 regardless (it's a fire-and-forget
@@ -1641,6 +1657,12 @@ export default {
       let raw = url.pathname.slice('/badge/'.length, -'.svg'.length);
       try { raw = decodeURIComponent(raw); } catch { /* keep raw — normHandle rejects junk */ }
       return handleUserBadge(raw, url, env);
+    }
+    // Per-user stat card: /card/<handle>.svg.
+    if (request.method === 'GET' && url.pathname.startsWith('/card/') && url.pathname.endsWith('.svg')) {
+      let raw = url.pathname.slice('/card/'.length, -'.svg'.length);
+      try { raw = decodeURIComponent(raw); } catch { /* keep raw — normHandle rejects junk */ }
+      return handleUserCard(raw, env);
     }
     if (request.method === 'GET' && url.pathname === '/total.json') {
       return handleJson(env);

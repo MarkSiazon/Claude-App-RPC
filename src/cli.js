@@ -1075,35 +1075,43 @@ function doReadme(argv) {
     ['streak', 'Claude Code streak'],
     ['tokens', 'Claude Code tokens'],
   ];
-  const liveMd = (h) => metrics
+  // The hero: a live stat card that auto-refreshes from your published profile.
+  const cardMd = (h) => `[![Claude Code stats](${endpoint}/card/${h}.svg)](${site}/u/${h})`;
+  const badgesMd = (h) => metrics
     .map(([m, alt]) => `[![${alt}](${endpoint}/badge/${h}.svg?metric=${m})](${site}/?ref=badge)`)
     .join('\n');
+  const liveMd = (h) => `${cardMd(h)}\n\n${badgesMd(h)}`;
 
   // Raw mode: just the markdown, for `claude-rpc readme --raw | pbcopy`.
   if (raw) {
     process.stdout.write(live
       ? liveMd(handle) + '\n'
-      : '<!-- live badges need a public profile: claude-rpc profile set --handle <name> && claude-rpc profile on -->\n');
+      : '<!-- live card/badges need a public profile: claude-rpc profile set --handle <name> && claude-rpc profile on -->\n');
     return;
   }
 
   console.log('');
-  console.log(`  ${c.bold}${c.magenta}◆ README badges${c.reset}`);
+  console.log(`  ${c.bold}${c.magenta}◆ README card + badges${c.reset}`);
   console.log('');
 
   if (live) {
-    console.log(`  ${c.dim}Live badges for ${c.reset}${c.cyan}@${handle}${c.reset}${c.dim} — paste anywhere; they refresh as you work:${c.reset}`);
+    console.log(`  ${c.dim}Live stat card for ${c.reset}${c.cyan}@${handle}${c.reset}${c.dim} — paste once; it auto-updates as you work:${c.reset}`);
     console.log('');
-    for (const line of liveMd(handle).split('\n')) console.log(`    ${line}`);
+    console.log(`    ${cardMd(handle)}`);
     console.log('');
-    console.log(`  ${c.dim}Pick any metric:${c.reset} ${c.cyan}tokens · sessions · hours · streak${c.reset}`);
+    console.log(`  ${c.dim}…or compact badges:${c.reset}`);
+    console.log('');
+    for (const line of badgesMd(handle).split('\n')) console.log(`    ${line}`);
+    console.log('');
+    console.log(`  ${c.dim}Badge metrics:${c.reset} ${c.cyan}tokens · sessions · hours · streak${c.reset}`);
     console.log(`  ${c.dim}One-click copy + shareable page:${c.reset} ${c.cyan}${site}/u/${handle}${c.reset}`);
     console.log(`  ${c.dim}Straight to clipboard:${c.reset} ${c.cyan}claude-rpc readme --raw${c.reset}${c.dim} | pbcopy${c.reset}`);
   } else {
-    console.log(`  ${c.dim}A live, always-current badge needs a public profile. Turn one on:${c.reset}`);
+    console.log(`  ${c.dim}A live, always-current card + badges need a public profile. Turn one on:${c.reset}`);
     console.log(`    ${c.cyan}claude-rpc profile set --handle <name> && claude-rpc profile on${c.reset}`);
     console.log('');
-    console.log(`  ${c.dim}Then your badges live here (self-refreshing — paste once):${c.reset}`);
+    console.log(`  ${c.dim}Then your card + badges live here (self-refreshing — paste once):${c.reset}`);
+    console.log(`    ${c.cyan}${endpoint}/card/<handle>.svg${c.reset}`);
     console.log(`    ${c.cyan}${endpoint}/badge/<handle>.svg?metric=hours${c.reset}`);
   }
 
@@ -2003,7 +2011,7 @@ function help() {
     ['statusline', 'One-line status for tmux/shell prompts (--template)'],
     ['calendar',  'Year activity heatmap SVG (--out --gist)'],
     ['session-card', 'Recap card for the current session (--out)'],
-    ['readme',    'Paste-ready README badges for your profile (--raw to pipe)'],
+    ['readme',    'Paste-ready README card + badges for your profile (--raw to pipe)'],
     ['mcp install', 'Wire the stats MCP server into Claude Code (one command)'],
     ['mcp uninstall', 'Remove the stats MCP server from Claude Code'],
     ['mcp',       'Run the MCP server (stdio) — exposes your stats to Claude'],

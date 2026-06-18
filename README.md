@@ -146,13 +146,15 @@ claude-rpc readme                 # prints paste-ready README badge markdown
 claude-rpc readme --raw | pbcopy  # straight to your clipboard
 ```
 
-**Live badges, paste once.** With a public profile (`claude-rpc profile set --handle <you> && claude-rpc profile on`), your stats are served as always-current badges from the community worker — no `gh`, no gist, nothing to re-run:
+**Live card + badges, paste once.** With a public profile (`claude-rpc profile set --handle <you> && claude-rpc profile on`), your stats are served as an always-current card (and badges) from the community worker — no `gh`, no gist, nothing to re-run:
 
 ```md
+[![Claude Code stats](https://claude-rpc-totals.claude-rpc.workers.dev/card/<you>.svg)](https://claude-rpc.vercel.app/u/<you>)
+
 [![Claude Code hours](https://claude-rpc-totals.claude-rpc.workers.dev/badge/<you>.svg?metric=hours)](https://claude-rpc.vercel.app/?ref=badge)
 ```
 
-`metric=` is one of `tokens · sessions · hours · streak` (optional `&label=` to retitle). Your profile page at `/u/<you>` has a one-click "copy" for the same block. The badge refreshes itself as the daemon flushes your profile (~every 30 min).
+The card shows tokens, sessions, active hours and streak; badge `metric=` is one of `tokens · sessions · hours · streak` (optional `&label=` to retitle). Both refresh themselves as the daemon flushes your profile (~every 30 min). Your profile page at `/u/<you>` has a one-click "copy" for the whole block.
 
 Prefer to render locally? `badge`/`card`/`calendar`/`github-stat` all write SVG, and `--gist` self-hosts a live one:
 
