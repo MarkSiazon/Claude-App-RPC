@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.22.1] - 2026-06-18
+
+**Fixed**
+
+- **`npx claude-rpc@latest setup` now actually upgrades an existing older global install.** The self-promote step checked whether claude-rpc was "already current" by running `claude-rpc --version` through PATH — but while setup runs under `npx claude-rpc@latest`, npx prepends its own throwaway cache (the newest version) to PATH, so that check always matched and the step skipped the real `npm install -g`. An existing older global (e.g. 0.20.4) was left untouched: setup printed "✓ global install" while the `claude-rpc` on PATH stayed stale, and `claude-rpc <new-command>` then failed with "unknown command." It now reads the globally-installed version directly off disk (`npm root -g`), immune to npx's PATH shadowing, so an out-of-date global is correctly replaced.
+
 ## [0.22.0] - 2026-06-18
 
 **Added**

@@ -635,18 +635,34 @@ function verifyHookPipe(exePath) {
 // hooks to the now-persistent global bin exactly like a normal npm install.
 // Best-effort + loud: a failed -g (perms, offline) returns false so the caller
 // can stop with the manual command rather than wire a dead hook.
-function promoteNpxToGlobal() {
-  // Already promoted on a previous run? The PATH-resolved bin answers fast.
+// Version of the GLOBALLY-installed claude-rpc, read straight off disk via
+// `npm root -g` — NOT through PATH. While setup runs under `npx
+// claude-rpc@latest`, npx prepends its own throwaway cache (the current
+// VERSION) to PATH, so a bare `claude-rpc --version` resolves to npx's copy and
+// always looks current — which made promoteNpxToGlobal skip the real upgrade
+// and silently leave a stale older global behind (it printed ✓ but did
+// nothing). Reading the global package.json sidesteps that PATH shadowing.
+function globalInstalledVersion() {
   try {
-    const v = spawnSync('claude-rpc', ['--version'], {
+    const r = spawnSync('npm', ['root', '-g'], {
       encoding: 'utf8', timeout: 4000, windowsHide: true,
-      shell: process.platform === 'win32',
+      shell: process.platform === 'win32',   // npm is npm.cmd on Windows
     });
-    if ((v.stdout || '').trim() === `claude-rpc ${VERSION}`) {
-      noop('global install current');
-      return true;
-    }
-  } catch { /* not installed yet — promote below */ }
+    const root = (r.stdout || '').trim();
+    if (!root) return null;
+    const pkg = JSON.parse(readFileSync(join(root, 'claude-rpc', 'package.json'), 'utf8'));
+    return typeof pkg.version === 'string' ? pkg.version : null;
+  } catch { return null; }   // not installed / npm missing / unreadable
+}
+
+function promoteNpxToGlobal() {
+  // Already promoted on a previous run AND current? Skip the redundant -g (also
+  // lets setup succeed when a correct global exists but `npm -g` would fail —
+  // perms/offline). Checks the on-disk global, immune to npx's PATH shadowing.
+  if (globalInstalledVersion() === VERSION) {
+    noop('global install current');
+    return true;
+  }
   const r = spawnSync('npm', ['install', '-g', `claude-rpc@${VERSION}`], {
     encoding: 'utf8',
     shell: process.platform === 'win32',   // npm is npm.cmd on Windows
