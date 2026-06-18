@@ -2,6 +2,14 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.22.0] - 2026-06-18
+
+**Added**
+
+- **Live, paste-once README badges — no gist, no `gh`, nothing to re-run.** A public profile (`claude-rpc profile on`) is now served as always-current shields-style badges straight from the community worker: `GET /badge/<handle>.svg?metric=tokens|sessions|hours|streak` (optional `&label=` to retitle). Paste the markdown once and it refreshes itself as the daemon flushes your profile (~every 30 min). An unknown handle returns a neutral placeholder SVG (never a broken-image icon). The existing `badge --gist` self-hosting path is unchanged for users who prefer it.
+- **`claude-rpc readme`** — prints paste-ready README badge markdown for your profile (the live worker badges above, plus the gist/card alternatives). `claude-rpc readme --raw` emits just the markdown so you can pipe it straight to a clipboard tool (`claude-rpc readme --raw | pbcopy`).
+- **One-click "copy" on your profile page.** `/u/<handle>` now shows an "Embed in your README" block with a live badge preview and a copy button for the same markdown.
+
 ## [0.21.0] - 2026-06-16
 
 **Added**

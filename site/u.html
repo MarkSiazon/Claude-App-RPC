@@ -39,6 +39,17 @@
   .cta { margin-top: 24px; font-family: var(--font-mono); background: var(--ink); color: var(--paper); padding: 14px 18px; display: inline-block; }
   .cta .ps1 { color: var(--rust); }
   .err { color: var(--ink-mute); margin-top: 28px; }
+  .embed { margin-top: 40px; }
+  .embed h2 { font-family: var(--font-disp); font-size: 1.15rem; margin: 0 0 4px; }
+  .embed .hint { color: var(--ink-mute); font-family: var(--font-mono); font-size: 0.8rem; margin: 0 0 16px; }
+  .embed .preview { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .embed .preview img { height: 20px; }
+  .codebox { position: relative; }
+  .codebox pre { background: var(--ink); color: var(--paper); font-family: var(--font-mono); font-size: 0.74rem;
+    line-height: 1.6; padding: 16px 18px; margin: 0; overflow-x: auto; border: 1.5px solid var(--ink); box-shadow: var(--shadow); }
+  .copybtn { position: absolute; top: 10px; right: 10px; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; background: var(--rust); color: #fff; border: none; padding: 6px 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .copybtn:hover { background: var(--rust-3); }
   footer { border-top: 1.5px solid var(--ink); padding: 20px 24px; font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-mute); display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; }
 </style>
 </head>
@@ -55,6 +66,16 @@
     </div>
     <div class="err" id="err" hidden></div>
     <div class="cta" id="cta" hidden><span class="ps1">$</span> npx claude-rpc@latest setup &amp;&amp; claude-rpc profile on</div>
+
+    <section class="embed" id="embed" hidden>
+      <h2>Embed in your README</h2>
+      <p class="hint">Live badges — they track this profile and refresh themselves. No re-running, no gist.</p>
+      <div class="preview" id="embedPreview"></div>
+      <div class="codebox">
+        <button class="copybtn" id="copybtn" type="button">Copy</button>
+        <pre><code id="embedmd"></code></pre>
+      </div>
+    </section>
   </main>
   <footer>
     <a href="/">home</a>
@@ -92,9 +113,38 @@
       document.getElementById('streak').textContent = (p.streak || 0) + 'd';
       document.getElementById('grid').hidden = false;
       document.getElementById('cta').hidden = false;
+      renderEmbed(p.handle);
     } catch (e) {
       showErr('Profile unavailable — try again in a moment.');
     }
+  }
+
+  // Paste-ready README badges for this profile. Live worker SVGs, click-through
+  // to the landing (?ref=badge) — the documented README badge referral source.
+  const SITE = 'https://claude-rpc.vercel.app';
+  const BADGES = [
+    { metric: 'hours',  alt: 'Claude Code hours' },
+    { metric: 'streak', alt: 'Claude Code streak' },
+    { metric: 'tokens', alt: 'Claude Code tokens' },
+  ];
+  function renderEmbed(h) {
+    const enc = encodeURIComponent(h);
+    const md = BADGES.map(b =>
+      `[![${b.alt}](${WORKER}/badge/${enc}.svg?metric=${b.metric})](${SITE}/?ref=badge)`
+    ).join('\n');
+    document.getElementById('embedPreview').innerHTML = BADGES.map(b =>
+      `<img src="${WORKER}/badge/${enc}.svg?metric=${b.metric}" alt="${b.alt}" loading="lazy" />`
+    ).join('');
+    document.getElementById('embedmd').textContent = md;
+    const btn = document.getElementById('copybtn');
+    btn.onclick = async () => {
+      try { await navigator.clipboard.writeText(md); }
+      catch { const r = document.createRange(); r.selectNode(document.getElementById('embedmd'));
+        const s = getSelection(); s.removeAllRanges(); s.addRange(r); try { document.execCommand('copy'); } catch {} s.removeAllRanges(); }
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+    };
+    document.getElementById('embed').hidden = false;
   }
   function showErr(msg) {
     document.getElementById('name').textContent = 'not found';

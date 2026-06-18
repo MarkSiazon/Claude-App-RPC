@@ -36,6 +36,16 @@ export function fmtNum(n) {
   return neg + (v / 1e9).toFixed(2) + 'B';
 }
 
+// Byte-for-byte mirror of src/fmt.js fmtHours — same sync rule as fmtNum.
+// Duration from ms: <60m → "42m", <10h → "2.5h", else "12h".
+export function fmtHours(ms) {
+  if (!ms || ms < 0) return '0h';
+  const mins = Math.round(ms / 60_000);
+  if (mins < 60) return `${mins}m`;
+  const hours = mins / 60;
+  return hours < 10 ? `${hours.toFixed(1)}h` : `${Math.round(hours)}h`;
+}
+
 export function renderBadge({ label, value, color }) {
   const PAD = 8;
   const labelW = textWidth(label) + PAD * 2;

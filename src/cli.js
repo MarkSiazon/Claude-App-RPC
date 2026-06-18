@@ -1057,6 +1057,67 @@ async function doSessionCard(argv) {
   } else process.stdout.write(svg);
 }
 
+// `claude-rpc readme` — paste-ready markdown for putting your live Claude Code
+// stats in a README. Pure printer: reads config + the worker endpoint, never
+// hits the network. The live badges track your published profile and refresh
+// themselves (no gist, no `gh`, no re-running). `--raw` prints just the
+// markdown so you can pipe it straight to a clipboard tool.
+function doReadme(argv) {
+  const raw = argv.includes('--raw') || argv.includes('--plain');
+  const cfg = loadConfig();
+  const endpoint = (cfg.community?.endpoint || 'https://claude-rpc-totals.claude-rpc.workers.dev').replace(/\/+$/, '');
+  const site = 'https://claude-rpc.vercel.app';
+  const profile = cfg.profile || {};
+  const handle = profile.handle;
+  const live = !!profile.enabled && lb.isValidHandle(handle);
+  const metrics = [
+    ['hours',  'Claude Code hours'],
+    ['streak', 'Claude Code streak'],
+    ['tokens', 'Claude Code tokens'],
+  ];
+  const liveMd = (h) => metrics
+    .map(([m, alt]) => `[![${alt}](${endpoint}/badge/${h}.svg?metric=${m})](${site}/?ref=badge)`)
+    .join('\n');
+
+  // Raw mode: just the markdown, for `claude-rpc readme --raw | pbcopy`.
+  if (raw) {
+    process.stdout.write(live
+      ? liveMd(handle) + '\n'
+      : '<!-- live badges need a public profile: claude-rpc profile set --handle <name> && claude-rpc profile on -->\n');
+    return;
+  }
+
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ README badges${c.reset}`);
+  console.log('');
+
+  if (live) {
+    console.log(`  ${c.dim}Live badges for ${c.reset}${c.cyan}@${handle}${c.reset}${c.dim} — paste anywhere; they refresh as you work:${c.reset}`);
+    console.log('');
+    for (const line of liveMd(handle).split('\n')) console.log(`    ${line}`);
+    console.log('');
+    console.log(`  ${c.dim}Pick any metric:${c.reset} ${c.cyan}tokens · sessions · hours · streak${c.reset}`);
+    console.log(`  ${c.dim}One-click copy + shareable page:${c.reset} ${c.cyan}${site}/u/${handle}${c.reset}`);
+    console.log(`  ${c.dim}Straight to clipboard:${c.reset} ${c.cyan}claude-rpc readme --raw${c.reset}${c.dim} | pbcopy${c.reset}`);
+  } else {
+    console.log(`  ${c.dim}A live, always-current badge needs a public profile. Turn one on:${c.reset}`);
+    console.log(`    ${c.cyan}claude-rpc profile set --handle <name> && claude-rpc profile on${c.reset}`);
+    console.log('');
+    console.log(`  ${c.dim}Then your badges live here (self-refreshing — paste once):${c.reset}`);
+    console.log(`    ${c.cyan}${endpoint}/badge/<handle>.svg?metric=hours${c.reset}`);
+  }
+
+  console.log('');
+  console.log(`  ${c.dim}── self-host on a GitHub gist instead (works without a profile) ──${c.reset}`);
+  console.log(`    ${c.cyan}claude-rpc badge --metric hours --gist${c.reset}   ${c.dim}# prints README markdown${c.reset}`);
+  console.log('');
+  console.log(`  ${c.dim}Shareable cards:${c.reset}`);
+  console.log(`    ${c.cyan}claude-rpc card --range year --out year.svg${c.reset}   ${c.dim}# poster${c.reset}`);
+  console.log(`    ${c.cyan}claude-rpc calendar --gist${c.reset}                    ${c.dim}# live year heatmap${c.reset}`);
+  console.log(`    ${c.cyan}claude-rpc github-stat --gist${c.reset}                 ${c.dim}# profile stat card${c.reset}`);
+  console.log('');
+}
+
 // MCP server — expose stats to Claude Code over stdio. Long-running; never
 // writes to stdout except JSON-RPC frames.
 async function doMcp() {
@@ -1942,6 +2003,7 @@ function help() {
     ['statusline', 'One-line status for tmux/shell prompts (--template)'],
     ['calendar',  'Year activity heatmap SVG (--out --gist)'],
     ['session-card', 'Recap card for the current session (--out)'],
+    ['readme',    'Paste-ready README badges for your profile (--raw to pipe)'],
     ['mcp install', 'Wire the stats MCP server into Claude Code (one command)'],
     ['mcp uninstall', 'Remove the stats MCP server from Claude Code'],
     ['mcp',       'Run the MCP server (stdio) — exposes your stats to Claude'],
@@ -2097,6 +2159,7 @@ process.on('unhandledRejection', (e) => {
     case 'statusline': doStatusline(process.argv.slice(3)); break;
     case 'calendar':  await doCalendar(process.argv.slice(3)); break;
     case 'session-card': await doSessionCard(process.argv.slice(3)); break;
+    case 'readme':    doReadme(process.argv.slice(3)); break;
     case 'mcp': {
       const sub = process.argv[3];
       if (sub === 'install')   { doMcpInstall(process.argv.slice(4)); break; }

@@ -20,8 +20,9 @@
 //                          the canonical identity when one exists)
 //   GET  /squad?id=      — public standings (weekly + lifetime)
 //   GET  /squad/bycode?code= — minimal preview for the join page
-//   GET  /sessions.svg   — shields-style badge for the README
+//   GET  /sessions.svg   — shields-style community badge for the README
 //   GET  /tokens.svg     — same, for tokens
+//   GET  /badge/<handle>.svg — live per-user badge (?metric=tokens|sessions|hours|streak)
 //   GET  /total.json     — JSON for arbitrary consumers / dashboards
 //   GET  /ref?s=<src>    — referral beacon (counts an allowlisted source)
 //   GET  /refs.json      — referral breakdown by source
@@ -43,7 +44,7 @@
 // GitHub login. The browser NEVER sees an instanceId — that stays the CLI's
 // credential; bearer-authed requests resolve to it server-side via gh:<login>.
 
-import { renderBadge, fmtNum } from './badge.js';
+import { renderBadge, fmtNum, fmtHours } from './badge.js';
 import { mintToken, verifyToken, SESSION_TTL_MS, STATE_TTL_MS } from './auth.js';
 
 const SCHEMA_VERSION = 1;
@@ -243,6 +244,51 @@ export async function handleBadge(metric, env) {
       'Cache-Control': 'public, max-age=300, s-maxage=300',
     },
   });
+}
+
+// ── Per-user README badge ────────────────────────────────────────────────
+//
+// `GET /badge/<handle>.svg?metric=tokens|sessions|hours|streak` renders a
+// live, always-current shields-style badge from a published public profile —
+// the paste-once alternative to the gist flow (no `gh` auth, no re-running).
+// It only surfaces fields already public on /u/<handle>, and the four metrics
+// map 1:1 onto the four totals a profile stores (publicProfile / boardEntry).
+// Colors mirror src/badge.js COLORS so a worker badge and a local
+// `claude-rpc badge` look the same.
+const USER_BADGE_METRICS = {
+  tokens:   { label: 'claude · tokens',   color: { left: '#555', right: '#a55'    }, value: (p) => fmtNum(p.tokens || 0) },
+  sessions: { label: 'claude · sessions', color: { left: '#555', right: '#5865F2' }, value: (p) => fmtNum(p.sessions || 0) },
+  hours:    { label: 'claude · hours',    color: { left: '#555', right: '#4c1'    }, value: (p) => fmtHours(p.activeMs || 0) },
+  streak:   { label: 'claude · streak',   color: { left: '#555', right: '#fe7d37' }, value: (p) => `${p.streak || 0} days` },
+};
+
+function svgBadgeResponse(svg, maxAge = 300) {
+  return new Response(svg, {
+    headers: {
+      ...CORS,
+      'Content-Type': 'image/svg+xml; charset=utf-8',
+      'Cache-Control': `public, max-age=${maxAge}, s-maxage=${maxAge}`,
+    },
+  });
+}
+
+export async function handleUserBadge(rawHandle, url, env) {
+  const metric = USER_BADGE_METRICS[(url.searchParams.get('metric') || 'tokens').toLowerCase()]
+    || USER_BADGE_METRICS.tokens;
+  // Always answer with an SVG — even for an unknown/missing handle a README
+  // <img> should render *something* rather than a broken-image icon. Short
+  // cache on the placeholder so a freshly-published profile lights up fast.
+  const placeholder = () => svgBadgeResponse(
+    renderBadge({ label: 'claude-rpc', value: 'no profile', color: { left: '#555', right: '#9a9183' } }),
+    60,
+  );
+  const handle = normHandle(rawHandle);
+  if (!handle) return placeholder();
+  const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+  const p = owner ? await getProfile(env, owner) : null;
+  if (!p) return placeholder();
+  const label = cleanName(url.searchParams.get('label')) || metric.label;
+  return svgBadgeResponse(renderBadge({ label, value: metric.value(p), color: metric.color }));
 }
 
 // Record a referral hit. Returns 204 regardless (it's a fire-and-forget
@@ -1543,6 +1589,13 @@ export default {
     }
     if (request.method === 'GET' && url.pathname === '/tokens.svg') {
       return handleBadge('tokens', env);
+    }
+    // Per-user badge: /badge/<handle>.svg. Matched by prefix+suffix so a
+    // handle never collides with the fixed community badges above.
+    if (request.method === 'GET' && url.pathname.startsWith('/badge/') && url.pathname.endsWith('.svg')) {
+      let raw = url.pathname.slice('/badge/'.length, -'.svg'.length);
+      try { raw = decodeURIComponent(raw); } catch { /* keep raw — normHandle rejects junk */ }
+      return handleUserBadge(raw, url, env);
     }
     if (request.method === 'GET' && url.pathname === '/total.json') {
       return handleJson(env);

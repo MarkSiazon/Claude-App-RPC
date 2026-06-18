@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { validateReport, handleReport, handleBadge, handleJson, handleRef, handleRefs,
+const { validateReport, handleReport, handleBadge, handleUserBadge, handleJson, handleRef, handleRefs,
   validateProfile, handleProfile, handleLeaderboard, handleVerifyStart, handleVerifyCheck,
   handleProfileGet, pruneBoardIndex } = await import('../src/index.js');
 const worker = (await import('../src/index.js')).default;
@@ -198,6 +198,74 @@ test('handleBadge: unknown metric → 404', async () => {
   const env = makeEnv();
   const res = await handleBadge('whatever', env);
   assert.equal(res.status, 404);
+});
+
+// ── handleUserBadge (per-user README badge) ──────────────────────────────
+
+// Seed a public profile directly in KV (pf:<id> + handle:<h> → id), the same
+// shape handleProfile writes — no rate-limit / validation dance needed here.
+async function seedProfile(env, handle, fields) {
+  const id = '99999999-0000-0000-0000-000000000001';
+  await env.TOTALS.put(`pf:${id}`, JSON.stringify({ handle, verified: true, ...fields }));
+  await env.TOTALS.put(`handle:${handle}`, id);
+  return id;
+}
+function badgeUrl(handle, qs = '') {
+  return new URL(`http://localhost/badge/${handle}.svg${qs}`);
+}
+
+test('handleUserBadge: defaults to tokens and renders the profile total', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { tokens: 1_500_000, sessions: 42, activeMs: 9_000_000, streak: 7 });
+  const res = await handleUserBadge('archer', badgeUrl('archer'), env);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('Content-Type'), /image\/svg/);
+  const body = await res.text();
+  assert.match(body, /claude.+tokens/);
+  assert.match(body, /1\.50M/, 'fmtNum scales 1.5M tokens');
+});
+
+test('handleUserBadge: metric=hours renders fmtHours from activeMs', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { tokens: 10, activeMs: 9_000_000, streak: 7 });
+  const res = await handleUserBadge('archer', badgeUrl('archer', '?metric=hours'), env);
+  const body = await res.text();
+  assert.match(body, /claude.+hours/);
+  assert.match(body, /2\.5h/, '9,000,000ms → 2.5h');
+});
+
+test('handleUserBadge: metric=streak renders "<n> days"', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { streak: 12 });
+  const res = await handleUserBadge('archer', badgeUrl('archer', '?metric=streak'), env);
+  const body = await res.text();
+  assert.match(body, /12 days/);
+});
+
+test('handleUserBadge: ?label= overrides the left label (sanitized)', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { tokens: 5 });
+  const res = await handleUserBadge('archer', badgeUrl('archer', '?label=my%20claude'), env);
+  const body = await res.text();
+  assert.match(body, /my claude/);
+});
+
+test('handleUserBadge: unknown handle → placeholder SVG (200, not broken image)', async () => {
+  const env = makeEnv();
+  const res = await handleUserBadge('nobody', badgeUrl('nobody'), env);
+  assert.equal(res.status, 200, 'always 200 so the README <img> renders');
+  assert.match(res.headers.get('Content-Type'), /image\/svg/);
+  const body = await res.text();
+  assert.match(body, /no profile/);
+});
+
+test('handleUserBadge: routes through the worker entry point', async () => {
+  const env = makeEnv();
+  await seedProfile(env, 'archer', { tokens: 2_000_000 });
+  const res = await worker.fetch(new Request('http://localhost/badge/archer.svg?metric=tokens'), env);
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /2\.00M/);
 });
 
 // ── handleJson ─────────────────────────────────────────────────────────

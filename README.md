@@ -139,7 +139,22 @@ The web dashboard pushes updates via SSE; the TUI refreshes on a 3-second tick.
 
 ### beyond your machine
 
-Shields-style badges and a poster-style summary card you can paste into a README or a Discord message:
+Shields-style badges and a poster-style summary card you can paste into a README or a Discord message. The fastest path is one command:
+
+```sh
+claude-rpc readme                 # prints paste-ready README badge markdown
+claude-rpc readme --raw | pbcopy  # straight to your clipboard
+```
+
+**Live badges, paste once.** With a public profile (`claude-rpc profile set --handle <you> && claude-rpc profile on`), your stats are served as always-current badges from the community worker — no `gh`, no gist, nothing to re-run:
+
+```md
+[![Claude Code hours](https://claude-rpc-totals.claude-rpc.workers.dev/badge/<you>.svg?metric=hours)](https://claude-rpc.vercel.app/?ref=badge)
+```
+
+`metric=` is one of `tokens · sessions · hours · streak` (optional `&label=` to retitle). Your profile page at `/u/<you>` has a one-click "copy" for the same block. The badge refreshes itself as the daemon flushes your profile (~every 30 min).
+
+Prefer to render locally? `badge`/`card`/`calendar`/`github-stat` all write SVG, and `--gist` self-hosts a live one:
 
 ```sh
 claude-rpc badge --metric hours  --range 7d   --out claude-hours.svg
@@ -297,6 +312,7 @@ It's a thin bootstrapper — on the first session it just runs `npx claude-rpc@l
 | `github-stat`    | Embeddable profile stat card (`--handle` `--out` `--gist`) |
 | `calendar`       | Year activity heatmap SVG (`--out` `--gist`) |
 | `session-card`   | Recap card for the current session (`--out`) |
+| `readme`         | Paste-ready README badge markdown for your profile (`--raw` to pipe) |
 | `statusline`     | One-line status for tmux/shell prompts (`--template`) |
 | `mcp install`    | Wire the stats MCP server into Claude Code (one command) |
 | `mcp`            | Run the MCP server (stdio) for Claude Code |
