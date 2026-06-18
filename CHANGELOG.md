@@ -10,6 +10,10 @@ All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachang
 - **`claude-rpc readme`** — prints paste-ready README badge markdown for your profile (the live worker badges above, plus the gist/card alternatives). `claude-rpc readme --raw` emits just the markdown so you can pipe it straight to a clipboard tool (`claude-rpc readme --raw | pbcopy`).
 - **One-click "copy" on your profile page.** `/u/<handle>` now shows an "Embed in your README" block with a live badge preview and a copy button for the same markdown.
 
+**Changed**
+
+- **Worker: ~30% fewer KV writes per flush** (infra only — keeps the totals worker comfortably inside Cloudflare's free-tier 1,000-writes/day cap, which it was crossing 50% of on busy days). The `seen:` active-install marker now refreshes at most once a day instead of every flush; the `handle:`→id mapping is only rewritten when it actually changes; and the community totals moved from two keys (`total:sessions` + `total:tokens`) into one (`total:counters`), so a `/report` does a single write. Legacy split keys are read as a one-time seed, so historical totals carry over with no migration. The new per-user badge endpoint is read-only and adds no writes.
+
 ## [0.21.0] - 2026-06-16
 
 **Added**

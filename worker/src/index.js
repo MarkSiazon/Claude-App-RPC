@@ -51,6 +51,10 @@ const SCHEMA_VERSION = 1;
 const MAX_DELTA_SESSIONS = 100_000;       // per single report — bigger gets rejected
 const MAX_DELTA_TOKENS   = 5_000_000_000; // 5B; ~5 years of heavy use
 const SEEN_TTL_SECONDS   = 30 * 24 * 60 * 60;
+// The active-install marker only needs refreshing often enough to outrun its
+// 30-day TTL — rewriting it on every 30-min flush was pure KV-write waste
+// against the free-tier 1k-writes/day cap. Refresh at most once a day.
+const SEEN_REFRESH_MS    = 24 * 60 * 60 * 1000;
 const RATE_WINDOW_SEC    = 60;            // 1 report/minute/instance/endpoint
 // Scoped per endpoint: /report and /profile used to share one `rate:<id>`
 // key, so the daemon's back-to-back community + profile flushes meant the
@@ -147,6 +151,33 @@ async function addInt(env, key, delta) {
   return next;
 }
 
+// Community totals live in ONE KV value (`total:counters` = {sessions, tokens})
+// so a /report does a single KV write instead of two — the free-tier KV WRITE
+// budget (1k/day) is the binding constraint here, not reads (100k/day). The
+// legacy split keys (total:sessions / total:tokens) are read as a one-time seed
+// until the first combined write lands, so historical totals carry over with no
+// migration step or data loss. Same best-effort RMW race tolerance as addInt.
+async function getCounters(env) {
+  const raw = await env.TOTALS.get('total:counters');
+  if (raw) {
+    try {
+      const c = JSON.parse(raw);
+      return { sessions: Number(c.sessions) || 0, tokens: Number(c.tokens) || 0 };
+    } catch { /* corrupt → fall back to the legacy keys / zero */ }
+  }
+  return {
+    sessions: await getInt(env, 'total:sessions'),
+    tokens:   await getInt(env, 'total:tokens'),
+  };
+}
+
+async function addCounters(env, sessionsDelta, tokensDelta) {
+  const cur = await getCounters(env);
+  const next = { sessions: cur.sessions + sessionsDelta, tokens: cur.tokens + tokensDelta };
+  await env.TOTALS.put('total:counters', JSON.stringify(next));
+  return next;
+}
+
 // IP-scoped fixed-window rate limit. Returns true if the request is within
 // budget for the current window, false if it should be rejected with 429.
 // Uses KV read-modify-write per window key with a short TTL; like addInt this
@@ -203,17 +234,29 @@ export async function handleReport(request, env) {
     return jsonError(429, 'rate limited');
   }
 
-  // Record dedup marker. We don't *enforce* dedup with this key — the
-  // rate limiter already prevents floods — but downstream analytics can
-  // count distinct instances from the existence of seen:<id> entries.
-  await env.TOTALS.put(
-    `seen:${body.instanceId}`,
-    JSON.stringify({ ts: Date.now(), version: body.version, osFamily: body.osFamily }),
-    { expirationTtl: SEEN_TTL_SECONDS },
-  );
+  // Refresh the dedup/active-install marker at most once per day. It only feeds
+  // downstream analytics (distinct active installs + os/version mix) and carries
+  // a 30-day TTL, so rewriting it on every 30-min flush spent ~48 KV writes/day
+  // per install for no analytic gain. A daily write keeps the TTL alive for any
+  // active install; an upgraded version is still captured within a day.
+  let seenFresh = false;
+  try {
+    const prevSeen = await env.TOTALS.get(`seen:${body.instanceId}`);
+    if (prevSeen) {
+      const ts = JSON.parse(prevSeen).ts;
+      seenFresh = Number.isFinite(ts) && (Date.now() - ts) < SEEN_REFRESH_MS;
+    }
+  } catch { /* unreadable/corrupt → rewrite it */ }
+  if (!seenFresh) {
+    await env.TOTALS.put(
+      `seen:${body.instanceId}`,
+      JSON.stringify({ ts: Date.now(), version: body.version, osFamily: body.osFamily }),
+      { expirationTtl: SEEN_TTL_SECONDS },
+    );
+  }
 
-  const sessions = await addInt(env, 'total:sessions', Number(body.sessionsDelta));
-  const tokens   = await addInt(env, 'total:tokens',   Number(body.tokensDelta));
+  // One combined KV write instead of two separate addInt writes (see addCounters).
+  const { sessions, tokens } = await addCounters(env, Number(body.sessionsDelta), Number(body.tokensDelta));
 
   return new Response(JSON.stringify({
     ok: true,
@@ -223,8 +266,7 @@ export async function handleReport(request, env) {
 }
 
 export async function handleBadge(metric, env) {
-  const sessions = await getInt(env, 'total:sessions');
-  const tokens   = await getInt(env, 'total:tokens');
+  const { sessions, tokens } = await getCounters(env);
   let label, value, color;
   if (metric === 'sessions') {
     label = 'community · sessions';
@@ -329,8 +371,7 @@ export async function handleRefs(env) {
 }
 
 export async function handleJson(env) {
-  const sessions = await getInt(env, 'total:sessions');
-  const tokens   = await getInt(env, 'total:tokens');
+  const { sessions, tokens } = await getCounters(env);
   return new Response(JSON.stringify({
     schemaVersion: SCHEMA_VERSION,
     sessions,
@@ -672,7 +713,11 @@ export async function handleProfile(request, env) {
   // verified profiles are permanent.
   const pfOpts = next.verified ? {} : { expirationTtl: PF_UNVERIFIED_TTL_SECONDS };
   await env.TOTALS.put(PF_KEY(id), JSON.stringify(next), pfOpts);
-  await env.TOTALS.put(HANDLE_KEY(handle), id);
+  // The handle→id mapping almost never changes between flushes; skip the write
+  // when it's already correct (owner was read above). Saves one KV write on
+  // every steady-state profile flush. Rename/claim paths set owner≠id, so they
+  // still write through here.
+  if (owner !== id) await env.TOTALS.put(HANDLE_KEY(handle), id);
 
   // Update the score-ordered index. Best-effort read-modify-write (same race
   // tolerance as addInt — acceptable for a vanity leaderboard). Pruning on

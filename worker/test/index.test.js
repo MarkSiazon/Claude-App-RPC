@@ -113,8 +113,8 @@ test('handleReport: rate-limits a second report from the same instance', async (
   const res2 = await handleReport(reportRequest({ ...validBody, sessionsDelta: 1, tokensDelta: 1 }), env);
   assert.equal(res2.status, 429);
   // Totals must not have advanced on the rejected report.
-  const total = await env.TOTALS.get('total:sessions');
-  assert.equal(total, '2');
+  const total = JSON.parse(await env.TOTALS.get('total:counters'));
+  assert.equal(total.sessions, 2);
 });
 
 test('handleReport: IP-scoped limiter blocks rotated instanceIds past the window cap', async () => {
@@ -171,6 +171,72 @@ test('handleReport: records a `seen:<id>` dedup marker', async () => {
   const parsed = JSON.parse(seen);
   assert.equal(parsed.version, '0.7.0');
   assert.equal(parsed.osFamily, 'linux');
+});
+
+// ── KV-write reduction (free-tier 1k-writes/day budget) ──────────────────
+
+test('handleReport: writes ONE combined total:counters key, not the split keys', async () => {
+  const env = makeEnv();
+  const res = await handleReport(reportRequest(validBody), env);
+  assert.equal(res.status, 200);
+  assert.ok(env.TOTALS.store.has('total:counters'), 'combined counter written');
+  assert.equal(env.TOTALS.store.has('total:sessions'), false, 'legacy split key not written');
+  assert.equal(env.TOTALS.store.has('total:tokens'), false);
+  const c = JSON.parse(env.TOTALS.store.get('total:counters').value);
+  assert.equal(c.sessions, validBody.sessionsDelta);
+  assert.equal(c.tokens, validBody.tokensDelta);
+});
+
+test('handleReport: seeds the combined counter from legacy split keys (no data loss)', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put('total:sessions', '900');
+  await env.TOTALS.put('total:tokens', '23000000000');
+  const res = await handleReport(reportRequest({ ...validBody, sessionsDelta: 2, tokensDelta: 1000 }), env);
+  const j = await res.json();
+  assert.equal(j.totals.sessions, 902, 'carried over legacy sessions + delta');
+  assert.equal(j.totals.tokens, 23000001000);
+});
+
+test('handleBadge / handleJson still read the legacy split keys (back-compat)', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put('total:sessions', '1234');
+  await env.TOTALS.put('total:tokens', '5678');
+  const badge = await (await handleBadge('sessions', env)).text();
+  assert.match(badge, /1\.2k/);
+  const j = await (await handleJson(env)).json();
+  assert.equal(j.tokens, 5678);
+});
+
+test('handleReport: does NOT rewrite a fresh seen marker (write throttle)', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put(`seen:${validBody.instanceId}`,
+    JSON.stringify({ ts: Date.now(), version: 'OLD', osFamily: 'linux' }));
+  await handleReport(reportRequest(validBody), env);
+  const seen = JSON.parse(env.TOTALS.store.get(`seen:${validBody.instanceId}`).value);
+  assert.equal(seen.version, 'OLD', 'fresh marker left untouched (no KV write)');
+});
+
+test('handleReport: refreshes a stale (>24h) seen marker', async () => {
+  const env = makeEnv();
+  await env.TOTALS.put(`seen:${validBody.instanceId}`,
+    JSON.stringify({ ts: Date.now() - 25 * 60 * 60 * 1000, version: 'OLD', osFamily: 'linux' }));
+  await handleReport(reportRequest(validBody), env);
+  const seen = JSON.parse(env.TOTALS.store.get(`seen:${validBody.instanceId}`).value);
+  assert.equal(seen.version, validBody.version, 'stale marker refreshed to current');
+});
+
+test('handleProfile: steady-state re-publish skips the handle: write', async () => {
+  const env = makeEnv();
+  await handleProfile(profileRequest(profileBody), env);
+  assert.equal(env.TOTALS.store.get(`handle:${profileBody.handle}`).value, profileBody.instanceId);
+  // Allow a second publish through the per-instance limiter, then spy on writes.
+  for (const k of [...env.TOTALS.store.keys()]) if (k.startsWith('rate:')) env.TOTALS.store.delete(k);
+  const written = new Set();
+  const origPut = env.TOTALS.put.bind(env.TOTALS);
+  env.TOTALS.put = async (k, v, o) => { written.add(k); return origPut(k, v, o); };
+  await handleProfile(profileRequest({ ...profileBody, tokens: 4000 }), env);
+  assert.equal(written.has(`handle:${profileBody.handle}`), false, 'unchanged handle mapping not rewritten');
+  assert.ok([...written].some((k) => k.startsWith('pf:')), 'pf still written (stats changed)');
 });
 
 // ── handleBadge ────────────────────────────────────────────────────────
