@@ -447,15 +447,15 @@ export function installMcp({ exePath, scope = 'user' } = {}) {
   const { command, args } = mcpServerCommand(exePath);
   const winShell = process.platform === 'win32';
   // Replace any stale entry first so re-running is idempotent (ignore failure).
-  spawnSync('claude', ['mcp', 'remove', 'claude-rpc', '--scope', scope], { stdio: 'ignore', shell: winShell });
-  const r = spawnSync('claude', ['mcp', 'add', 'claude-rpc', '--scope', scope, '--', command, ...args], { stdio: 'inherit', shell: winShell });
+  spawnSync('claude', ['mcp', 'remove', 'claude-rpc', '--scope', scope], { stdio: 'ignore', shell: winShell, windowsHide: true });
+  const r = spawnSync('claude', ['mcp', 'add', 'claude-rpc', '--scope', scope, '--', command, ...args], { stdio: 'inherit', shell: winShell, windowsHide: true });
   if (r.error && r.error.code === 'ENOENT') return { ok: false, reason: 'no-claude', command, args };
   if (r.status !== 0) return { ok: false, reason: 'add-failed', code: r.status, command, args };
   return { ok: true, command, args, scope };
 }
 
 export function uninstallMcp({ scope = 'user' } = {}) {
-  const r = spawnSync('claude', ['mcp', 'remove', 'claude-rpc', '--scope', scope], { stdio: 'inherit', shell: process.platform === 'win32' });
+  const r = spawnSync('claude', ['mcp', 'remove', 'claude-rpc', '--scope', scope], { stdio: 'inherit', shell: process.platform === 'win32', windowsHide: true });
   if (r.error && r.error.code === 'ENOENT') return { ok: false, reason: 'no-claude' };
   return { ok: r.status === 0 };
 }
@@ -666,6 +666,7 @@ function promoteNpxToGlobal() {
   const r = spawnSync('npm', ['install', '-g', `claude-rpc@${VERSION}`], {
     encoding: 'utf8',
     shell: process.platform === 'win32',   // npm is npm.cmd on Windows
+    windowsHide: true,                      // don't flash a console window
   });
   if (r.error || r.status !== 0) {
     // The piped npm chatter only matters when it failed.
@@ -687,6 +688,7 @@ function warnIfStale() {
     const r = spawnSync('npm', ['view', 'claude-rpc', 'version'], {
       encoding: 'utf8', timeout: 4000,
       shell: process.platform === 'win32',   // npm is npm.cmd on Windows
+      windowsHide: true,                      // don't flash a console window
     });
     const latest = (r.stdout || '').trim();
     if (!latest || latest === VERSION) return;

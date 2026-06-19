@@ -133,7 +133,8 @@ server.listen(PORT, '127.0.0.1', () => {
     const opener = process.platform === 'win32' ? `start "" "${url}"`
       : process.platform === 'darwin' ? `open "${url}"`
       : `xdg-open "${url}"`;
-    exec(opener, () => {});
+    // windowsHide so the cmd.exe that runs `start` doesn't flash a console.
+    exec(opener, { windowsHide: true }, () => {});
   }
 });
 

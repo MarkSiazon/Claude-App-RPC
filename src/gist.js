@@ -27,9 +27,11 @@ function ghQuote(a) {
   return /[\s"]/.test(a) ? `"${String(a).replace(/"/g, '""')}"` : a;
 }
 function gh(args, opts = {}) {
+  // windowsHide so the gh.exe/cmd shim doesn't flash a console window on
+  // Windows (shell:true routes through cmd.exe; hide that too). No-op elsewhere.
   return WIN
-    ? spawnSync('gh', args.map(ghQuote), { ...opts, shell: true })
-    : spawnSync('gh', args, opts);
+    ? spawnSync('gh', args.map(ghQuote), { ...opts, shell: true, windowsHide: true })
+    : spawnSync('gh', args, { ...opts, windowsHide: true });
 }
 
 // Bare fetch has no total timeout; a stalled GitHub endpoint would hang the

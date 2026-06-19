@@ -197,7 +197,12 @@ function probeGithubPrivate(cwd) {
   execFile(
     'gh',
     ['repo', 'view', '--json', 'isPrivate', '-q', '.isPrivate'],
-    { cwd, timeout: 1500 },
+    // windowsHide: on Windows `gh` is a console app; without this the daemon —
+    // which runs with no console of its own — pops a visible terminal window for
+    // the life of the probe (~1s) every time this fires (a cwd cache-miss, i.e.
+    // entering a project, then once per 5-min TTL). That's the stray terminal
+    // flash users see "sometimes" while working. No-op off Windows.
+    { cwd, timeout: 1500, windowsHide: true },
     (err, stdout) => {
       ghProbeInFlight.delete(cwd);
       let value = null;
