@@ -136,7 +136,9 @@
         <button id="daemonStartBtn" class="primary">Start</button>
         <button id="daemonStopBtn">Stop</button>
         <button id="daemonRestartBtn">Restart</button>
+        <button id="runSetupBtn" title="Wire Claude Code's hooks, install the exe, and start the daemon — safe to re-run any time">Run setup</button>
       </div>
+      <div id="setupStatus" class="hint" style="display:none"></div>
       <div class="log-viewer">
         <div class="log-header">daemon.log <span id="logPath" class="hint">—</span></div>
         <pre id="logBody">loading…</pre>

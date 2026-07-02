@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './safe-stdio.js';
 import { readFileSync, appendFileSync, existsSync, mkdirSync, statSync, renameSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { updateState, resetState, pushUnique, shortFile } from './state.js';

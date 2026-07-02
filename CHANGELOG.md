@@ -2,6 +2,16 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.2] - 2026-07-02
+
+**Fixed — the Windows installer actually works now**
+
+- **The desktop app runs `setup` automatically on first launch.** This was the wizard-exe bug: the NSIS installer put a settings GUI on disk that never wired Claude Code's hooks and never started the daemon — nothing you did in the wizard made a card appear, because the one step that matters only lived in the CLI. The packaged app now runs the bundled CLI's full idempotent `setup` (hooks + canonical exe + config seed + login autostart + daemon + a test-fired hook) on first launch and again after every app update, and reports the outcome right in the Daemon tab. Existing broken installs heal themselves: the auto-updater pulls this version, and the new build's first launch completes the setup that never ran.
+- **A visible "Run setup" button** (Daemon tab) and tray menu entry — re-wiring is one click and safe to repeat, instead of a hidden CLI ritual.
+- **The CLI can no longer be killed by a broken stdio handle.** Node's lazy `process.stdout` getter throws on some invalid inherited handles (children of GUI-subsystem parents, services, emulated consoles) — and a UI module probed it at import time, so the whole exe died before `main()`. All entrypoints now guard stdio first and degrade to silent output instead of crashing.
+- **Every release now executes the exe it ships.** CI smoke-tests the built binary on its own OS — `--version`, a full hook round-trip, and `vars`, all through fully piped stdio exactly like the dashboard and Claude Code invoke it. A failing exe blocks both the GitHub Release and the npm publish. (The binaries were previously never run in CI on any platform.)
+- Site: the Windows download card now says plainly that the exe is unsigned and SmartScreen's *More info → Run anyway* is expected.
+
 ## [1.1.1] - 2026-07-02
 
 Sixteen logic fixes from a full-codebase review (three parallel deep passes over the pipeline, the CLI, and the worker), plus two funnel fixes. No behavior was intentionally changed beyond what's listed.

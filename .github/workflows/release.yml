@@ -83,6 +83,16 @@ jobs:
       - name: Build CLI binary
         run: npm run build:exe
 
+      # Execute the exact binary we're about to ship, on THIS OS, the way the
+      # dashboard and Claude Code's hook runner invoke it (fully piped stdio,
+      # no console). The exe used to ship without ever being run — a broken
+      # SEA build or a stdio-context startup crash could reach users silently.
+      # A failure here fails the build job, which blocks BOTH the GitHub
+      # Release and the npm publish.
+      - name: Smoke test CLI binary
+        shell: bash
+        run: node scripts/smoke-exe.mjs dist/${{ matrix.cli-out }}
+
       # Stage the binary into dashboard/resources/bin/ so electron-builder
       # bundles it via extraResources.
       - name: Stage CLI into dashboard

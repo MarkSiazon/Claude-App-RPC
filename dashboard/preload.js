@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('api', {
   saveConfig:    (cfg) => ipcRenderer.invoke('save-config', cfg),
   pickConfig:    () => ipcRenderer.invoke('pick-config'),
   daemonStatus:  () => ipcRenderer.invoke('daemon-status'),
+  runSetup:      () => ipcRenderer.invoke('run-setup'),
+  onSetupResult: (handler) => ipcRenderer.on('setup-result', (_, payload) => handler(payload)),
   daemonStart:   () => ipcRenderer.invoke('daemon-start'),
   daemonStop:    () => ipcRenderer.invoke('daemon-stop'),
   daemonRestart: () => ipcRenderer.invoke('daemon-restart'),

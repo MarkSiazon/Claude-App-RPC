@@ -753,7 +753,7 @@
     text-transform: uppercase; letter-spacing: 0.08em;
   }
   .final-cta::after {
-    content: "v1.1.1";
+    content: "v1.1.2";
     position: absolute; bottom: 18px; right: 22px;
     font-family: var(--font-mono); font-size: 0.78rem;
     color: var(--ink-faint);
@@ -834,7 +834,7 @@
   <div class="brand">
     <span class="brand-mark"><img src="https://cdn.qualit.ly/clawd-working-building.gif" alt="clawd character" /></span>
     <span class="name">claude-rpc</span>
-    <span class="vstamp" id="nav-version">v1.1.1</span>
+    <span class="vstamp" id="nav-version">v1.1.2</span>
   </div>
   <div class="nav-links">
     <a href="#download">download</a>
@@ -881,7 +881,7 @@
     </div>
     <p class="install-note">one command — installs globally, wires Claude Code's hooks, and starts the daemon. No Node? <a href="#download">grab the desktop app ↓</a></p>
     <div class="hero-meta">
-      <span><span class="ok">●</span> <span id="latest-tag">v1.1.1</span></span>
+      <span><span class="ok">●</span> <span id="latest-tag">v1.1.2</span></span>
       <span class="dot">·</span>
       <span>MIT</span>
       <span class="dot">·</span>
@@ -950,7 +950,7 @@
         <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.5L9.7 2.2v9.5H0V3.5zm0 17l9.7 1.3v-9.4H0V20.5zM10.8 11.7H24V0L10.8 1.8v9.9zm0 1.2v9.6L24 24V12.9H10.8z"/></svg></span>
         <span class="dl-os-name">windows</span>
       </div>
-      <div class="dl-detail">NSIS installer with auto-update, or a portable <code>.exe</code> you can drop on a USB stick.</div>
+      <div class="dl-detail">NSIS installer with auto-update, or a portable <code>.exe</code> you can drop on a USB stick. Unsigned (solo project) — if SmartScreen warns, it's <em>More info → Run anyway</em>.</div>
       <div class="dl-meta">x64 <span class="pipe">·</span> <span id="size-win">~45 MB</span></div>
       <a class="btn rust" id="dl-win-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">
         get .exe installer <span class="arrow">→</span>
@@ -1031,7 +1031,7 @@
 
   <div class="preview-wrap">
     <div>
-      <span class="sticker tilt-r">v1.1.1 · presence.byStatus</span>
+      <span class="sticker tilt-r">v1.1.2 · presence.byStatus</span>
       <div class="status-tabs" id="status-tabs">
         <span class="status-tab active" data-status="working">working</span>
         <span class="status-tab" data-status="thinking">thinking</span>
@@ -1264,6 +1264,7 @@
       <div class="meta" id="changelog-meta">latest first · <a href="https://github.com/rar-file/claude-rpc/releases">all releases →</a></div>
     </div>
     <ul id="changelog-list">
+      <li><span class="v">v1.1.2</span> <span class="note">the Windows installer finally does its job — the desktop app auto-runs <code>setup</code> on first launch (hooks wired, daemon up), plus a one-click Run setup button and CI now smoke-tests every shipped exe.</span></li>
       <li><span class="v">v1.1.1</span> <span class="note">16 logic fixes from a full-codebase review — compaction no longer resets the card, symlinked dirs no longer double stats, gist artifacts stop overwriting each other, chart labels align.</span></li>
       <li><span class="v">v1.1.0</span> <span class="note"><code>claude-rpc recap</code> — the standup answer: yesterday's projects, ships, churn, and cost in one paste-ready summary (<code>--md</code>), plus a <code>get_recap</code> MCP tool.</span></li>
       <li><span class="v">v1.0.3</span> <span class="note">the project moved home to <strong>claude-rpc.com</strong> — every CLI hint, card footer, badge link, and page now points here; old <code>claude-rpc.vercel.app</code> links redirect.</span></li>

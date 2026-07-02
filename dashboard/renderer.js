@@ -478,6 +478,29 @@ $('daemonRestartBtn').addEventListener('click', async () => {
   setTimeout(refreshLog, 1500);
 });
 
+// Setup — wires hooks + starts the daemon via the bundled CLI. Also fired
+// automatically by the main process on first launch (and after app updates);
+// this surfaces either run's outcome so "did it work?" is never a mystery.
+function showSetupResult(p) {
+  const el = $('setupStatus');
+  el.style.display = '';
+  el.textContent = p.ok
+    ? `setup complete${p.auto ? ' (ran automatically)' : ''} — hooks wired, daemon up. Open Claude Code and your card goes live.`
+    : `setup failed — ${String(p.output || '').split('\n').filter(Boolean).slice(-2).join(' · ') || 'run "Run setup" to retry'}`;
+  el.style.color = p.ok ? 'var(--ok, #7a9a5e)' : 'var(--danger, #c0533f)';
+  setTimeout(updateDaemonStatus, 500);
+  setTimeout(refreshLog, 1200);
+}
+$('runSetupBtn').addEventListener('click', async () => {
+  const el = $('setupStatus');
+  el.style.display = '';
+  el.style.color = '';
+  el.textContent = 'running setup…';
+  const r = await window.api.runSetup();
+  showSetupResult({ ok: r.ok, auto: false, output: r.output });
+});
+window.api.onSetupResult?.(showSetupResult);
+
 async function refreshLog() {
   const out = await window.api.tailLog();
   if (out?.path) $('logPath').textContent = out.path;

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './safe-stdio.js';
 import { existsSync, unlinkSync, watch, appendFileSync, mkdirSync, statSync, renameSync, readdirSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { Client } from './discord-ipc.js';

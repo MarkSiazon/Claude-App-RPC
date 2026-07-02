@@ -226,6 +226,12 @@ async function rebuildTrayMenu() {
     { label: 'Start daemon',   enabled: !running, click: async () => { await runCli(['start'], { detached: true }); setTimeout(rebuildTrayMenu, 800); } },
     { label: 'Stop daemon',    enabled: running,  click: async () => { await runCli(['stop']);    rebuildTrayMenu(); } },
     { label: 'Restart daemon', enabled: running,  click: async () => { await runCli(['restart']); setTimeout(rebuildTrayMenu, 800); } },
+    { label: 'Run setup (wire hooks)', click: async () => {
+      const r = await runCli(['setup']);
+      if (r.ok) markSetupDone(await cliVersion());
+      sendToRenderer('setup-result', { ok: r.ok, auto: false, output: String(r.output || '').slice(-4000) });
+      setTimeout(rebuildTrayMenu, 800);
+    } },
     { type: 'separator' },
     { label: 'Quit Claude RPC', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
@@ -247,7 +253,48 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   initAutoUpdater();
+  // First-run setup — THE reason the installer exists. Until this ran, the
+  // wizard-installed app was just a settings GUI: hooks never got wired, the
+  // daemon never started, no card ever appeared, and the app looked broken.
+  // Deferred a beat so the window paints first.
+  setTimeout(() => ensureFirstRunSetup().catch((e) => console.error('[setup] auto-run failed:', e?.message || e)), 600);
 });
+
+// ── First-run setup ──────────────────────────────────────────────────────────
+// Runs the bundled CLI's `setup` (idempotent: wires hooks into Claude Code,
+// installs the canonical exe, seeds config, registers login autostart, starts
+// the daemon, test-fires a hook) the first time the packaged app launches —
+// and again whenever the bundled CLI version changes, so updates re-wire
+// stale hook paths. A marker in userData keeps steady-state launches free of
+// the multi-second setup run.
+const setupMarkerPath = () => path.join(app.getPath('userData'), 'setup-done.json');
+
+async function cliVersion() {
+  const r = await runCli(['--version']);
+  return r.ok ? String(r.output || '').trim() : null;
+}
+
+function markSetupDone(version) {
+  try { fs.writeFileSync(setupMarkerPath(), JSON.stringify({ version, at: Date.now() })); }
+  catch { /* marker is an optimization — setup itself stays idempotent */ }
+}
+
+async function ensureFirstRunSetup() {
+  if (!app.isPackaged) return; // dev trees wire hooks via `node src/cli.js setup`
+  const version = await cliVersion();
+  let marker = null;
+  try { marker = JSON.parse(fs.readFileSync(setupMarkerPath(), 'utf8')); } catch { /* first run */ }
+  if (marker && version && marker.version === version) return;
+  console.log(`[setup] auto-running (${marker ? `update ${marker.version} → ${version}` : 'first launch'})`);
+  const result = await runCli(['setup']);
+  if (result.ok && version) markSetupDone(version);
+  sendToRenderer('setup-result', {
+    ok: result.ok,
+    auto: true,
+    output: String(result.output || '').slice(-4000),
+  });
+  rebuildTrayMenu();
+}
 
 // ── Auto-update ──────────────────────────────────────────────────────────────
 // Strategy: check once on startup (after a short delay so the window is up),
@@ -400,6 +447,12 @@ function runCli(args, opts = {}) {
 
 // Keep the tray's running/stopped label in sync when the user drives the
 // daemon from the in-window Daemon tab, not just from the tray menu.
+ipcMain.handle('run-setup', async () => {
+  const r = await runCli(['setup']);
+  if (r.ok) markSetupDone(await cliVersion());
+  rebuildTrayMenu();
+  return r;
+});
 ipcMain.handle('daemon-start',   async () => { const r = await runCli(['start']);   rebuildTrayMenu(); return r; });
 ipcMain.handle('daemon-stop',    async () => { const r = await runCli(['stop']);    rebuildTrayMenu(); return r; });
 ipcMain.handle('daemon-restart', async () => { const r = await runCli(['restart']); rebuildTrayMenu(); return r; });
