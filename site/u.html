@@ -74,7 +74,11 @@
   .stat:hover { transform: rotate(0) translate(-2px, -3px); box-shadow: var(--shadow-lg); }
   .stat::before { content: ''; position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-2deg);
     width: 74px; height: 22px; background: var(--tape); border-radius: 2px; }
-  .stat .glyph { font-size: 1.05rem; line-height: 1; }
+  .stat .rule { width: 34px; height: 4px; margin: 2px auto 0; border-radius: 2px; background: var(--ink-faint); }
+  .stat.tokens .rule { background: var(--rust-3); }
+  .stat.sessions .rule { background: var(--sky); }
+  .stat.hours .rule { background: var(--amber); }
+  .stat.streak .rule { background: var(--grass); }
   .stat .num { font-family: var(--font-disp); font-weight: 700; font-size: clamp(1.9rem, 4.5vw, 2.4rem); line-height: 1.1; margin-top: 6px; letter-spacing: -0.02em; }
   .stat .label { font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-mute); margin-top: 6px; }
   .stat .sub { font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-faint); margin-top: 8px; border-top: 1px dashed rgba(43,39,34,0.18); padding-top: 8px; }
@@ -148,15 +152,15 @@
     </div>
 
     <div class="grid" id="grid" hidden>
-      <div class="stat tokens"><span class="glyph">✦</span><div class="num" id="tokens">—</div><div class="label">tokens</div><div class="sub" id="tokens-sub">in + out + cache</div></div>
-      <div class="stat sessions"><span class="glyph">💬</span><div class="num" id="sessions">—</div><div class="label">sessions</div><div class="sub" id="sessions-sub">&nbsp;</div></div>
-      <div class="stat hours"><span class="glyph">🕐</span><div class="num" id="hours">—</div><div class="label">active hours</div><div class="sub" id="hours-sub">&nbsp;</div></div>
-      <div class="stat streak"><span class="glyph">🌱</span><div class="num" id="streak">—</div><div class="label">day streak</div><div class="sub">consecutive days</div></div>
+      <div class="stat tokens"><span class="rule"></span><div class="num" id="tokens">—</div><div class="label">tokens</div><div class="sub" id="tokens-sub">in + out + cache</div></div>
+      <div class="stat sessions"><span class="rule"></span><div class="num" id="sessions">—</div><div class="label">sessions</div><div class="sub" id="sessions-sub">&nbsp;</div></div>
+      <div class="stat hours"><span class="rule"></span><div class="num" id="hours">—</div><div class="label">active hours</div><div class="sub" id="hours-sub">&nbsp;</div></div>
+      <div class="stat streak"><span class="rule"></span><div class="num" id="streak">—</div><div class="label">day streak</div><div class="sub">consecutive days</div></div>
     </div>
 
     <div class="sharerow" id="sharerow" hidden>
-      <button class="ghost" id="copylink" type="button">⧉ copy profile link</button>
-      <a class="ghost" id="sharex" target="_blank" rel="noopener">share on 𝕏 →</a>
+      <button class="ghost" id="copylink" type="button">copy profile link</button>
+      <a class="ghost" id="sharex" target="_blank" rel="noopener">share on x →</a>
     </div>
 
     <section class="panel" id="embed" hidden>
@@ -253,7 +257,7 @@
 
       // share row
       const url = `${SITE}/u/${encodeURIComponent(p.handle)}`;
-      $('copylink').onclick = () => copy(url, $('copylink'), '⧉ copy profile link');
+      $('copylink').onclick = () => copy(url, $('copylink'), 'copy profile link');
       $('sharex').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(
         `my Claude Code stats: ${fmt(p.tokens)} tokens · ${p.sessions} sessions · ${(p.activeMs/3600000).toFixed(0)}h — tracked by claude-rpc\n${url}`);
       $('sharerow').hidden = false;
@@ -275,7 +279,7 @@
       const row = (leaderboard || []).find((r) => r.handle === h);
       if (!row) return;
       $('subrow').insertAdjacentHTML('beforeend',
-        `<a class="chip" href="/leaderboard">🏆 #${row.rank} of ${leaderboard.length} on the board</a>`);
+        `<a class="chip" href="/leaderboard">#${row.rank} of ${leaderboard.length} on the board</a>`);
     } catch { /* decorative */ }
   }
 
