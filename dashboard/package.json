@@ -2,7 +2,7 @@
   "name": "claude-rpc-dashboard",
   "version": "0.13.7",
   "private": true,
-  "description": "Desktop control panel for claude-rpc — daemon control, config editor, presence preview",
+  "description": "Desktop control panel for claude-rpc \u2014 daemon control, config editor, presence preview",
   "license": "MIT",
   "author": "Archer Simmons",
   "main": "main.js",
@@ -22,7 +22,7 @@
   "build": {
     "appId": "com.archersimmons.claude-rpc",
     "productName": "Claude RPC",
-    "copyright": "Copyright © 2026 Archer Simmons",
+    "copyright": "Copyright \u00a9 2026 Archer Simmons",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -90,6 +90,12 @@
           "y": 220,
           "type": "link",
           "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 90,
+          "type": "file",
+          "path": "build/OPEN ME IF MACOS BLOCKS THE APP.txt"
         }
       ],
       "window": {
@@ -125,6 +131,7 @@
     },
     "portable": {
       "artifactName": "claude-rpc-${version}-${arch}-portable.${ext}"
-    }
+    },
+    "afterPack": "scripts/mac-adhoc-sign.js"
   }
 }

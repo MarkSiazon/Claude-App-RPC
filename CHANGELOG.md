@@ -2,6 +2,14 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.3] - 2026-07-02
+
+**Fixed — the macOS .dmg actually opens now**
+
+- **The app bundle is ad-hoc signed** (free — no Apple developer account). `identity: null` had skipped signing entirely, shipping a bundle with no `_CodeSignature` anywhere — and Apple Silicon refuses to launch such apps outright: every macOS user got *"Claude RPC is damaged and can't be opened. You should move it to the Trash."* with no way through. With an ad-hoc seal the app launches, and Gatekeeper's warning becomes the standard *unverified developer* flow: System Settings → Privacy & Security → **Open Anyway** (once). A new `afterPack` hook signs and verifies every build, and CI now fails the release if the bundle's signature doesn't verify as ad-hoc.
+- **The dmg explains itself** — it now carries an `OPEN ME IF MACOS BLOCKS THE APP.txt` alongside the app with the Open Anyway steps, the `xattr -cr` one-liner, and the brew alternative. The site's macOS card says the same up front.
+- Full notarization (no warning at all) requires Apple's $99/yr program — this release is everything achievable without it.
+
 ## [1.1.2] - 2026-07-02
 
 **Fixed — the Windows installer actually works now**

@@ -1,0 +1,21 @@
+Claude RPC is free and open source, so it isn't Apple-notarized —
+that requires a $99/year developer account. macOS will warn once.
+
+FIRST OPEN — either way works:
+
+  1. Drag "Claude RPC" into Applications and double-click it.
+     macOS blocks it — that's expected. Then open
+     System Settings → Privacy & Security, scroll down,
+     and click "Open Anyway".
+
+  2. Or paste this in Terminal after copying the app:
+
+       xattr -cr "/Applications/Claude RPC.app"
+
+After the first successful open, macOS remembers your choice.
+
+Don't want the desktop app? The CLI does everything:
+
+  brew install rar-file/claude-rpc/claude-rpc && claude-rpc setup
+
+Source & docs: https://claude-rpc.com · MIT licensed

@@ -763,7 +763,7 @@
     text-transform: uppercase; letter-spacing: 0.08em;
   }
   .final-cta::after {
-    content: "v1.1.2";
+    content: "v1.1.3";
     position: absolute; bottom: 18px; right: 22px;
     font-family: var(--font-mono); font-size: 0.78rem;
     color: var(--ink-faint);
@@ -844,7 +844,7 @@
   <div class="brand">
     <span class="brand-mark"><img src="https://cdn.qualit.ly/clawd-working-building.gif" alt="clawd character" /></span>
     <span class="name">claude-rpc</span>
-    <span class="vstamp" id="nav-version">v1.1.2</span>
+    <span class="vstamp" id="nav-version">v1.1.3</span>
   </div>
   <div class="nav-links">
     <a href="#download">download</a>
@@ -891,7 +891,7 @@
     </div>
     <p class="install-note">one command — installs globally, wires Claude Code's hooks, and starts the daemon. No Node? <a href="#download">grab the desktop app ↓</a></p>
     <div class="hero-meta">
-      <span><span class="ok">●</span> <span id="latest-tag">v1.1.2</span></span>
+      <span><span class="ok">●</span> <span id="latest-tag">v1.1.3</span></span>
       <span class="dot">·</span>
       <span>MIT</span>
       <span class="dot">·</span>
@@ -973,7 +973,7 @@
         <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.7 17.6c-.3.7-.6 1.3-1.1 1.9-.6.8-1.1 1.4-1.5 1.7-.7.6-1.4.9-2.2.9-.6 0-1.3-.2-2.1-.5-.8-.3-1.6-.5-2.2-.5-.7 0-1.5.2-2.3.5-.8.3-1.5.5-2 .5-.8 0-1.5-.3-2.3-.9-.4-.3-1-.9-1.6-1.7-.7-.9-1.3-1.9-1.8-3.1-.5-1.3-.7-2.5-.7-3.7 0-1.4.3-2.6.9-3.6.5-.8 1.1-1.4 2-1.9.8-.5 1.7-.7 2.7-.7.7 0 1.5.2 2.5.6.9.4 1.6.6 1.9.6.2 0 1-.2 2.2-.7 1.2-.4 2.2-.6 3-.5 2.3.2 4 1.1 5.1 2.7-2 1.2-3 2.9-3 5.1 0 1.7.6 3.1 1.9 4.3.6.5 1.2.9 2 1.2-.2.5-.4.9-.5 1.3zM14.7 0c0 1-.4 2-1.1 2.9-.9 1.1-2 1.7-3.2 1.6 0-1 .4-2 1.1-2.9.4-.4.8-.8 1.4-1.1.6-.3 1.1-.5 1.6-.5.1 0 .1 0 .2 0z"/></svg></span>
         <span class="dl-os-name">macos</span>
       </div>
-      <div class="dl-detail">Apple Silicon <code>.dmg</code>. Drag, drop, done. Auto-updates from GitHub releases.</div>
+      <div class="dl-detail">Apple Silicon <code>.dmg</code>. Unsigned (solo project) &mdash; on first open use System Settings &rarr; Privacy &amp; Security &rarr; <em>Open Anyway</em>, or <code>xattr -cr "/Applications/Claude RPC.app"</code>.</div>
       <div class="dl-meta">arm64 <span class="pipe">·</span> <span id="size-mac">~95 MB</span></div>
       <a class="btn rust" id="dl-mac-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">
         get .dmg <span class="arrow">→</span>
@@ -1048,7 +1048,7 @@
 
   <div class="preview-wrap">
     <div>
-      <span class="sticker tilt-r">v1.1.2 · presence.byStatus</span>
+      <span class="sticker tilt-r">v1.1.3 · presence.byStatus</span>
       <div class="status-tabs" id="status-tabs">
         <span class="status-tab active" data-status="working">working</span>
         <span class="status-tab" data-status="thinking">thinking</span>
@@ -1281,6 +1281,7 @@
       <div class="meta" id="changelog-meta">latest first · <a href="https://github.com/rar-file/claude-rpc/releases">all releases →</a></div>
     </div>
     <ul id="changelog-list">
+      <li><span class="v">v1.1.3</span> <span class="note">the macOS .dmg opens now — the bundle is ad-hoc signed (was fully unsigned, which Apple Silicon refuses outright), the dmg carries first-open instructions, and CI verifies the seal every release.</span></li>
       <li><span class="v">v1.1.2</span> <span class="note">the Windows installer finally does its job — the desktop app auto-runs <code>setup</code> on first launch (hooks wired, daemon up), plus a one-click Run setup button and CI now smoke-tests every shipped exe.</span></li>
       <li><span class="v">v1.1.1</span> <span class="note">16 logic fixes from a full-codebase review — compaction no longer resets the card, symlinked dirs no longer double stats, gist artifacts stop overwriting each other, chart labels align.</span></li>
       <li><span class="v">v1.1.0</span> <span class="note"><code>claude-rpc recap</code> — the standup answer: yesterday's projects, ships, churn, and cost in one paste-ready summary (<code>--md</code>), plus a <code>get_recap</code> MCP tool.</span></li>

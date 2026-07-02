@@ -113,6 +113,19 @@ jobs:
         # attach files, so explicitly tell it not to publish itself.
         run: npx electron-builder --mac dmg --publish never
 
+      # The app must carry a VALID (ad-hoc) signature or Apple Silicon refuses
+      # to launch it at all — v1.1.2 and earlier shipped with no bundle
+      # signature and users got "damaged, move it to the Trash" with no
+      # recourse. scripts/mac-adhoc-sign.js signs in afterPack; this gate
+      # fails the release if that ever silently stops happening.
+      - name: Verify mac app signature (ad-hoc)
+        if: runner.os == 'macOS'
+        run: |
+          APP="dashboard/dist/mac-arm64/Claude RPC.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | tee /tmp/sig.txt
+          grep -q "Signature=adhoc" /tmp/sig.txt
+
       - name: Build installer (win)
         if: runner.os == 'Windows'
         working-directory: dashboard
