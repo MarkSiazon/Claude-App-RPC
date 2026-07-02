@@ -90,11 +90,12 @@
   .pod .ranktag { position: absolute; top: -11px; right: 12px; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
     background: var(--ink); color: var(--paper); padding: 3px 10px; transform: rotate(3deg); }
   .pod.first .ranktag { background: var(--rust-3); }
-  .pod .val { font-family: var(--font-disp); font-weight: 700; font-size: clamp(1.9rem, 4vw, 2.3rem); line-height: 1.1; color: var(--rust-3); letter-spacing: -0.02em; }
-  .pod .name { font-family: var(--font-disp); font-weight: 700; font-size: 1.05rem; margin-top: 8px; }
+  .pod .name { font-family: var(--font-disp); font-weight: 700; font-size: 1.15rem; }
   .pod .name .v { color: var(--grass); font-size: 0.85em; }
-  .pod .gh { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-faint); margin-top: 5px;
-    border-top: 1px dashed rgba(43,39,34,0.18); padding-top: 8px; }
+  .pod .gh { font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-faint); margin-top: 4px; }
+  .pod .reading { margin-top: 14px; border-top: 1px dashed rgba(43,39,34,0.18); padding-top: 12px; }
+  .pod .val { font-family: var(--font-disp); font-weight: 700; font-size: clamp(1.8rem, 3.6vw, 2.2rem); line-height: 1.1; color: var(--rust-3); letter-spacing: -0.02em; }
+  .pod .metriclabel { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-mute); margin-top: 5px; }
 
   /* ── the rest of the board ───────────────────────────────────────── */
   .board { background: var(--card); border: 1.5px solid var(--ink); box-shadow: var(--shadow); }
@@ -112,7 +113,7 @@
   .who .v { color: var(--grass); font-weight: 700; margin-left: 5px; }
   .who .handle { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); margin-left: 9px; text-decoration: none; }
   .who .handle:hover { color: var(--ink-mute); }
-  .val { text-align: right; font-family: var(--font-mono); font-weight: 700; white-space: nowrap; }
+  td.val { text-align: right; font-family: var(--font-mono); font-weight: 700; white-space: nowrap; }
   tr.unverified .who a, tr.unverified .val { color: var(--ink-faint); font-weight: 400; }
   .unv { font-family: var(--font-mono); font-size: 0.68rem; color: var(--ink-faint); margin-left: 9px; }
   .empty { text-align: center; padding: 44px 18px; color: var(--ink-mute); }
@@ -263,9 +264,12 @@
         return `<a class="pod ${r.rank === 1 ? 'first' : ''}" href="/u/${encodeURIComponent(r.handle)}">
           <span class="ranktag">#${r.rank}</span>
           ${avatar(r, 'ava')}
-          <div class="val">${valueFor(r, metric)}</div>
           <div class="name">${esc(name)}${r.verified ? ' <span class="v">✓</span>' : ''}</div>
           <div class="gh">${esc(gh) || '&nbsp;'}</div>
+          <div class="reading">
+            <div class="val">${valueFor(r, metric)}</div>
+            <div class="metriclabel">${LABELS[metric]}</div>
+          </div>
         </a>`;
       }).join('');
       podium.hidden = false;
