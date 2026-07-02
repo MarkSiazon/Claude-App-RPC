@@ -17,6 +17,10 @@
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://claude-rpc.com/" />
 <meta property="og:image" content="https://claude-rpc.com/img/og.png" />
+<meta property="og:video" content="https://claude-rpc.com/img/launch.mp4" />
+<meta property="og:video:type" content="video/mp4" />
+<meta property="og:video:width" content="1920" />
+<meta property="og:video:height" content="1080" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta property="og:image:alt" content="claude-rpc — Discord Rich Presence for Claude Code. Install with: npx claude-rpc@latest setup" />
@@ -64,7 +68,8 @@
 }
 </script>
 
-<link rel="icon" href="https://cdn.qualit.ly/clawd-working-building.gif" />
+<link rel="icon" type="image/png" href="/img/favicon.png" />
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
 
 <style>
   /* ─── palette: warm paper + ink + terracotta ───────────────────── */
@@ -922,7 +927,8 @@
   <div class="film-wrap">
     <div class="film-polaroid">
       <div class="film-tape"></div>
-      <video src="/img/launch.mp4" poster="/img/og.png" autoplay muted loop playsinline
+      <video id="launch-film" poster="/img/og.png" muted loop playsinline preload="none"
+             data-src="/img/launch.mp4"
              width="1920" height="1080" aria-label="29-second tour: the live Discord card, ship celebrations, the stats layer, and the one-line install"></video>
       <div class="film-caption">the whole thing, no sound needed · <a href="/img/launch.mp4" download>grab the mp4</a></div>
     </div>
@@ -1245,7 +1251,7 @@
         <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
         <span class="url">127.0.0.1:47474</span>
       </div>
-      <img src="img/dashboard.png" alt="Web dashboard" />
+      <img src="img/dashboard.png" alt="Web dashboard" loading="lazy" decoding="async" />
       <div class="shot-caption">
         <div class="title">web dashboard</div>
         <div class="sub"><code>claude-rpc serve</code> &mdash; range selector, heatmap, languages stack, leaderboards.</div>
@@ -1256,7 +1262,7 @@
         <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
         <span class="url">Claude RPC.app</span>
       </div>
-      <img src="img/electron.png" alt="Electron config editor" />
+      <img src="img/electron.png" alt="Electron config editor" loading="lazy" decoding="async" />
       <div class="shot-caption">
         <div class="title">settings gui</div>
         <div class="sub">six-tab electron editor — drag-reorder frames, variable autocomplete, daemon controls, live preview.</div>
@@ -1492,6 +1498,21 @@
     } catch (_) {}
   }
   loadReleases();
+
+  // Lazy film: the 4.6MB mp4 only downloads when the section approaches the
+  // viewport, and it pauses off-screen. Fallback for no-IO browsers: load it.
+  (function lazyFilm() {
+    const v = document.getElementById('launch-film');
+    if (!v) return;
+    const attach = () => { if (!v.src) v.src = v.dataset.src; };
+    if (!('IntersectionObserver' in window)) { attach(); v.play?.().catch(() => {}); return; }
+    new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting) { attach(); v.play().catch(() => {}); }
+        else v.pause();
+      }
+    }, { rootMargin: '400px 0px' }).observe(v);
+  })();
 
   // Live social proof under the hero meta — real numbers from the community
   // worker (the same endpoint /community reads). Hidden entirely on failure.

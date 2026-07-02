@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>404 · claude-rpc</title>
+<meta name="robots" content="noindex" />
+<link rel="icon" type="image/png" href="/img/favicon.png" />
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+<style>
+  :root {
+    --paper: #f4ede0; --ink: #2b2722; --ink-mute: #6b6357;
+    --rust: #d97757; --rust-deep: #b8552f;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 18px;
+    background: var(--paper); color: var(--ink);
+    font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+    text-align: center; padding: 24px;
+    background-image: radial-gradient(rgba(43,39,34,0.08) 1.4px, transparent 1.4px);
+    background-size: 34px 34px;
+  }
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 10px; background: var(--rust); }
+  img { image-rendering: pixelated; width: 96px; height: 96px; }
+  h1 { font-size: 64px; letter-spacing: -2px; }
+  p { color: var(--ink-mute); max-width: 440px; line-height: 1.6; }
+  code { background: rgba(43,39,34,0.07); padding: 2px 8px; border-radius: 4px; }
+  nav { display: flex; gap: 10px 22px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+  a { color: var(--rust-deep); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { text-decoration-style: wavy; }
+</style>
+</head>
+<body>
+  <img src="/img/favicon.png" alt="clawd, confused" width="96" height="96" />
+  <h1>404</h1>
+  <p>nothing at this path — like the card when claude's asleep.<br/>maybe you wanted one of these:</p>
+  <nav>
+    <a href="/">home</a>
+    <a href="/leaderboard">leaderboard</a>
+    <a href="/community">community</a>
+    <a href="/blog">posts</a>
+    <a href="https://github.com/rar-file/claude-rpc">github</a>
+  </nav>
+  <p><code>npx claude-rpc@latest setup</code> works from anywhere, though.</p>
+</body>
+</html>
