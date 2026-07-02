@@ -889,6 +889,9 @@
       <span class="dot">·</span>
       <span>macos · windows · linux</span>
     </div>
+    <div class="hero-meta" id="hero-proof" style="display:none; margin-top: 6px;">
+      <span><span class="ok">●</span> <span id="proof-line"></span></span>
+    </div>
   </div>
 
   <div class="hero-art-col">
@@ -1441,6 +1444,21 @@
     } catch (_) {}
   }
   loadReleases();
+
+  // Live social proof under the hero meta — real numbers from the community
+  // worker (the same endpoint /community reads). Hidden entirely on failure.
+  (async function loadProof() {
+    try {
+      const r = await fetch('https://claude-rpc-totals.claude-rpc.workers.dev/total.json');
+      if (!r.ok) return;
+      const d = await r.json();
+      if (!d || !d.sessions) return;
+      const tok = d.tokens >= 1e12 ? `${(d.tokens / 1e12).toFixed(1)}T` : `${(d.tokens / 1e9).toFixed(1)}B`;
+      document.getElementById('proof-line').textContent =
+        `${Number(d.sessions).toLocaleString('en-US')} sessions · ${tok} tokens tracked across the community`;
+      document.getElementById('hero-proof').style.display = '';
+    } catch { /* offline / blocked — say nothing */ }
+  })();
 
   // ─── discord card cycler ────────────────────────────────────────────────
   const STATES = {
