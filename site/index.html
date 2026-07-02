@@ -396,7 +396,8 @@
   .install-note a { color: var(--rust-3); text-decoration: underline; }
 
   /* ─── download ─────────────────────────────────────────────────── */
-  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; margin-top: 20px; }
+  .downloads { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px; align-items: stretch; }
+  @media (max-width: 1080px) { .downloads { grid-template-columns: repeat(2, 1fr); } }
   .dl-card {
     position: relative;
     background: var(--paper);
@@ -405,7 +406,11 @@
     padding: 26px 22px 22px;
     transform: rotate(-0.6deg);
     transition: transform 0.16s ease, box-shadow 0.16s ease;
+    /* uniform bottoms: the meta+CTA block pins to the baseline no matter
+       how long the copy above it runs */
+    display: flex; flex-direction: column;
   }
+  .dl-card .dl-meta { margin-top: auto; }
   .dl-card:nth-child(2) { transform: rotate(0.3deg); }
   .dl-card:nth-child(3) { transform: rotate(-0.2deg); }
   .dl-card:hover { transform: rotate(0) translate(-2px, -3px); box-shadow: var(--shadow-lg); }
@@ -574,6 +579,10 @@
     transition: transform 0.16s ease, box-shadow 0.16s ease;
   }
   .feature:hover { transform: translate(-2px, -3px); box-shadow: var(--shadow-lg); }
+  /* dashed stub lines pin to the card bottom so stretched rows read as
+     deliberate breathing room, not leftover void */
+  .feature { display: flex; flex-direction: column; }
+  .feature .stub { margin-top: auto; }
   .feature.wide { grid-column: span 4; }
   .feature.tall { grid-column: span 2; }
   .feature.med { grid-column: span 3; }
@@ -678,7 +687,8 @@
   .arrow-between.a2 { left: calc(66.66% - 16px); }
 
   /* ─── screenshots ──────────────────────────────────────────────── */
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+  .shot.crop img { max-height: 760px; object-fit: cover; object-position: top; }
   .shot {
     background: var(--paper);
     border: 1.5px solid var(--ink);
@@ -929,7 +939,7 @@
     position: absolute; top: -14px; left: 50%; transform: translateX(-50%) rotate(-2deg);
     width: 150px; height: 30px; background: rgba(217,119,87,0.32); border-radius: 3px;
   }
-  .film-polaroid video { width: 100%; height: auto; border-radius: 4px; display: block; }
+  .film-polaroid video { width: 100%; height: auto; border-radius: 4px; display: block; border: 1.5px solid rgba(43,39,34,0.4); }
   .film-caption { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.78rem; color: var(--ink-mute, #6b6357); padding: 10px 2px 4px; }
   .film-caption a { color: var(--rust-3, #b8552f); }
 </style>
@@ -1009,14 +1019,21 @@
       </a>
       <a class="alt" href="https://github.com/rar-file/claude-rpc/tree/main/plugin">browse the plugin source</a>
     </div>
+
+    <div class="dl-card" data-os="term" id="dl-term">
+      <div class="dl-os-row">
+        <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span>
+        <span class="dl-os-name">terminal</span>
+      </div>
+      <div class="dl-detail">Homebrew tap, or the installer script that detects Node and falls back to a prebuilt binary: <code>brew install rar-file/claude-rpc/claude-rpc</code> &middot; <code>curl -fsSL claude-rpc.com/install | sh</code></div>
+      <div class="dl-meta">brew <span class="pipe">·</span> curl <span class="pipe">·</span> macOS / Linux</div>
+      <a class="btn" href="https://github.com/rar-file/claude-rpc#install">
+        install guide <span class="arrow">→</span>
+      </a>
+      <a class="alt" href="/install">read install.sh before piping it</a>
+    </div>
   </div>
 
-  <p class="install-note" style="margin-top: 28px;">
-    also: <code>brew install rar-file/claude-rpc/claude-rpc</code>
-    <span class="pipe">·</span>
-    <code>curl -fsSL https://claude-rpc.com/install | sh</code>
-    — every path ends at the same <code>claude-rpc setup</code>.
-  </p>
 </section>
 
 <!-- ─────────────────────────────────────────────────── PREVIEW -->
@@ -1099,13 +1116,13 @@
       <p>Heatmap, hour histogram, top tools / files / projects / languages.</p>
       <span class="stub">$ claude-rpc status</span>
     </div>
-    <div class="feature med">
+    <div class="feature tall">
       <span class="num">04</span>
       <h3>local web dashboard</h3>
       <p>SSE-pushed updates, range selector (7d/30d/90d/1y/all), day-detail modal, project drilldown.</p>
       <span class="stub">$ claude-rpc serve · :47474</span>
     </div>
-    <div class="feature">
+    <div class="feature tall">
       <span class="num">05</span>
       <h3>readme badges</h3>
       <p>Shields-style SVG generator and a live endpoint when the daemon's up.</p>
@@ -1116,7 +1133,7 @@
       <h3>six-tab settings gui</h3>
       <p>Electron config editor: presence (drag-reorder, variable autocomplete, presets), discord, assets, timing, daemon controls, stats.</p>
     </div>
-    <div class="feature wide clawd">
+    <div class="feature med clawd">
       <span class="num">07</span>
       <h3>auto-generated insights</h3>
       <p><code>claude-rpc insights</code> prints 3&ndash;5 contextual lines about your week &mdash; trend, peak weekday, hotspot, cost pace, streak progress. Useful for stand-ups, useful for self-awareness, useful for nothing &mdash; up to you.</p>
@@ -1223,7 +1240,7 @@
   <h2>browse the rest from a real desktop UI.</h2>
 
   <div class="shots">
-    <div class="shot">
+    <div class="shot crop">
       <div class="shot-frame">
         <span class="term-dot r"></span><span class="term-dot y"></span><span class="term-dot g"></span>
         <span class="url">127.0.0.1:47474</span>
