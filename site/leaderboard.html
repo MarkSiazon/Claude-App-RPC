@@ -80,6 +80,13 @@
   .pod:hover { transform: rotate(0) translate(-2px, -3px); box-shadow: var(--shadow-lg); }
   .pod::before { content: ''; position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-2deg);
     width: 74px; height: 22px; background: var(--tape); border-radius: 2px; }
+  .pod .ava, .who .ava {
+    border: 1.5px solid var(--ink); background: var(--paper-2); object-fit: cover;
+    font-family: var(--font-mono); font-weight: 700; color: var(--ink-mute);
+    display: inline-flex; align-items: center; justify-content: center; }
+  .pod .ava { width: 52px; height: 52px; border-radius: 12px; margin-bottom: 10px; font-size: 1.2rem;
+    box-shadow: 3px 3px 0 rgba(43,39,34,0.1); }
+  .who .ava { width: 26px; height: 26px; border-radius: 7px; margin-right: 10px; vertical-align: middle; font-size: 0.72rem; }
   .pod .ranktag { position: absolute; top: -11px; right: 12px; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
     background: var(--ink); color: var(--paper); padding: 3px 10px; transform: rotate(3deg); }
   .pod.first .ranktag { background: var(--rust-3); }
@@ -209,6 +216,18 @@
     if (m === 'streak') return (Number(row.streak) || 0) + 'd';
     return fmt(row[m]);
   }
+  // GitHub avatar for VERIFIED profiles only — an unverified row's claimed
+  // login is unproven, and borrowing its avatar would dress up impersonation.
+  // Fallback (and unverified): an initial-letter tile. onerror swaps in place.
+  function avatar(r, cls) {
+    const initial = esc((r.handle || '?')[0].toUpperCase());
+    if (r.verified && r.githubUser) {
+      return `<img class="${cls}" src="https://avatars.githubusercontent.com/${encodeURIComponent(r.githubUser)}?size=96"
+        alt="" loading="lazy" onerror="this.outerHTML='<span class=&quot;${cls}&quot;>${initial}</span>'" />`;
+    }
+    return `<span class="${cls}">${initial}</span>`;
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
   }
@@ -243,6 +262,7 @@
         const gh = r.githubUser ? `github.com/${esc(r.githubUser)}` : (r.verified ? '' : 'unverified — capped');
         return `<a class="pod ${r.rank === 1 ? 'first' : ''}" href="/u/${encodeURIComponent(r.handle)}">
           <span class="ranktag">#${r.rank}</span>
+          ${avatar(r, 'ava')}
           <div class="val">${valueFor(r, metric)}</div>
           <div class="name">${esc(name)}${r.verified ? ' <span class="v">✓</span>' : ''}</div>
           <div class="gh">${esc(gh) || '&nbsp;'}</div>
@@ -263,7 +283,7 @@
         const bar = Math.max(2, Math.round((rawFor(r, metric) / max) * 100));
         return `<tr class="${r.verified ? '' : 'unverified'}" style="--bar:${bar}%">
           <td class="rank">${r.rank}</td>
-          <td class="who"><a href="${prof}">${esc(name)}</a>${badge}${gh}</td>
+          <td class="who">${avatar(r, 'ava')}<a href="${prof}">${esc(name)}</a>${badge}${gh}</td>
           <td class="val">${valueFor(r, metric)}</td></tr>`;
       }).join('');
       document.getElementById('updated').textContent = `${board.length} builder${board.length === 1 ? '' : 's'} · live`;

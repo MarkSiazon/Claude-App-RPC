@@ -53,7 +53,7 @@
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdn.qualit.ly https://claude-rpc-totals.claude-rpc.workers.dev; connect-src 'self' https://api.github.com https://claude-rpc-totals.claude-rpc.workers.dev; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; object-src 'none'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://cdn.qualit.ly https://claude-rpc-totals.claude-rpc.workers.dev https://avatars.githubusercontent.com; connect-src 'self' https://api.github.com https://claude-rpc-totals.claude-rpc.workers.dev; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; object-src 'none'"
         }
       ]
     }
