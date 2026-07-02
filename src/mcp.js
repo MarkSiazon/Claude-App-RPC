@@ -8,6 +8,7 @@
 // without standing up the transport.
 
 import { readAggregate, dayKey } from './scanner.js';
+import { buildRecap, renderRecapMarkdown } from './recap.js';
 import { VERSION } from './version.js';
 
 function fmtH(ms) { const h = (ms || 0) / 3_600_000; return h < 1 ? `${Math.round(h * 60)}m` : `${h.toFixed(1)}h`; }
@@ -75,6 +76,25 @@ export const TOOLS = {
       return split.map((m) => `${m.model}: $${(m.cost || 0).toFixed(2)} (${Math.round((m.costPct || 0) * 100)}%) · ${fmtN(m.tokens)} tokens · ${m.turns} turns`).join('\n');
     },
   },
+  get_recap: {
+    description: 'Standup-ready recap of a day or week of Claude Code work: active time, sessions, projects touched, ships (commits/pushes/PRs), code churn, tokens/cost. Answers "what did I work on yesterday/this week?".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        range: {
+          type: 'string',
+          description: 'today | yesterday | week | YYYY-MM-DD (default yesterday; an inactive yesterday falls back to the most recent active day, so Monday covers Friday)',
+        },
+      },
+      additionalProperties: false,
+    },
+    handler(agg, args) {
+      const spec = args?.range || 'yesterday';
+      const r = buildRecap(agg, spec);
+      if (!r) return `Unknown range "${spec}" — use today, yesterday, week, or YYYY-MM-DD.`;
+      return renderRecapMarkdown(r);
+    },
+  },
 };
 
 // Build a tools/list payload from the registry.
@@ -82,7 +102,7 @@ export function toolList() {
   return Object.entries(TOOLS).map(([name, t]) => ({
     name,
     description: t.description,
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+    inputSchema: t.inputSchema || { type: 'object', properties: {}, additionalProperties: false },
   }));
 }
 
@@ -90,10 +110,11 @@ export function toolList() {
  * Dispatch a tools/call by name. Reads a fresh aggregate per call (cheap).
  * @param {string} name - Tool name (a key of TOOLS).
  * @param {() => object} [getAgg] - Aggregate provider; defaults to readAggregate (injectable for tests).
+ * @param {object} [args] - Tool arguments (params.arguments from tools/call).
  * @returns {string} The tool's text result.
  * @throws {Error} If the tool name is unknown.
  */
-export function callTool(name, getAgg = readAggregate) {
+export function callTool(name, getAgg = readAggregate, args = {}) {
   const t = TOOLS[name];
   if (!t) throw new Error(`unknown tool: ${name}`);
   const agg = getAgg();
@@ -101,7 +122,7 @@ export function callTool(name, getAgg = readAggregate) {
   // a `|| {}` here would render all-zeros, indistinguishable from a genuinely
   // idle day. Surface the same hint every other surface uses instead.
   if (agg == null) return 'No stats yet — run `claude-rpc scan` to build your history.';
-  return t.handler(agg);
+  return t.handler(agg, args);
 }
 
 /**
@@ -144,7 +165,7 @@ export function runMcpServer({ input = process.stdin, output = process.stdout } 
       if (!name) return replyErr(id, -32602, 'missing tool name');
       if (!TOOLS[name]) return replyErr(id, -32602, `unknown tool: ${name}`);
       try {
-        const text = callTool(name);
+        const text = callTool(name, undefined, params?.arguments || {});
         return reply(id, { content: [{ type: 'text', text }], isError: false });
       } catch (e) {
         return reply(id, { content: [{ type: 'text', text: `Error: ${e.message}` }], isError: true });

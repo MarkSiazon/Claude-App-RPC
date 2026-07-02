@@ -858,6 +858,34 @@ function showInsights() {
   console.log('');
 }
 
+// `claude-rpc recap [today|yesterday|week|YYYY-MM-DD] [--md|--json]` — the
+// standup answer. Defaults to yesterday (with Monday-covers-Friday fallback,
+// see recap.js). --md prints paste-ready markdown; --json the raw numbers.
+async function doRecap(argv) {
+  const { buildRecap, renderRecapMarkdown, renderRecapLines, recapTitle } = await import('./recap.js');
+  let spec = 'yesterday', md = false, json = false;
+  for (const a of argv) {
+    if (a === '--md' || a === '--markdown') md = true;
+    else if (a === '--json') json = true;
+    else if (!a.startsWith('-')) spec = a;
+    else return fail(`unknown flag ${a}`, { hint: 'usage: claude-rpc recap [today|yesterday|week|YYYY-MM-DD] [--md|--json]', code: EX_USER_ERROR });
+  }
+  const aggregate = readAggregate();
+  if (!aggregate) return fail('no stats yet', { hint: 'run `claude-rpc scan` to build your history first', code: EX_BAD_STATE });
+  const r = buildRecap(aggregate, spec);
+  if (!r) return fail(`unknown range: ${spec}`, { hint: 'usage: claude-rpc recap [today|yesterday|week|YYYY-MM-DD] [--md|--json]', code: EX_USER_ERROR });
+  if (json) { console.log(JSON.stringify(r, null, 2)); return; }
+  if (md) { console.log(renderRecapMarkdown(r)); return; }
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ Recap${c.reset}  ${c.dim}— ${recapTitle(r)}${c.reset}`);
+  console.log('');
+  box('recap', renderRecapLines(r, c));
+  console.log('');
+  if (process.stdout.isTTY && !r.empty) {
+    console.log(`  ${c.dim}↗ standup-ready markdown: claude-rpc recap${spec === 'yesterday' ? '' : ` ${spec}`} --md${c.reset}\n`);
+  }
+}
+
 function parseBadgeArgs(argv) {
   const out = { metric: 'hours', range: '7d', out: '', gist: false };
   for (let i = 0; i < argv.length; i++) {
@@ -2005,6 +2033,7 @@ function help() {
     ['rescan',    'Force re-parse every transcript (ignores cache)'],
     ['backfill',  'Import transcripts from any folder (e.g. a backup)'],
     ['insights',  'Auto-generated insights from your history'],
+    ['recap',     'Standup summary (yesterday by default; today|week|date, --md for markdown)'],
     ['badge',     'Render a Shields-style SVG (--metric --range --out --gist)'],
     ['card',      'Render a poster-style SVG summary (--range year|month|week|all)'],
     ['github-stat', 'Render an embeddable profile stat card (--handle --out --gist)'],
@@ -2161,6 +2190,7 @@ process.on('unhandledRejection', (e) => {
     case 'rescan':    doScan(true); break;
     case 'backfill':  doBackfill(process.argv.slice(3)); break;
     case 'insights':  showInsights(); break;
+    case 'recap':     await doRecap(process.argv.slice(3)); break;
     case 'badge':     await doBadge(process.argv.slice(3)); break;
     case 'card':      await doCard(process.argv.slice(3)); break;
     case 'github-stat': await doGithubStat(process.argv.slice(3)); break;

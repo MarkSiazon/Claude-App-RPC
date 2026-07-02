@@ -133,6 +133,7 @@ claude-rpc today                  (today's stats, focused)
 claude-rpc week                   (weekday breakdown)
 claude-rpc preview                (every rotation frame rendered with real data)
 claude-rpc insights               (3–5 auto-generated lines: trend, peak, hotspot)
+claude-rpc recap --md             (standup-ready: yesterday's projects, ships, churn)
 ```
 
 The web dashboard pushes updates via SSE; the TUI refreshes on a 3-second tick.
@@ -309,6 +310,7 @@ It's a thin bootstrapper — on the first session it just runs `npx claude-rpc@l
 | `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects` |
 | `backfill <dir>` | Import transcripts from any folder (backup, other machine) |
 | `insights`       | Print 3–5 auto-generated lines about your week |
+| `recap`          | Standup summary — yesterday's work, paste-ready (`today\|week\|date`, `--md`) |
 | `badge`          | Shields-style SVG (`--metric` `--range` `--out` `--gist`) |
 | `card`           | Poster-style SVG (`--range year\|month\|week\|all`) |
 | `github-stat`    | Embeddable profile stat card (`--handle` `--out` `--gist`) |

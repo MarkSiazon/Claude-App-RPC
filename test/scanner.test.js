@@ -389,3 +389,48 @@ test('aggregateFrom: subagent active time is tracked separately, not folded into
   assert.equal(agg.sessions, 1, 'a subagent is not a session');
   assert.equal(agg.subagentRuns, 1, 'subagent run counted');
 });
+
+// ── ships (v5 cache: per-day ship counts + project attribution) ───────
+
+test('parseTranscript: classifies shipped Bash commands into ships/shipKinds', async () => {
+  const { dayKey } = await import('../src/scanner.js');
+  const ts = '2026-05-22T10:00:30Z';
+  const { dir, path } = makeTranscript([
+    { type: 'user', sessionId: 's1', cwd: '/tmp/proj', timestamp: '2026-05-22T10:00:00Z',
+      message: { content: 'ship it' } },
+    { type: 'assistant', timestamp: ts,
+      message: { model: 'claude-opus-4-7', usage: { input_tokens: 10, output_tokens: 5 },
+        content: [
+          { type: 'tool_use', name: 'Bash', input: { command: 'git add . && git commit -m "fix: x"' } },
+          { type: 'tool_use', name: 'Bash', input: { command: 'git push origin main' } },
+          { type: 'tool_use', name: 'Bash', input: { command: 'echo "git push later"' } },
+        ] } },
+  ]);
+  const s = parseTranscript(path);
+  assert.equal(s.ships, 2, 'quoted mention must not classify');
+  assert.deepEqual(s.shipKinds, { commit: 1, push: 1 });
+  const bucket = s.byDay[dayKey(Date.parse(ts))];
+  assert.equal(bucket.ships, 2);
+  assert.deepEqual(bucket.shipKinds, { commit: 1, push: 1 });
+  rmSync(dir, { recursive: true });
+});
+
+test('aggregateFrom: rolls up ships and attributes per-day projects', async () => {
+  const { dayKey } = await import('../src/scanner.js');
+  const ts = '2026-05-22T10:00:30Z';
+  const { dir, path } = makeTranscript([
+    { type: 'user', sessionId: 's1', cwd: '/tmp/proj', timestamp: '2026-05-22T10:00:00Z',
+      message: { content: 'go' } },
+    { type: 'assistant', timestamp: ts,
+      message: { model: 'claude-opus-4-7', usage: { input_tokens: 100, output_tokens: 50 },
+        content: [{ type: 'tool_use', name: 'Bash', input: { command: 'gh pr create --fill' } }] } },
+  ]);
+  const s = parseTranscript(path);
+  const agg = aggregateFrom({ files: { [path]: s } });
+  assert.equal(agg.ships, 1);
+  assert.deepEqual(agg.shipKinds, { pr: 1 });
+  const bucket = agg.byDay[dayKey(Date.parse(ts))];
+  assert.equal(bucket.ships, 1);
+  assert.equal(bucket.projects.proj.tokens, 150, 'day tokens attributed to the session project');
+  rmSync(dir, { recursive: true });
+});

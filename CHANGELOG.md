@@ -2,6 +2,13 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+**Added**
+
+- **`claude-rpc recap` — the standup answer.** One command that says what you actually did: active time, sessions, prompts, projects touched (with time per project), what shipped (commits / pushes / PRs / issues / releases), code churn, and tokens/cost. Defaults to yesterday, and an inactive yesterday falls back to your most recent active day — so a Monday standup covers Friday. `recap today|week|YYYY-MM-DD` picks the range; `--md` prints paste-ready markdown, `--json` the raw numbers. Also exposed as an MCP tool (`get_recap`), so with the MCP server wired you can ask Claude "what did I work on this week?" mid-session.
+- The scanner now records **ships per day** (the same git/gh classification the celebration frame uses, shared via `src/ships.js`) and attributes **per-day project activity** in `aggregate.json`. First scan after updating re-parses history once to backfill (same as `rescan`).
+
 ## [1.0.3] - 2026-07-02
 
 **Changed**

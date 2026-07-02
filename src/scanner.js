@@ -4,10 +4,12 @@ import { homedir } from 'node:os';
 import { CLAUDE_PROJECTS, SCAN_CACHE_PATH, AGGREGATE_PATH, DATA_DIR, EVENTS_LOG_PATH } from './paths.js';
 import { languageOf } from './languages.js';
 import { costFor, pricingKeyFor } from './pricing.js';
+import { classifyShip } from './ships.js';
 
 // Bumping this forces a full re-parse on next scan. Increment whenever the
 // per-transcript summary schema changes in a way old caches can't satisfy.
-const CACHE_VERSION = 4;
+// v5: per-day ships/shipKinds + per-day project attribution (recap).
+const CACHE_VERSION = 5;
 
 // Cap counted gap between consecutive timestamps. Anything larger is treated
 // as the user walking away — we count only what's plausibly active time.
@@ -129,8 +131,13 @@ function blankDay() {
     linesRemoved: 0,
     cost: 0,
     notifications: 0,
+    ships: 0,
     firstTs: null,
     lastTs: null,
+    // Day buckets may also lazily carry:
+    //   shipKinds — { push|commit|pr|issue|tag → count } (only when a ship lands)
+    //   projects  — { name → { activeMs, tokens } } (aggregate-level only,
+    //               attributed at merge time where the file's project is known)
   };
 }
 
@@ -147,6 +154,10 @@ function mergeDay(target, src) {
   target.linesRemoved += src.linesRemoved || 0;
   target.cost += src.cost || 0;
   target.notifications += src.notifications || 0;
+  target.ships += src.ships || 0;
+  for (const [k, n] of Object.entries(src.shipKinds || {})) {
+    (target.shipKinds ||= {})[k] = (target.shipKinds[k] || 0) + n;
+  }
   if (src.firstTs && (!target.firstTs || src.firstTs < target.firstTs)) target.firstTs = src.firstTs;
   if (src.lastTs && (!target.lastTs || src.lastTs > target.lastTs)) target.lastTs = src.lastTs;
 }
@@ -236,6 +247,8 @@ function blankTranscriptSummary() {
     bashCommands: {},     // first token → count
     webDomains: {},       // hostname → count
     subagents: {},        // subagent_type → count
+    ships: 0,             // shipped-command count (git commit/push, gh pr/issue/release create)
+    shipKinds: {},        // ship kind → count
     cost: 0,              // estimated USD
     costByModel: {},      // pricing key → USD
     modelsUsed: {},       // raw model id → assistant turns
@@ -385,6 +398,13 @@ function parseChunkInto(text, summary, pstate) {
           } else if (b.name === 'Bash') {
             const cmd = firstShellToken(input.command);
             if (cmd) summary.bashCommands[cmd] = (summary.bashCommands[cmd] || 0) + 1;
+            const shipKind = classifyShip(input.command);
+            if (shipKind) {
+              summary.ships = (summary.ships || 0) + 1;
+              summary.shipKinds[shipKind] = (summary.shipKinds[shipKind] || 0) + 1;
+              for (const bucket of allBuckets) bucket.ships = (bucket.ships || 0) + 1;
+              if (dayBucket) (dayBucket.shipKinds ||= {})[shipKind] = (dayBucket.shipKinds[shipKind] || 0) + 1;
+            }
           } else if (b.name === 'WebFetch' || b.name === 'WebSearch') {
             const host = b.name === 'WebFetch' ? domainOf(input.url) : '';
             if (host) summary.webDomains[host] = (summary.webDomains[host] || 0) + 1;
@@ -767,6 +787,8 @@ export function aggregateFrom(cache) {
     linesAdded: 0,
     linesRemoved: 0,
     linesNet: 0,
+    ships: 0,
+    shipKinds: {},
     bashCommands: {},
     webDomains: {},
     subagents: {},
@@ -800,6 +822,10 @@ export function aggregateFrom(cache) {
     // — they represent real work done by Claude.
     agg.linesAdded += summary.linesAdded || 0;
     agg.linesRemoved += summary.linesRemoved || 0;
+    agg.ships += summary.ships || 0;
+    for (const [k, n] of Object.entries(summary.shipKinds || {})) {
+      agg.shipKinds[k] = (agg.shipKinds[k] || 0) + n;
+    }
     agg.estimatedCost += summary.cost || 0;
     for (const [m, v] of Object.entries(summary.costByModel || {})) {
       agg.costByModel[m] = (agg.costByModel[m] || 0) + v;
@@ -848,6 +874,10 @@ export function aggregateFrom(cache) {
           target.linesAdded += src.linesAdded || 0;
           target.linesRemoved += src.linesRemoved || 0;
           target.cost += src.cost || 0;
+          target.ships += src.ships || 0;
+          for (const [kind, n] of Object.entries(src.shipKinds || {})) {
+            (target.shipKinds ||= {})[kind] = (target.shipKinds[kind] || 0) + n;
+          }
         }
       };
       mergeSubBuckets(summary.byDay, agg.byDay);
@@ -882,7 +912,17 @@ export function aggregateFrom(cache) {
       if (summary.lastTs) agg.lastTs = agg.lastTs ? Math.max(agg.lastTs, summary.lastTs) : summary.lastTs;
       // Full per-day/week/hour merge for top-level sessions.
       for (const [k, day] of Object.entries(summary.byDay || {})) {
-        mergeDay(agg.byDay[k] ||= blankDay(), day);
+        const target = agg.byDay[k] ||= blankDay();
+        mergeDay(target, day);
+        // Per-day project attribution — only possible here, where the whole
+        // file's project is known. Presence in the map means "touched that
+        // day", even if activeMs rounded to 0.
+        if (summary.project) {
+          const pm = (target.projects ||= {});
+          const p = pm[summary.project] ||= { activeMs: 0, tokens: 0 };
+          p.activeMs += day.activeMs || 0;
+          p.tokens += (day.inputTokens || 0) + (day.outputTokens || 0) + (day.cacheReadTokens || 0) + (day.cacheWriteTokens || 0);
+        }
       }
       for (const [k, w] of Object.entries(summary.byWeek || {})) {
         mergeDay(agg.byWeek[k] ||= blankDay(), w);
