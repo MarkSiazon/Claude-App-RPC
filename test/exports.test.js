@@ -12,7 +12,7 @@ const { calendarSvg } = await import('../src/calendar.js');
 const { cardSvg } = await import('../src/card.js');
 const { sessionCardSvg } = await import('../src/session-card.js');
 const { postWebhook, desktopNotify, sanitizeLabel } = await import('../src/notify.js');
-const { runDoctor, fixPlan, classifyClientId, ipcStateFromLog } = await import('../src/doctor.js');
+const { runDoctor, fixPlan, classifyClientId, ipcStateFromLog, classifyHookCommand } = await import('../src/doctor.js');
 
 const fakeAgg = {
   activeMs: 100 * 3_600_000,
@@ -180,6 +180,34 @@ test('classifyClientId: unset / placeholder / malformed / ok', () => {
   assert.equal(classifyClientId('12345'), 'malformed', 'too short for a snowflake');
   assert.equal(classifyClientId('15064abc09406920948'), 'malformed', 'non-digits');
   assert.equal(classifyClientId('1506443909406920948'), 'ok');
+});
+
+test('classifyHookCommand: legacy / dead / stale / ok against each install mode', () => {
+  const npm = {
+    packaged: false, npm: true,
+    hookScript: '/g/node_modules/claude-rpc/src/hook.js',
+    exists: (p) => p !== '/gone/node',
+  };
+  // The pre-v0.19.1 shapes resolve their launcher through PATH — the exact
+  // `claude-rpc: command not found` failure doctor previously scored as pass.
+  assert.equal(classifyHookCommand('claude-rpc hook PreToolUse', npm), 'legacy');
+  assert.equal(classifyHookCommand('claude-rpc.cmd hook PreToolUse', npm), 'legacy');
+  assert.equal(classifyHookCommand('node "/repo/src/hook.js" PreToolUse', npm), 'legacy');
+  // Healthy post-v0.19.1 npm shape — previously false-flagged as stale.
+  assert.equal(classifyHookCommand('"/nvm/v24/bin/node" "/g/node_modules/claude-rpc/src/hook.js" PreToolUse', npm), 'ok');
+  // Absolute, runnable, but wired against some other install of the package.
+  assert.equal(classifyHookCommand('"/nvm/v24/bin/node" "/old/node_modules/claude-rpc/src/hook.js" PreToolUse', npm), 'stale');
+  // The node the hooks were wired against was pruned (nvm uninstall).
+  assert.equal(classifyHookCommand('"/gone/node" "/g/node_modules/claude-rpc/src/hook.js" PreToolUse', npm), 'dead');
+  // Packaged: anything not pointing at the canonical exe is stale.
+  const pkg = { packaged: true, npm: false, canonicalExe: 'C:/rpc/claude-rpc.exe', exists: () => true };
+  assert.equal(classifyHookCommand('"C:/rpc/claude-rpc.exe" hook Stop', pkg), 'ok');
+  assert.equal(classifyHookCommand('"C:/other/claude-rpc.exe" hook Stop', pkg), 'stale');
+  // Dev mode: no install-path check, but PATH-dependence is still broken.
+  const dev = { packaged: false, npm: false, exists: () => true };
+  assert.equal(classifyHookCommand('"/usr/bin/node" "/repo/src/hook.js" Stop', dev), 'ok');
+  assert.equal(classifyHookCommand('claude-rpc hook Stop', dev), 'legacy');
+  assert.equal(classifyHookCommand('', dev), 'ok', 'empty command is not ours to judge');
 });
 
 test('ipcStateFromLog: most-recent line wins (up / down / unknown)', () => {

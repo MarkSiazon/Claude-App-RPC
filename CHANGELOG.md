@@ -2,6 +2,12 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+**Fixed**
+
+- **`doctor` now catches the hook breakage it was blind to.** The hooks check still assumed the pre-0.19.1 npm shape (`claude-rpc hook <event>`) was correct — so on a machine with exactly those broken PATH-dependent hooks (every tool use erroring with `claude-rpc: command not found`), doctor reported **pass**, and on a healthy post-0.19.1 install it false-warned all 9 events as "pointing at an old binary path". Hook commands are now classified for real (`classifyHookCommand`): a PATH-dependent launcher or one that's gone from disk (nvm pruned the wired node) is a **fail** with the setup hint; wired-against-a-different-install stays a warn. `doctor --fix` picks the repair up via the existing `setup` fix kind.
+
 ## [1.1.3] - 2026-07-02
 
 **Fixed — the macOS .dmg actually opens now**

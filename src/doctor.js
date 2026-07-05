@@ -9,7 +9,7 @@ import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import {
   IS_PACKAGED, IS_NPM_INSTALL, IS_INSTALLED,
-  CONFIG_PATH, CANONICAL_EXE, USER_CONFIG_DIR,
+  CONFIG_PATH, CANONICAL_EXE, USER_CONFIG_DIR, HOOK_SCRIPT,
   STATE_PATH, PID_PATH, LOG_PATH,
   AGGREGATE_PATH, SCAN_CACHE_PATH,
   CLAUDE_HOME, CLAUDE_PROJECTS, CLAUDE_SETTINGS,
@@ -92,6 +92,35 @@ const PLACEHOLDER_CLIENT_ID = '1234567890123456789';
 export function classifyClientId(clientId) {
   if (!clientId || clientId === PLACEHOLDER_CLIENT_ID) return 'unset';
   if (!/^\d{17,21}$/.test(String(clientId))) return 'malformed';
+  return 'ok';
+}
+
+// One wired hook command, classified against the running install. installHooks
+// has written `"<abs node>" "<abs hook.js>" <event>` (npm + dev) or
+// `"<canonical exe>" hook <event>` (packaged) since v0.19.1 — absolute on both
+// tokens, because Claude Code runs hooks through a minimal-PATH shell that,
+// under a version manager, has neither `claude-rpc` nor `node` on it.
+//   'legacy' — PATH-dependent launcher (pre-v0.19.1 `claude-rpc hook <event>` /
+//              bare `node "<hook.js>"`): fails as `claude-rpc: command not
+//              found` on every tool use.
+//   'dead'   — absolute launcher no longer on disk (e.g. nvm pruned the node
+//              version the hooks were wired against).
+//   'stale'  — runs, but points at a different install than this binary.
+//   'ok'     — wired against the current install.
+export function classifyHookCommand(cmd, {
+  packaged = IS_PACKAGED,
+  npm = IS_NPM_INSTALL,
+  canonicalExe = CANONICAL_EXE,
+  hookScript = HOOK_SCRIPT,
+  exists = existsSync,
+} = {}) {
+  const c = String(cmd || '');
+  const m = c.match(/^"([^"]+)"|^(\S+)/);
+  const launcher = m ? (m[1] ?? m[2]) : '';
+  if (launcher && !launcher.includes('/') && !launcher.includes('\\')) return 'legacy';
+  if (launcher && !exists(launcher)) return 'dead';
+  if (packaged && !c.includes(canonicalExe)) return 'stale';
+  if (npm && !c.includes(hookScript.replace(/\\/g, '/'))) return 'stale';
   return 'ok';
 }
 
@@ -192,26 +221,34 @@ function checkHooks() {
   }
   const missing = [];
   const stale = [];
+  const broken = [];
   for (const event of HOOK_EVENTS) {
     const bucket = settings.hooks?.[event];
     if (!Array.isArray(bucket) || bucket.length === 0) { missing.push(event); continue; }
     const ours = bucket.flatMap((e) => e.hooks || []).find((h) => isOurHook(h));
     if (!ours) { missing.push(event); continue; }
-    if (IS_PACKAGED && !ours.command.includes(CANONICAL_EXE)) stale.push({ event, cmd: ours.command });
-    if (IS_NPM_INSTALL && !/\bclaude-rpc\b\s+hook\b/.test(ours.command)) stale.push({ event, cmd: ours.command });
+    const cls = classifyHookCommand(ours.command);
+    if (cls === 'legacy' || cls === 'dead') broken.push(cls);
+    else if (cls === 'stale') stale.push(event);
   }
-  if (missing.length === 0 && stale.length === 0) {
+  if (missing.length === 0 && stale.length === 0 && broken.length === 0) {
     check(`hooks registered (${HOOK_EVENTS.length}/${HOOK_EVENTS.length})`, 'pass',
       'all events wired against the current binary');
   } else if (missing.length === HOOK_EVENTS.length) {
     check('hooks registered', 'fail', 'no claude-rpc hooks found',
       'run `claude-rpc setup` to register hooks', 'setup');
+  } else if (broken.length > 0) {
+    check('hooks registered', 'fail',
+      broken.includes('legacy')
+        ? `${broken.length} PATH-dependent (pre-v0.19.1) — fail as \`claude-rpc: command not found\` under Claude Code's hook shell`
+        : `${broken.length} pointing at a launcher that's gone from disk`,
+      'run `claude-rpc setup` to rewrite hooks as absolute, PATH-independent commands', 'setup');
   } else if (missing.length > 0) {
     check('hooks registered', 'warn', `missing: ${missing.join(', ')}`,
       'run `claude-rpc setup` to add the missing events', 'setup');
   } else if (stale.length > 0) {
     check('hooks registered', 'warn',
-      `${stale.length} pointing at an old binary path`,
+      `${stale.length} wired against a different install than this binary`,
       'run `claude-rpc setup` to refresh hook commands against the current binary', 'setup');
   }
 }
