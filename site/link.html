@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — link a machine</title>
-<meta name="description" content="Link your machines into one claude-rpc leaderboard profile. One code, one command — stats from every install count as one." />
+<title>claude-rpc · link a machine</title>
+<meta name="description" content="Link your machines into one claude-rpc leaderboard profile. One code, one command: stats from every install count as one." />
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc — link a machine" />
+<meta property="og:title" content="claude-rpc · link a machine" />
 <meta property="og:description" content="One profile across every machine. Mint a code here or with `claude-rpc link` on a verified install." />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://claude-rpc.com/img/og.png" />
@@ -64,11 +64,11 @@
   <main class="wrap">
     <span class="kicker">link</span>
     <h1>one profile, every machine.</h1>
-    <p class="lead">Link your installs into a single leaderboard identity — one board row, tokens and hours summed across machines, same squads everywhere.</p>
+    <p class="lead">Link your installs into a single leaderboard identity: one board row, tokens and hours summed across machines, same squads everywhere.</p>
     <div class="who" id="who" hidden>logged in as <strong id="whoGh"></strong> · <button id="logoutBtn">log out</button></div>
 
     <div class="terminalway">
-      <strong>Already verified on another machine?</strong> You don't need this page: run <code>claude-rpc link</code> there — it prints a code — then <code>claude-rpc link &lt;code&gt;</code> on the new machine. Done.
+      <strong>Already verified on another machine?</strong> You don't need this page: run <code>claude-rpc link</code> there (it prints a code), then <code>claude-rpc link &lt;code&gt;</code> on the new machine. Done.
     </div>
 
     <!-- state: logged out -->
@@ -78,17 +78,17 @@
         <div style="color:var(--ink-mute); margin-bottom: 14px;">Log in with GitHub (public identity only, no scopes) and this page mints the code for you.</div>
         <a class="btn" id="loginBtn" href="#">log in with GitHub →</a>
       </div>
-      <p class="note">New here? claude-rpc is the open-source Discord presence + stats layer for <a href="/">Claude Code</a>. Linking proves which GitHub account owns your stats — that's the ✓ on the <a href="/leaderboard">leaderboard</a>.</p>
+      <p class="note">New here? claude-rpc is the open-source Discord presence + stats layer for <a href="/">Claude Code</a>. Linking proves which GitHub account owns your stats. That's the ✓ on the <a href="/leaderboard">leaderboard</a>.</p>
     </section>
 
     <!-- state: logged in, no claude-rpc profile linked yet -->
     <section id="sUnlinked" hidden>
       <div class="panel">
-        <h3>connect your CLI — run these in your terminal</h3>
+        <h3>connect your CLI: run these in your terminal</h3>
         <div style="color:var(--ink-mute); margin-bottom: 10px;">Click a line to copy it. Already ran a step? Skip it.</div>
         <div class="steps" id="linkCmds"></div>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px">
-          <span class="waiting"><span class="pulse"></span> waiting for the link — this page updates itself</span>
+          <span class="waiting"><span class="pulse"></span> waiting for the link · this page updates itself</span>
           <button class="btn alt small" id="newCodeBtn" title="codes expire after 10 minutes">new code</button>
         </div>
         <div class="err" id="linkErr"></div>
@@ -99,14 +99,14 @@
     <section id="sReady" hidden>
       <div class="panel">
         <h3>add another machine</h3>
-        <div style="color:var(--ink-mute); margin-bottom: 10px;">Run these on the other computer — its stats merge into <strong id="mHandle"></strong> (one board row, totals summed) and it manages the same <a href="/squads">squads</a>. Click a line to copy.</div>
+        <div style="color:var(--ink-mute); margin-bottom: 10px;">Run these on the other computer. Its stats merge into <strong id="mHandle"></strong> (one board row, totals summed) and it manages the same <a href="/squads">squads</a>. Click a line to copy.</div>
         <div class="steps" id="machineCmds"></div>
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px">
           <span class="waiting"><span class="pulse"></span> code lasts 10 minutes</span>
           <button class="btn alt small" id="machineNewCode">new code</button>
         </div>
       </div>
-      <p class="note">Tip: any machine that's already linked can mint these codes itself — just run <code style="font-family:var(--font-mono)">claude-rpc link</code> there. No browser, no login.</p>
+      <p class="note">Tip: any machine that's already linked can mint these codes itself: just run <code style="font-family:var(--font-mono)">claude-rpc link</code> there. No browser, no login.</p>
     </section>
 
     <div class="err" id="pageErr"></div>
@@ -185,7 +185,7 @@
         renderCmdLines('linkCmds', [
           'npx claude-rpc@latest setup',
           `claude-rpc profile set --handle ${handleSug} && claude-rpc profile on`,
-          code ? `claude-rpc link ${code}` : 'claude-rpc link <code unavailable — hit "new code">',
+          code ? `claude-rpc link ${code}` : 'claude-rpc link <code unavailable, hit "new code">',
         ]);
       }
       await renderOnboard();
@@ -206,7 +206,7 @@
       const code = await mintCode(auth);
       renderCmdLines('machineCmds', [
         'npx claude-rpc@latest setup',
-        code ? `claude-rpc link ${code}` : 'claude-rpc link <code unavailable — hit "new code">',
+        code ? `claude-rpc link ${code}` : 'claude-rpc link <code unavailable, hit "new code">',
       ]);
     }
     await renderMachineCode();

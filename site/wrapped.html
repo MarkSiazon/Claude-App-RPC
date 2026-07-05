@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Claude Wrapped — your year with Claude Code</title>
-<meta name="description" content="Your year on Claude Code as an animated story — hours, streaks, tokens, top language, peak hours. Publish yours with one command: claude-rpc wrapped --publish." />
+<title>Claude Wrapped · your year with Claude Code</title>
+<meta name="description" content="Your year on Claude Code as an animated story: hours, streaks, tokens, top language, peak hours. Publish yours with one command: claude-rpc wrapped --publish." />
 <link rel="canonical" href="https://claude-rpc.com/wrapped" />
 <link rel="icon" type="image/png" href="/img/favicon.png" />
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="Claude Wrapped — your year with Claude Code" />
+<meta property="og:title" content="Claude Wrapped · your year with Claude Code" />
 <meta property="og:description" content="An animated year-in-review for Claude Code. Publish yours with one command: claude-rpc wrapped --publish" />
 <meta property="og:image" content="https://claude-rpc.com/img/og.png" />
 <meta property="og:url" content="https://claude-rpc.com/wrapped" />
@@ -298,13 +298,13 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
       <div class="kicker anim" ${A()}>moving</div>
       <div class="huge anim" ${A()}><span data-count="${d.tokens}" data-fmt="num">0</span></div>
       <div class="unit anim" ${A()}>tokens</div>
-      <div class="sub anim" ${A()}>${d.cachePct}% reused from cache — Claude has a good memory</div>`);
+      <div class="sub anim" ${A()}>${d.cachePct}% reused from cache. Claude has a good memory</div>`);
 
     // 6. top language
     if (d.topLanguage) S('plum', `
       <div class="kicker anim" ${A()}>mostly speaking</div>
       <div class="anim" ${A()}><span class="tapebadge pop">${esc(d.topLanguage.name)}</span></div>
-      <div class="sub anim" ${A()}>${d.topLanguage.edits ? fmtNum(d.topLanguage.edits) + ' edits — ' : ''}the number-one language</div>`);
+      <div class="sub anim" ${A()}>${d.topLanguage.edits ? fmtNum(d.topLanguage.edits) + ' edits · ' : ''}the number-one language</div>`);
 
     // 7. hotspot file
     if (d.hotspot) {
@@ -492,15 +492,15 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
   function onelineBlock() {
     if (TOK && GH) {
       return `<div class="cmds" id="${ONELINE_ID}">
-        <div><span class="d"># signed in as @${esc(GH)} — everything in one line:</span></div>
+        <div><span class="d"># signed in as @${esc(GH)} · everything in one line:</span></div>
         <div><button class="btn primary" id="mint" style="margin-top:6px">⚡ mint my one-liner</button></div>
       </div>`;
     }
     const ret = encodeURIComponent(location.pathname);
     return `<div class="cmds" id="${ONELINE_ID}">
-      <div><span class="d"># or do EVERYTHING in one line — install, verify, publish:</span></div>
+      <div><span class="d"># or do EVERYTHING in one line (install, verify, publish):</span></div>
       <div><a class="btn primary" style="margin-top:6px" href="${WORKER}/auth/login?return=${ret}">⚡ sign in with GitHub → get the one-liner</a></div>
-      <div><span class="d" style="font-size:11px">zero scopes — public identity only</span></div>
+      <div><span class="d" style="font-size:11px">zero scopes, public identity only</span></div>
     </div>`;
   }
   function wireOneline() {
@@ -524,7 +524,7 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
         const cmd = `npx claude-rpc@latest setup --link ${code} --wrapped`;
         const box = document.getElementById(ONELINE_ID);
         box.innerHTML = `
-          <div><span class="d"># paste in any terminal — installs, verifies you as @${esc(GH)}, publishes your wrapped:</span></div>
+          <div><span class="d"># paste in any terminal. installs, verifies you as @${esc(GH)}, publishes your wrapped:</span></div>
           <div><span class="c" id="cmdtext">${esc(cmd)}</span></div>
           <div style="margin-top:8px"><button class="btn primary" id="copycmd">copy</button>
             <span class="d" style="font-size:11px"> code lasts ${Math.round((expiresInSec || 600) / 60)} min · then refresh your wrapped here</span></div>`;
@@ -552,7 +552,7 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
     app.innerHTML = `<div class="page-wrap">
       <div class="kicker">claude-rpc presents</div>
       <div class="big">Claude Wrapped</div>
-      <div class="sub">your year with Claude Code as an animated story — hours, streaks, tokens, top language, peak hours. published with one command, watched anywhere.</div>
+      <div class="sub">your year with Claude Code as an animated story: hours, streaks, tokens, top language, peak hours. published with one command, watched anywhere.</div>
       <div class="handle-row">
         <input id="h" type="text" placeholder="leaderboard handle" autocomplete="off" spellcheck="false" />
         <button class="btn primary" id="goh">watch →</button>
@@ -592,7 +592,7 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
         let err = '';
         try { err = (await r.json()).error || ''; } catch { /* body shape is ours, but never trust it */ }
         if (/no such profile/i.test(err)) {
-          emptyState('no such profile', `nobody on the board is called "${esc(HANDLE)}" — handles come from the claude-rpc leaderboard.`);
+          emptyState('no such profile', `nobody on the board is called "${esc(HANDLE)}". handles come from the claude-rpc leaderboard.`);
         } else {
           emptyState(`@${esc(HANDLE)} hasn't wrapped yet`, 'the profile exists, but no year has been published. it takes one command:');
         }
@@ -605,7 +605,7 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
       if (!data) return;
       const w = data.wrapped || {};
       const who = data.displayName || '@' + data.handle;
-      document.title = `${who} · Claude Wrapped ${data.year} — claude-rpc`;
+      document.title = `${who} · Claude Wrapped ${data.year} · claude-rpc`;
       _shareUrl = `${SITE}/wrapped/${encodeURIComponent(data.handle)}`;
       _posterUrl = `${WORKER}/wrapped/${encodeURIComponent(data.handle)}.svg?year=${data.year}`;
       // Adapter: published payload → the exact shape the local slides consume.
@@ -633,14 +633,14 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
         bestDay: w.peakDay ? { date: w.peakDay.date, hours: (w.peakDay.activeMs || 0) / 3.6e6 } : null,
       };
       if (!d.sessions && !d.tokens) {
-        emptyState(`@${esc(HANDLE)}'s wrapped is empty`, 'the published year has no activity in it — re-publish after a scan:');
+        emptyState(`@${esc(HANDLE)}'s wrapped is empty`, 'the published year has no activity in it. re-publish after a scan:');
         return;
       }
       document.querySelector('.homelink')?.remove(); // fullscreen story owns the frame
       mount(buildSlides(d));
     })
     .catch(() => {
-      emptyState("couldn't load this wrapped", "the stats service didn't answer — try again in a moment.");
+      emptyState("couldn't load this wrapped", "the stats service didn't answer. try again in a moment.");
     });
 })();
 </script>

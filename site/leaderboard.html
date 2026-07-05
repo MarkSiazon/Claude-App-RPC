@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — leaderboard</title>
-<meta name="description" content="Who's building most with Claude Code — a public, GitHub-verified leaderboard of tokens, sessions, hours and streaks." />
+<title>claude-rpc · leaderboard</title>
+<meta name="description" content="Who's building most with Claude Code: a public, GitHub-verified leaderboard of tokens, sessions, hours and streaks." />
 <link rel="canonical" href="https://claude-rpc.com/leaderboard" />
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc — leaderboard" />
+<meta property="og:title" content="claude-rpc · leaderboard" />
 <meta property="og:description" content="Who's building most with Claude Code. Verified profiles rank first. Join with: claude-rpc profile on" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://claude-rpc.com/leaderboard" />
@@ -164,7 +164,7 @@
       <span class="chip"><span class="dot"></span> <span id="updated">loading…</span></span>
       <a class="chip" id="loginLink" href="#">log in with GitHub →</a>
       <span class="chip" id="acctIn" hidden>@<span id="acctGh"></span><span id="mySquads"></span></span>
-      <a class="chip" href="/squads">squads — race your friends →</a>
+      <a class="chip" href="/squads">squads · race your friends →</a>
     </div>
 
     <div class="tabs" id="tabs">
@@ -184,7 +184,7 @@
     </div>
 
     <p class="note">Numbers are self-reported by each install and accepted as server-validated deltas with
-      plausibility caps — see the worker source for the exact rules. It's a friendly board, not an audited benchmark.</p>
+      plausibility caps; see the worker source for the exact rules. It's a friendly board, not an audited benchmark.</p>
 
     <section class="panel">
       <h2>want on the board?</h2>
@@ -247,14 +247,14 @@
         podium.hidden = true; boardBox.hidden = false;
         rows.innerHTML = `<tr><td colspan="3" class="empty">
           <div style="font-family:var(--font-disp);font-weight:700;font-size:1.3rem;margin-bottom:10px;">No one's on the board yet.</div>
-          <div style="margin-bottom:14px;color:var(--ink-mute);">Be the first builder — three commands:</div>
+          <div style="margin-bottom:14px;color:var(--ink-mute);">Be the first builder. Three commands:</div>
           <div style="font-family:var(--font-mono);font-size:0.82rem;text-align:left;display:inline-block;background:var(--paper);border:1.5px solid var(--ink);padding:14px 18px;">
             <div><span style="color:var(--rust-3)">$</span> npx claude-rpc@latest setup</div>
             <div><span style="color:var(--rust-3)">$</span> claude-rpc profile set --handle you</div>
             <div><span style="color:var(--rust-3)">$</span> claude-rpc profile on &amp;&amp; claude-rpc profile publish</div>
           </div>
         </td></tr>`;
-        document.getElementById('updated').textContent = 'no one on the board yet — be the first';
+        document.getElementById('updated').textContent = 'no one on the board yet. be the first';
         return;
       }
 
@@ -262,7 +262,7 @@
       const top = board.slice(0, 3);
       podium.innerHTML = top.map((r) => {
         const name = r.displayName || ('@' + r.handle);
-        const gh = r.githubUser ? `github.com/${esc(r.githubUser)}` : (r.verified ? '' : 'unverified — capped');
+        const gh = r.githubUser ? `github.com/${esc(r.githubUser)}` : (r.verified ? '' : 'unverified · capped');
         return `<a class="pod ${r.rank === 1 ? 'first' : ''}" href="/u/${encodeURIComponent(r.handle)}">
           <span class="ranktag">#${r.rank}</span>
           ${avatar(r, 'ava')}
@@ -295,7 +295,7 @@
       document.getElementById('updated').textContent = `${board.length} builder${board.length === 1 ? '' : 's'} · live`;
     } catch (e) {
       podium.hidden = true; boardBox.hidden = false;
-      rows.innerHTML = '<tr><td colspan="3" class="empty">couldn\'t load the board — try again in a moment</td></tr>';
+      rows.innerHTML = '<tr><td colspan="3" class="empty">couldn\'t load the board. try again in a moment</td></tr>';
       document.getElementById('updated').textContent = 'board unavailable';
     }
   }

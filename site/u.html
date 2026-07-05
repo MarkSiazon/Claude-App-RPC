@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — profile</title>
+<title>claude-rpc · profile</title>
 <meta name="description" content="A claude-rpc builder profile: Claude Code tokens, sessions, active hours and streak." />
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc — builder profile" />
+<meta property="og:title" content="claude-rpc · builder profile" />
 <meta property="og:description" content="Claude Code tokens, sessions, active hours and streak. Make yours: claude-rpc profile on" />
 <meta property="og:type" content="profile" />
 <meta property="og:image" content="https://claude-rpc.com/img/og.png" />
@@ -178,7 +178,7 @@
 
     <section class="panel" id="embed" hidden>
       <h2>embed in your README</h2>
-      <p class="hint">live card + badges — they track this profile and refresh themselves. no re-running, no gist.</p>
+      <p class="hint">live card + badges: they track this profile and refresh themselves. no re-running, no gist.</p>
       <div class="embedgrid">
         <img id="cardpreview" class="cardimg" alt="Claude Code stats card" loading="lazy" />
         <div class="badgecol" id="badgecol"></div>
@@ -243,13 +243,13 @@
   }
 
   async function load() {
-    if (!handle) return showErr('no handle in the URL — try /u/<handle>.');
+    if (!handle) return showErr('no handle in the URL. try /u/<handle>.');
     try {
       const res = await fetch(`${WORKER}/profile?handle=${encodeURIComponent(handle)}`);
-      if (!res.ok) return showErr(`nobody has claimed “${esc(handle)}” — it could be yours.`);
+      if (!res.ok) return showErr(`nobody has claimed “${esc(handle)}”. it could be yours.`);
       const { profile: p } = await res.json();
       const name = p.displayName || ('@' + p.handle);
-      document.title = `${name} — claude-rpc`;
+      document.title = `${name} · claude-rpc`;
       $('name').innerHTML = `<span class="blot">${esc(name)}</span>`;
       if (p.verified) $('stamp').hidden = false;
       // Avatar only when the GitHub identity is PROVEN — an unverified claim
@@ -266,7 +266,7 @@
 
       const chips = [];
       if (p.githubUser) chips.push(`<a class="chip" href="https://github.com/${esc(p.githubUser)}" rel="nofollow noopener">↗ github.com/${esc(p.githubUser)}</a>`);
-      if (!p.verified) chips.push(`<span class="chip dim">unverified — capped for ranking</span>`);
+      if (!p.verified) chips.push(`<span class="chip dim">unverified · capped for ranking</span>`);
       $('subrow').innerHTML = chips.join('');
 
       countUp($('tokens'), p.tokens || 0, fmt);
@@ -283,7 +283,7 @@
       const url = `${SITE}/u/${encodeURIComponent(p.handle)}`;
       $('copylink').onclick = () => copy(url, $('copylink'), 'copy profile link');
       $('sharex').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(
-        `my Claude Code stats: ${fmt(p.tokens)} tokens · ${p.sessions} sessions · ${(p.activeMs/3600000).toFixed(0)}h — tracked by claude-rpc\n${url}`);
+        `my Claude Code stats: ${fmt(p.tokens)} tokens · ${p.sessions} sessions · ${(p.activeMs/3600000).toFixed(0)}h · tracked by claude-rpc\n${url}`);
       $('sharerow').hidden = false;
 
       renderRank(p.handle);
@@ -291,7 +291,7 @@
       renderEmbed(p.handle);
       $('cta').hidden = false;
     } catch (e) {
-      showErr('profile unavailable — try again in a moment.');
+      showErr('profile unavailable. try again in a moment.');
     }
   }
 
@@ -356,8 +356,8 @@
 
   function showErr(msg) {
     $('name').innerHTML = `<span class="blot">@${esc(handle || '?')}</span>`;
-    document.title = 'claude-rpc — profile not found';
-    $('errmsg').innerHTML = esc(msg) + '<br/>publish yours with the command below — takes about two minutes.';
+    document.title = 'claude-rpc · profile not found';
+    $('errmsg').innerHTML = esc(msg) + '<br/>publish yours with the command below. takes about two minutes.';
     $('err').hidden = false;
     $('cta').hidden = false;
     $('cta-title').textContent = 'claim it';

@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — squads</title>
-<meta name="description" content="Squads: private Claude Code mini-leaderboards with friends. Weekly resets — fresh race every Monday." />
+<title>claude-rpc · squads</title>
+<meta name="description" content="Squads: private Claude Code mini-leaderboards with friends. Weekly resets: fresh race every Monday." />
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc — squads" />
+<meta property="og:title" content="claude-rpc · squads" />
 <meta property="og:description" content="Race your friends on Claude Code. Private squads, weekly resets, one invite link." />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://claude-rpc.com/img/og.png" />
@@ -81,7 +81,7 @@
   <main class="wrap">
     <span class="kicker">squads</span>
     <h1>race your friends.</h1>
-    <p class="lead">A squad is a private leaderboard for your crew. Scores reset every Monday — so the race is always winnable, no matter whose lifetime total is scary.</p>
+    <p class="lead">A squad is a private leaderboard for your crew. Scores reset every Monday, so the race is always winnable, no matter whose lifetime total is scary.</p>
     <div class="who" id="who" hidden>logged in as <strong id="whoGh"></strong> · <button id="logoutBtn">log out</button></div>
 
     <!-- state: logged out -->
@@ -98,7 +98,7 @@
     <!-- state: logged in, profile not linked -->
     <section id="sUnlinked" hidden>
       <div class="panel">
-        <h3>almost — connect your CLI first</h3>
+        <h3>almost: connect your CLI first</h3>
         <div style="color:var(--ink-mute); margin-bottom: 14px;">Squads race on the stats your claude-rpc install publishes, so this GitHub account needs a linked profile. Takes a minute.</div>
         <a class="btn" href="/link">link your CLI →</a>
         <span class="waiting" style="margin-left:14px"><span class="pulse"></span> this page notices when the link lands</span>
@@ -116,8 +116,8 @@
         <div class="err" id="createErr"></div>
       </div>
       <div id="mySquads"></div>
-      <p class="note" id="emptyNote" hidden>No squads yet — name one above and send the invite link it gives you. Terminal twin: <code>claude-rpc squad create "name"</code>.</p>
-      <p class="note">Use claude-rpc on more than one computer? <a href="/link">Link your machines</a> into one profile — or just run <code>claude-rpc link</code> on a machine that's already verified.</p>
+      <p class="note" id="emptyNote" hidden>No squads yet. Name one above and send the invite link it gives you. Terminal twin: <code>claude-rpc squad create "name"</code>.</p>
+      <p class="note">Use claude-rpc on more than one computer? <a href="/link">Link your machines</a> into one profile, or just run <code>claude-rpc link</code> on a machine that's already verified.</p>
     </section>
 
     <div class="err" id="pageErr"></div>
@@ -223,8 +223,8 @@
         });
         const j = await r.json().catch(() => ({}));
         if (r.ok && j.squad) { location.href = `/squad/${j.squad.id}`; return; }
-        err.textContent = j.error || 'could not create the squad — try again';
-      } catch { err.textContent = 'network hiccup — try again'; }
+        err.textContent = j.error || 'could not create the squad, try again';
+      } catch { err.textContent = 'network hiccup, try again'; }
       btn.disabled = false; btn.textContent = 'create →';
     }
     btn.onclick = create;

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — Discord Rich Presence (RPC) for Claude Code</title>
-<meta name="description" content="Open-source Discord Rich Presence (RPC) for Claude Code. A tiny Node daemon puts your live session — model, project, current tool, tokens, lifetime stats — into your Discord profile. Free on GitHub and npm; one-command install." />
+<title>claude-rpc · Discord Rich Presence (RPC) for Claude Code</title>
+<meta name="description" content="Open-source Discord Rich Presence (RPC) for Claude Code. A tiny Node daemon puts your live session in your Discord profile: model, project, current tool, tokens, lifetime stats. Free on GitHub and npm; one-command install." />
 
 <link rel="canonical" href="https://claude-rpc.com/" />
 <meta name="keywords" content="claude code, discord rich presence, discord rpc, claude code hooks, anthropic, developer stats, cli, coding stats, claude wrapped" />
@@ -12,7 +12,7 @@
 <meta name="author" content="Archer Simmons" />
 
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc — your Claude Code sessions, live on Discord" />
+<meta property="og:title" content="claude-rpc · your Claude Code sessions, live on Discord" />
 <meta property="og:description" content="Live model, project, tokens and lifetime stats from Claude Code, in your Discord profile. Built solo. Install in one command: npx claude-rpc@latest setup" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://claude-rpc.com/" />
@@ -23,10 +23,10 @@
 <meta property="og:video:height" content="1080" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:image:alt" content="claude-rpc — Discord Rich Presence for Claude Code. Install with: npx claude-rpc@latest setup" />
+<meta property="og:image:alt" content="claude-rpc · Discord Rich Presence for Claude Code. Install with: npx claude-rpc@latest setup" />
 
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="claude-rpc — your Claude Code sessions, live on Discord" />
+<meta name="twitter:title" content="claude-rpc · your Claude Code sessions, live on Discord" />
 <meta name="twitter:description" content="Live model, project, tokens and lifetime stats from Claude Code, in your Discord profile. Install in one command: npx claude-rpc@latest setup" />
 <meta name="twitter:image" content="https://claude-rpc.com/img/og.png" />
 
@@ -37,7 +37,7 @@
   "@type": "SoftwareApplication",
   "name": "claude-rpc",
   "alternateName": ["Claude Code Discord RPC", "Claude Discord Rich Presence"],
-  "description": "Discord Rich Presence (RPC) for Claude Code — live model, project, tokens, and lifetime stats driven by Claude Code's hooks. Open source on GitHub.",
+  "description": "Discord Rich Presence (RPC) for Claude Code: live model, project, tokens, and lifetime stats driven by Claude Code's hooks. Open source on GitHub.",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Windows, Linux",
   "url": "https://claude-rpc.com/",
@@ -58,7 +58,7 @@
 {
   "@context": "https://schema.org",
   "@type": "SoftwareSourceCode",
-  "name": "claude-rpc — Claude Code Discord Rich Presence",
+  "name": "claude-rpc · Claude Code Discord Rich Presence",
   "description": "GitHub repository for claude-rpc, the open-source Discord Rich Presence (RPC) integration for Claude Code.",
   "codeRepository": "https://github.com/rar-file/claude-rpc",
   "programmingLanguage": "JavaScript",
@@ -304,11 +304,11 @@
 
   h1 {
     font-family: var(--font-disp);
-    font-size: clamp(2.6rem, 6vw, 4.4rem);
-    font-weight: 900;
-    line-height: 0.98;
-    letter-spacing: -0.035em;
-    margin: 0 0 22px;
+    font-size: clamp(2.5rem, 5.6vw, 4.1rem);
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+    margin: 0 0 26px;
     color: var(--ink);
   }
   h1 .ink-blot {
@@ -827,18 +827,18 @@
 <!-- ─────────────────────────────────────────────────── TICKER -->
 <div class="ticker-bar">
   <div class="ticker-track">
-    <span class="h">★</span><span>shipped v1.0 — first stable release</span>
+    <span class="h">★</span><span>shipped v1.0, first stable release</span>
     <span class="h">★</span><span>presence.byStatus is the new default</span>
     <span class="h">★</span><span>built solo by archer in weekends</span>
-    <span class="h">★</span><span>MIT licensed — fork it, ship it</span>
-    <span class="h">★</span><span>node SEA single-file binary — no install required</span>
+    <span class="h">★</span><span>MIT licensed. fork it, ship it</span>
+    <span class="h">★</span><span>node SEA single-file binary, no install required</span>
     <span class="g">★</span><span>discord rich presence for claude code</span>
     <!-- duplicated for seamless loop -->
-    <span class="h">★</span><span>shipped v1.0 — first stable release</span>
+    <span class="h">★</span><span>shipped v1.0, first stable release</span>
     <span class="h">★</span><span>presence.byStatus is the new default</span>
     <span class="h">★</span><span>built solo by archer in weekends</span>
-    <span class="h">★</span><span>MIT licensed — fork it, ship it</span>
-    <span class="h">★</span><span>node SEA single-file binary — no install required</span>
+    <span class="h">★</span><span>MIT licensed. fork it, ship it</span>
+    <span class="h">★</span><span>node SEA single-file binary, no install required</span>
     <span class="g">★</span><span>discord rich presence for claude code</span>
   </div>
 </div>
@@ -872,11 +872,11 @@
     <span class="sticker">a weekend project, shipped publicly</span>
     <h1>
       your <span class="ink-blot">claude code</span> session,<br/>
-      live <span class="wave">📡</span> on discord.
+      live on discord.
     </h1>
     <p class="lead">
       A small Node daemon that takes the lifecycle events <code>claude code</code>
-      already fires — and pipes them into the Discord Rich Presence (RPC) card on
+      already fires and pipes them into the Discord Rich Presence (RPC) card on
       your profile. Your friends see what you're building, your future self gets
       lifetime stats. Zero polling between sessions.
     </p>
@@ -896,7 +896,7 @@
       <span class="cmd" id="install-cmd">npx claude-rpc@latest setup</span>
       <button id="copy-btn" type="button">copy</button>
     </div>
-    <p class="install-note">one command — installs globally, wires Claude Code's hooks, and starts the daemon. No Node? <a href="#download">grab the desktop app ↓</a></p>
+    <p class="install-note">one command. It installs globally, wires Claude Code's hooks, and starts the daemon. No Node? <a href="#download">grab the desktop app ↓</a></p>
     <div class="hero-meta">
       <span><span class="ok">●</span> <span id="latest-tag">v1.1.3</span></span>
       <span class="dot">·</span>
@@ -957,7 +957,7 @@
   <span class="kicker">grab the binary</span>
   <h2>one file. drop it anywhere.</h2>
   <p class="lead">
-    Built with Node SEA — the CLI is a single executable with Node baked in. No
+    Built with Node SEA: the CLI is a single executable with Node baked in. No
     runtime install, no <code>npm install</code>, no PATH gymnastics. The desktop
     app bundles the same binary plus a config GUI.
   </p>
@@ -968,7 +968,7 @@
         <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.5L9.7 2.2v9.5H0V3.5zm0 17l9.7 1.3v-9.4H0V20.5zM10.8 11.7H24V0L10.8 1.8v9.9zm0 1.2v9.6L24 24V12.9H10.8z"/></svg></span>
         <span class="dl-os-name">windows</span>
       </div>
-      <div class="dl-detail">NSIS installer with auto-update, or a portable <code>.exe</code> you can drop on a USB stick. Unsigned (solo project) — if SmartScreen warns, it's <em>More info → Run anyway</em>.</div>
+      <div class="dl-detail">NSIS installer with auto-update, or a portable <code>.exe</code> you can drop on a USB stick. Unsigned (solo project). If SmartScreen warns, it's <em>More info → Run anyway</em>.</div>
       <div class="dl-meta">x64 <span class="pipe">·</span> <span id="size-win">~45 MB</span></div>
       <a class="btn rust" id="dl-win-primary" href="https://github.com/rar-file/claude-rpc/releases/latest">
         get .exe installer <span class="arrow">→</span>
@@ -994,7 +994,7 @@
         <span class="dl-os-icon"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.15 2.587L18.21.539a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/></svg></span>
         <span class="dl-os-name">vs code</span>
       </div>
-      <div class="dl-detail">Status bar companion — live Claude status in the editor, pause the Discord card, open the dashboard. Pairs with the CLI.</div>
+      <div class="dl-detail">Status bar companion: live Claude status in the editor, pause the Discord card, open the dashboard. Pairs with the CLI.</div>
       <div class="dl-meta">marketplace <span class="pipe">·</span> 10 KB</div>
       <a class="btn rust" href="https://marketplace.visualstudio.com/items?itemName=rarfile.claude-rpc-presence">
         get the extension <span class="arrow">→</span>
@@ -1208,7 +1208,7 @@
   <h2>three small pieces, glued by json files.</h2>
   <p class="lead">
     No database, no message bus, no background polling when claude code isn't
-    running. The file-based IPC is intentional — it makes the whole system
+    running. The file-based IPC is intentional. It makes the whole system
     inspectable with <code>cat</code> and <code>jq</code>.
   </p>
 
@@ -1267,7 +1267,7 @@
       <img src="img/electron.png" alt="Electron config editor" loading="lazy" decoding="async" />
       <div class="shot-caption">
         <div class="title">settings gui</div>
-        <div class="sub">six-tab electron editor — drag-reorder frames, variable autocomplete, daemon controls, live preview.</div>
+        <div class="sub">six-tab electron editor: drag-reorder frames, variable autocomplete, daemon controls, live preview.</div>
       </div>
     </div>
   </div>
@@ -1278,7 +1278,7 @@
   <span class="kicker">building in public</span>
   <h2>the recent history.</h2>
   <p class="lead">
-    Shipping small. Each release tag is a real artifact you can download —
+    Shipping small. Each release tag is a real artifact you can download:
     no nightlies, no marketing-driven version numbers. Read the source on
     your way through.
   </p>
@@ -1289,18 +1289,18 @@
       <div class="meta" id="changelog-meta">latest first · <a href="https://github.com/rar-file/claude-rpc/releases">all releases →</a></div>
     </div>
     <ul id="changelog-list">
-      <li><span class="v">v1.1.3</span> <span class="note">the macOS .dmg opens now — the bundle is ad-hoc signed (was fully unsigned, which Apple Silicon refuses outright), the dmg carries first-open instructions, and CI verifies the seal every release.</span></li>
-      <li><span class="v">v1.1.2</span> <span class="note">the Windows installer finally does its job — the desktop app auto-runs <code>setup</code> on first launch (hooks wired, daemon up), plus a one-click Run setup button and CI now smoke-tests every shipped exe.</span></li>
-      <li><span class="v">v1.1.1</span> <span class="note">16 logic fixes from a full-codebase review — compaction no longer resets the card, symlinked dirs no longer double stats, gist artifacts stop overwriting each other, chart labels align.</span></li>
-      <li><span class="v">v1.1.0</span> <span class="note"><code>claude-rpc recap</code> — the standup answer: yesterday's projects, ships, churn, and cost in one paste-ready summary (<code>--md</code>), plus a <code>get_recap</code> MCP tool.</span></li>
-      <li><span class="v">v1.0.3</span> <span class="note">the project moved home to <strong>claude-rpc.com</strong> — every CLI hint, card footer, badge link, and page now points here; old <code>claude-rpc.vercel.app</code> links redirect.</span></li>
+      <li><span class="v">v1.1.3</span> <span class="note">the macOS .dmg opens now: the bundle is ad-hoc signed (was fully unsigned, which Apple Silicon refuses outright), the dmg carries first-open instructions, and CI verifies the seal every release.</span></li>
+      <li><span class="v">v1.1.2</span> <span class="note">the Windows installer finally does its job: the desktop app auto-runs <code>setup</code> on first launch (hooks wired, daemon up), plus a one-click Run setup button and CI now smoke-tests every shipped exe.</span></li>
+      <li><span class="v">v1.1.1</span> <span class="note">16 logic fixes from a full-codebase review. Compaction no longer resets the card, symlinked dirs no longer double stats, gist artifacts stop overwriting each other, chart labels align.</span></li>
+      <li><span class="v">v1.1.0</span> <span class="note"><code>claude-rpc recap</code>, the standup answer: yesterday's projects, ships, churn, and cost in one paste-ready summary (<code>--md</code>), plus a <code>get_recap</code> MCP tool.</span></li>
+      <li><span class="v">v1.0.3</span> <span class="note">the project moved home to <strong>claude-rpc.com</strong>. Every CLI hint, card footer, badge link, and page now points here; old <code>claude-rpc.vercel.app</code> links redirect.</span></li>
       <li><span class="v">v1.0.2</span> <span class="note">presence no longer blanks under bursty activity (hard sliding-window write cap, default 4/20s), and Windows child processes stop flashing a console window.</span></li>
-      <li><span class="v">v1.0.1</span> <span class="note">first stable release — the public surface (worker API, CLI, config schema, template vars, data formats) is now a semver-governed contract. See <code>VERSIONING.md</code>.</span></li>
-      <li><span class="v">v0.24.0</span> <span class="note"><code>claude-rpc insights</code> — ~20 rotating generators (chronotype, personal-best day, weekend rhythm, model mix, cache-reuse, tenure milestones) with a fresh mix each run.</span></li>
-      <li><span class="v">v0.23.0</span> <span class="note">live auto-updating stat <strong>card</strong> for your README — <code>GET /card/&lt;handle&gt;.svg</code>, the bigger sibling of the badge. Paste once, refreshes itself.</span></li>
-      <li><span class="v">v0.22.0</span> <span class="note">live paste-once README <strong>badges</strong> — <code>GET /badge/&lt;handle&gt;.svg</code>, no gist, no <code>gh</code>; <code>claude-rpc readme</code> prints the markdown.</span></li>
+      <li><span class="v">v1.0.1</span> <span class="note">first stable release. The public surface (worker API, CLI, config schema, template vars, data formats) is now a semver-governed contract. See <code>VERSIONING.md</code>.</span></li>
+      <li><span class="v">v0.24.0</span> <span class="note"><code>claude-rpc insights</code>: ~20 rotating generators (chronotype, personal-best day, weekend rhythm, model mix, cache-reuse, tenure milestones) with a fresh mix each run.</span></li>
+      <li><span class="v">v0.23.0</span> <span class="note">live auto-updating stat <strong>card</strong> for your README: <code>GET /card/&lt;handle&gt;.svg</code>, the bigger sibling of the badge. Paste once, refreshes itself.</span></li>
+      <li><span class="v">v0.22.0</span> <span class="note">live paste-once README <strong>badges</strong>: <code>GET /badge/&lt;handle&gt;.svg</code>, no gist, no <code>gh</code>; <code>claude-rpc readme</code> prints the markdown.</span></li>
       <li><span class="v">v0.21.0</span> <span class="note">updates self-heal (re-wire hooks + migrate config on first run after update) and cross-platform login autostart (launchd + systemd, parity with Windows).</span></li>
-      <li><span class="v">v0.20.4</span> <span class="note">redesigned full-screen <code>status</code> dashboard — tabbed TUI with live histograms, sparklines, and status-aware accents.</span></li>
+      <li><span class="v">v0.20.4</span> <span class="note">redesigned full-screen <code>status</code> dashboard: tabbed TUI with live histograms, sparklines, and status-aware accents.</span></li>
     </ul>
   </div>
 </section>
@@ -1565,7 +1565,7 @@
       img:     'https://cdn.qualit.ly/clawd-sleeping.gif',
       small:   '#5865f2',
       lbl:     'when nothing is running',
-      note:    "the card cycles through lifetime stats — today, this week, streak, hotspot file, lines added, all-time tokens, cost.",
+      note:    "the card cycles through lifetime stats: today, this week, streak, hotspot file, lines added, all-time tokens, cost.",
     },
   };
 

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Docs — claude-rpc</title>
-<meta name="description" content="Install, verify, configure, and troubleshoot claude-rpc — Discord Rich Presence for Claude Code. Every install path, the doctor checklist, config and template variables, privacy controls, badges, and fixes for the real-world failures." />
+<title>Docs · claude-rpc</title>
+<meta name="description" content="Install, verify, configure, and troubleshoot claude-rpc, Discord Rich Presence for Claude Code. Every install path, the doctor checklist, config and template variables, privacy controls, badges, and fixes for the real-world failures." />
 <link rel="canonical" href="https://claude-rpc.com/docs" />
 
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc docs — install, verify, troubleshoot" />
+<meta property="og:title" content="claude-rpc docs: install, verify, troubleshoot" />
 <meta property="og:description" content="Every install path, the doctor checklist, config deep-merge, 200+ template variables, layered privacy controls, README badges, and fixes for the failures people actually hit." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://claude-rpc.com/docs" />
@@ -16,7 +16,7 @@
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="claude-rpc docs — install, verify, troubleshoot" />
+<meta name="twitter:title" content="claude-rpc docs: install, verify, troubleshoot" />
 <meta name="twitter:description" content="Every install path, the doctor checklist, config, privacy controls, and fixes for the failures people actually hit." />
 <meta name="twitter:image" content="https://claude-rpc.com/img/og.png" />
 
@@ -161,7 +161,7 @@
   <main class="wrap">
     <span class="kicker">[ docs ]</span>
     <h1>install it, prove it, <span class="blot">fix it.</span></h1>
-    <p class="intro">Everything you need to run <a href="/">claude-rpc</a> — every install path, how to verify the pipe end-to-end, the two-line config philosophy, the privacy valves, and the handful of failures people actually hit (with the one command that fixes each). When in doubt: <code>claude-rpc doctor</code>.</p>
+    <p class="intro">Everything you need to run <a href="/">claude-rpc</a>: every install path, how to verify the pipe end-to-end, the two-line config philosophy, the privacy valves, and the handful of failures people actually hit (with the one command that fixes each). When in doubt: <code>claude-rpc doctor</code>.</p>
 
     <div class="cols">
       <aside class="toc" aria-label="sections">
@@ -181,30 +181,30 @@
         <section class="doc" id="install">
           <span class="sec-kicker">01 · install</span>
           <h2>one command, whatever your setup</h2>
-          <p>Every path below ends in the same place: <code>setup</code> wires nine lifecycle hooks into <code>~/.claude/settings.json</code> (as absolute, PATH-independent commands — only claude-rpc's own entries, third-party hooks are never touched), seeds a default config, starts the daemon, registers login autostart (LaunchAgent on macOS, <code>systemd --user</code> on Linux, a Run-key entry on Windows), and test-fires a synthetic <code>SessionStart</code> so a broken pipe surfaces immediately. All of it is reversible — see <a href="#uninstall">uninstall</a>.</p>
+          <p>Every path below ends in the same place: <code>setup</code> wires nine lifecycle hooks into <code>~/.claude/settings.json</code> (as absolute, PATH-independent commands; only claude-rpc's own entries, third-party hooks are never touched), seeds a default config, starts the daemon, registers login autostart (LaunchAgent on macOS, <code>systemd --user</code> on Linux, a Run-key entry on Windows), and test-fires a synthetic <code>SessionStart</code> so a broken pipe surfaces immediately. All of it is reversible; see <a href="#uninstall">uninstall</a>.</p>
 
-          <h3>npm / npx — macOS · Linux · WSL (Node 18+)</h3>
+          <h3>npm / npx: macOS · Linux · WSL (Node 18+)</h3>
           <div class="code" data-copy="npx claude-rpc@latest setup"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> npx claude-rpc@latest setup</pre></div>
-          <p class="small">the @latest matters — bare npx will happily reuse a stale cached copy.</p>
+          <p class="small">the @latest matters: bare npx will happily reuse a stale cached copy.</p>
 
-          <h3>Homebrew — macOS · Linux</h3>
+          <h3>Homebrew: macOS · Linux</h3>
           <div class="code" data-copy="brew install rar-file/claude-rpc/claude-rpc &amp;&amp; claude-rpc setup"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> brew install rar-file/claude-rpc/claude-rpc &amp;&amp; claude-rpc setup</pre></div>
 
           <h3>the one-liner that figures it out</h3>
           <div class="code" data-copy="curl -fsSL https://claude-rpc.com/install | sh"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> curl -fsSL https://claude-rpc.com/install | sh</pre></div>
           <p class="small">detects Node 18+ (installs the npm package) or falls back to the prebuilt Apple-Silicon binary, then runs setup for you. <a href="/install">read install.sh before piping it</a>.</p>
 
-          <h3>Windows — no Node required</h3>
-          <p>Download the <code>…-setup.exe</code> from the <a href="https://github.com/rar-file/claude-rpc/releases/latest">latest GitHub release</a> and run it. Since v1.1.2 the desktop app runs the full <code>setup</code> itself on first launch (and again after every update) — hooks, daemon, autostart, all of it — and reports the outcome in its Daemon tab. The exe is unsigned (solo project), so SmartScreen's <em>More info → Run anyway</em> is expected. Prefer no GUI? There's also a portable <code>…-portable.exe</code>: run <code>claude-rpc setup</code> from it once.</p>
+          <h3>Windows: no Node required</h3>
+          <p>Download the <code>…-setup.exe</code> from the <a href="https://github.com/rar-file/claude-rpc/releases/latest">latest GitHub release</a> and run it. Since v1.1.2 the desktop app runs the full <code>setup</code> itself on first launch and after every update (hooks, daemon, autostart, all of it) and reports the outcome in its Daemon tab. The exe is unsigned (solo project), so SmartScreen's <em>More info → Run anyway</em> is expected. Prefer no GUI? There's also a portable <code>…-portable.exe</code>: run <code>claude-rpc setup</code> from it once.</p>
 
-          <h3>from inside Claude Code — the plugin</h3>
+          <h3>from inside Claude Code: the plugin</h3>
           <div class="code" data-copy="/plugin marketplace add rar-file/claude-rpc
 /plugin install claude-rpc@claude-rpc"><button class="copy" type="button">copy</button><pre>/plugin marketplace add rar-file/claude-rpc
 /plugin install claude-rpc@claude-rpc</pre></div>
-          <p class="small">typed inside Claude Code. a thin bootstrapper: on the first session it runs <code>npx claude-rpc@latest setup</code> for you, then stays out of the way. macOS / Linux / WSL — on Windows use the exe above.</p>
+          <p class="small">typed inside Claude Code. a thin bootstrapper: on the first session it runs <code>npx claude-rpc@latest setup</code> for you, then stays out of the way. macOS / Linux / WSL. on Windows use the exe above.</p>
 
           <h3>VS Code</h3>
-          <p>The <a href="https://marketplace.visualstudio.com/items?itemName=rarfile.claude-rpc-presence">Claude RPC Presence extension</a> (<code>rarfile.claude-rpc-presence</code>) puts your live session in the VS Code status bar — it reads the same local state the daemon writes, so install claude-rpc itself first with any path above.</p>
+          <p>The <a href="https://marketplace.visualstudio.com/items?itemName=rarfile.claude-rpc-presence">Claude RPC Presence extension</a> (<code>rarfile.claude-rpc-presence</code>) puts your live session in the VS Code status bar. It reads the same local state the daemon writes, so install claude-rpc itself first with any path above.</p>
         </section>
 
         <!-- ──────────────────────────────── 2 · VERIFY -->
@@ -213,17 +213,17 @@
           <h2>prove the pipe works</h2>
           <p>One command checks the whole chain and prints a pass/fail checklist with a one-line fix hint per failure:</p>
           <div class="code" data-copy="claude-rpc doctor"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc doctor</pre></div>
-          <p>It covers Node version, install mode, <code>config.json</code> (presence + clientId), that <code>~/.claude</code> and your transcripts exist, hook registration — including hooks wired the old PATH-dependent way, or against a Node that's since been removed — daemon liveness, the Discord IPC state read from the daemon log, aggregate freshness, usage polling, and how the current directory resolves for privacy.</p>
+          <p>It covers Node version, install mode, <code>config.json</code> (presence + clientId), that <code>~/.claude</code> and your transcripts exist, hook registration (including hooks wired the old PATH-dependent way, or against a Node that's since been removed), daemon liveness, the Discord IPC state read from the daemon log, aggregate freshness, usage polling, and how the current directory resolves for privacy.</p>
           <div class="code" data-copy="claude-rpc doctor --fix"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc doctor --fix</pre></div>
-          <p class="small">applies only the targeted repairs doctor found (re-wire hooks/config, restart the daemon, rebuild the aggregate) — it doesn't blindly re-run everything. Discord itself can't be auto-fixed; that one stays advice.</p>
+          <p class="small">applies only the targeted repairs doctor found (re-wire hooks/config, restart the daemon, rebuild the aggregate); it doesn't blindly re-run everything. Discord itself can't be auto-fixed; that one stays advice.</p>
           <p>For a look at your data rather than your plumbing:</p>
           <div class="code" data-copy="claude-rpc status"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc status   <span class="cmt"># TUI — heatmap, hour histogram, leaderboards</span></pre></div>
 
           <h3>what healthy looks like on Discord</h3>
           <ul>
-            <li>The Discord <b>desktop</b> app must be running — the browser client doesn't expose the local IPC bridge Rich Presence uses.</li>
+            <li>The Discord <b>desktop</b> app must be running; the browser client doesn't expose the local IPC bridge Rich Presence uses.</li>
             <li>In Discord: User Settings → <b>Activity Privacy</b> → enable <em>Share your detected activities with others</em>, or the card renders for no one.</li>
-            <li>Open Claude Code in any project — the card appears within a second, the large image swaps between working / thinking / waiting / idle as you work, and the two text lines rotate through your frames. Closing Claude Code clears the card instantly.</li>
+            <li>Open Claude Code in any project. The card appears within a second, the large image swaps between working / thinking / waiting / idle as you work, and the two text lines rotate through your frames. Closing Claude Code clears the card instantly.</li>
           </ul>
         </section>
 
@@ -231,7 +231,7 @@
         <section class="doc" id="config">
           <span class="sec-kicker">03 · configuration</span>
           <h2>two lines is a complete config</h2>
-          <p>Every key has a baked default (<a href="https://github.com/rar-file/claude-rpc/blob/main/src/default-config.js">src/default-config.js</a> is the canonical list). Your <code>config.json</code> only holds <em>overrides</em> — whatever you put there deep-merges over the shipped defaults, so you never copy the full shape and updates never fight your file.</p>
+          <p>Every key has a baked default (<a href="https://github.com/rar-file/claude-rpc/blob/main/src/default-config.js">src/default-config.js</a> is the canonical list). Your <code>config.json</code> only holds <em>overrides</em>: whatever you put there deep-merges over the shipped defaults, so you never copy the full shape and updates never fight your file.</p>
           <div class="tbl-wrap"><table class="tbl">
             <tr><th>os</th><th>config.json lives at</th></tr>
             <tr><td>Linux</td><td class="v">$XDG_CONFIG_HOME/claude-rpc/config.json <span style="color:var(--ink-faint);font-weight:400">(usually ~/.config/claude-rpc/)</span></td></tr>
@@ -245,7 +245,7 @@
 }</pre></div>
 
           <h3>frames: byStatus + rotation</h3>
-          <p>The card is templated per status under <code>presence.byStatus</code> — <code>working</code>, <code>thinking</code>, <code>idle</code>, and friends each get a base frame, plus an optional <code>rotation</code> array that cycles after it. Each frame can declare <code>requires</code>: the daemon skips any frame whose required variables resolve empty, so you can write ambitious frames knowing only the relevant ones render.</p>
+          <p>The card is templated per status under <code>presence.byStatus</code>: <code>working</code>, <code>thinking</code>, <code>idle</code>, and friends each get a base frame, plus an optional <code>rotation</code> array that cycles after it. Each frame can declare <code>requires</code>: the daemon skips any frame whose required variables resolve empty, so you can write ambitious frames knowing only the relevant ones render.</p>
           <div class="code labeled" data-copy='{
   "presence": {
     "byStatus": {
@@ -283,7 +283,7 @@
             <tr><td class="v">{project}</td><td>the project on the card (respects your privacy aliases)</td></tr>
             <tr><td class="v">{model}</td><td>the model driving the session (<code>{modelPretty}</code> for the friendly name)</td></tr>
             <tr><td class="v">{todayHours}</td><td>active hours today</td></tr>
-            <tr><td class="v">{allTokensFmt}</td><td>lifetime tokens, formatted — "2.4B"</td></tr>
+            <tr><td class="v">{allTokensFmt}</td><td>lifetime tokens, formatted: "2.4B"</td></tr>
             <tr><td class="v">{streakLabel}</td><td>"12-day streak"</td></tr>
             <tr><td class="v">{topTool}</td><td>your most-called tool</td></tr>
             <tr><td class="v">{toolMixLabel}</td><td>how your tool calls split across the top tools</td></tr>
@@ -302,7 +302,7 @@ claude-rpc preview"><button class="copy" type="button">copy</button><pre><span c
         <section class="doc" id="privacy">
           <span class="sec-kicker">04 · privacy</span>
           <h2>layered valves, all one-way</h2>
-          <p>Privacy sits between your local state and Discord — a one-way valve. Your local stats, dashboards, and aggregates are never affected by any of these.</p>
+          <p>Privacy sits between your local state and Discord: a one-way valve. Your local stats, dashboards, and aggregates are never affected by any of these.</p>
 
           <h3>per directory</h3>
           <div class="code" data-copy="claude-rpc private"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc private   <span class="cmt"># hide the current project from the card</span>
@@ -322,7 +322,7 @@ claude-rpc preview"><button class="copy" type="button">copy</button><pre><span c
 
           <h3>telemetry</h3>
           <div class="code" data-copy="claude-rpc community off"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc community off   <span class="cmt"># stop reporting anonymous totals</span></pre></div>
-          <p>What gets sent while it's on: two counters, the version, the OS family, and an anonymous UUID — nothing else. The byte-level payload, every outbound request, and the persistence mechanics are documented in <a href="https://github.com/rar-file/claude-rpc/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+          <p>What gets sent while it's on: two counters, the version, the OS family, and an anonymous UUID. Nothing else. The byte-level payload, every outbound request, and the persistence mechanics are documented in <a href="https://github.com/rar-file/claude-rpc/blob/main/SECURITY.md">SECURITY.md</a>.</p>
         </section>
 
         <!-- ──────────────────────────────── 5 · COMMUNITY -->
@@ -335,7 +335,7 @@ claude-rpc preview"><button class="copy" type="button">copy</button><pre><span c
           <p>Verified profiles (a proven GitHub identity) rank first on the <a href="/leaderboard">leaderboard</a> and get the ✓. Two ways to verify: log in with GitHub at <a href="/link">claude-rpc.com/link</a> and claim the code it mints with <code>claude-rpc link &lt;code&gt;</code>, or — no browser — <code>claude-rpc profile verify</code> proves ownership through a public gist. Extra machines link into the same identity: run <code>claude-rpc link</code> on the verified machine, claim the code on the new one.</p>
 
           <h3>badges &amp; cards for your README</h3>
-          <p>With a published profile, the community worker serves an always-current card and badges — paste once, they refresh themselves (~every 30 min as the daemon flushes):</p>
+          <p>With a published profile, the community worker serves an always-current card and badges: paste once, they refresh themselves (~every 30 min as the daemon flushes):</p>
           <div class="code labeled" data-copy="[![Claude Code stats](https://claude-rpc-totals.claude-rpc.workers.dev/card/&lt;you&gt;.svg)](https://claude-rpc.com/u/&lt;you&gt;)
 
 [![Claude Code hours](https://claude-rpc-totals.claude-rpc.workers.dev/badge/&lt;you&gt;.svg?metric=hours)](https://claude-rpc.com/?ref=badge)"><span class="label">paste-ready markdown</span><button class="copy" type="button">copy</button><pre>[![Claude Code stats](https://claude-rpc-totals.claude-rpc.workers.dev/card/&lt;you&gt;.svg)](https://claude-rpc.com/u/&lt;you&gt;)
@@ -347,19 +347,19 @@ claude-rpc preview"><button class="copy" type="button">copy</button><pre><span c
           <div class="code" data-copy='claude-rpc squad create "the night shift"'><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc squad create "the night shift"   <span class="cmt"># private mini-board; friends join with the invite code</span></pre></div>
 
           <h3>Claude Wrapped</h3>
-          <p>Your whole year on Claude — hours, streaks, peak day, top projects, tool mix — as an animated year-in-review you can publish to the web in one command: <code>claude-rpc wrapped --publish</code> puts it at <code>claude-rpc.com/wrapped/&lt;you&gt;</code>, share card included. <a href="/wrapped">See what a Wrapped looks like →</a></p>
+          <p>Your whole year on Claude (hours, streaks, peak day, top projects, tool mix) as an animated year-in-review you can publish to the web in one command: <code>claude-rpc wrapped --publish</code> puts it at <code>claude-rpc.com/wrapped/&lt;you&gt;</code>, share card included. <a href="/wrapped">See what a Wrapped looks like →</a></p>
         </section>
 
         <!-- ──────────────────────────────── 6 · TROUBLESHOOTING -->
         <section class="doc" id="troubleshooting">
           <span class="sec-kicker">06 · troubleshooting</span>
           <h2>the failures people actually hit</h2>
-          <p>First step is always <code>claude-rpc doctor</code> — every failure below is something it checks for, with a fix hint. The catalogue, for when you'd rather match symptoms:</p>
+          <p>First step is always <code>claude-rpc doctor</code>: every failure below is something it checks for, with a fix hint. The catalogue, for when you'd rather match symptoms:</p>
 
           <div class="trouble">
             <div class="fault">
               <p class="sym">Claude Code shows hook errors: "claude-rpc: command not found"</p>
-              <p class="why"><b>Cause:</b> hooks wired by a pre-v0.19.1 install depend on PATH — and Claude Code runs hooks through a minimal-PATH shell that, under a version manager like nvm, has neither <code>claude-rpc</code> nor <code>node</code> on it. So every tool use errors. The same happens if nvm later removed the Node version the hooks were wired against.</p>
+              <p class="why"><b>Cause:</b> hooks wired by a pre-v0.19.1 install depend on PATH, and Claude Code runs hooks through a minimal-PATH shell that, under a version manager like nvm, has neither <code>claude-rpc</code> nor <code>node</code> on it. So every tool use errors. The same happens if nvm later removed the Node version the hooks were wired against.</p>
               <div class="code" data-copy="npx claude-rpc@latest setup"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> npx claude-rpc@latest setup</pre></div>
               <p class="why"><b>Fix:</b> setup rewrites the hooks as absolute, PATH-independent commands. Restart Claude Code afterwards so it re-reads its hook config. <code>doctor</code> flags this state explicitly (as of v1.1.4) and <code>doctor --fix</code> repairs it.</p>
             </div>
@@ -380,20 +380,20 @@ claude-rpc preview"><button class="copy" type="button">copy</button><pre><span c
 
             <div class="fault">
               <p class="sym">Windows: installed the app, nothing happened</p>
-              <p class="why"><b>Cause:</b> installers before v1.1.2 put the settings GUI on disk but never ran the one step that matters — <code>setup</code> lived only in the CLI, so no hooks were wired and no daemon started.</p>
-              <p class="why"><b>Fix:</b> update (the auto-updater pulls it, or grab the <a href="https://github.com/rar-file/claude-rpc/releases/latest">latest setup exe</a>). The app now runs setup itself on first launch and after every update — and there's a visible <b>Run setup</b> button in the Daemon tab (plus a tray menu entry) that's safe to click any time.</p>
+              <p class="why"><b>Cause:</b> installers before v1.1.2 put the settings GUI on disk but never ran the one step that matters: <code>setup</code> lived only in the CLI, so no hooks were wired and no daemon started.</p>
+              <p class="why"><b>Fix:</b> update (the auto-updater pulls it, or grab the <a href="https://github.com/rar-file/claude-rpc/releases/latest">latest setup exe</a>). The app now runs setup itself on first launch and after every update, and there's a visible <b>Run setup</b> button in the Daemon tab (plus a tray menu entry) that's safe to click any time.</p>
             </div>
 
             <div class="fault">
               <p class="sym">macOS: "Claude RPC is damaged and can't be opened"</p>
-              <p class="why"><b>Cause:</b> dmg builds before v1.1.3 shipped unsigned, and Apple Silicon refuses those outright. Current builds are ad-hoc signed — you get the standard <em>unverified developer</em> prompt instead: System Settings → Privacy &amp; Security → <b>Open Anyway</b>, once.</p>
+              <p class="why"><b>Cause:</b> dmg builds before v1.1.3 shipped unsigned, and Apple Silicon refuses those outright. Current builds are ad-hoc signed, so you get the standard <em>unverified developer</em> prompt instead: System Settings → Privacy &amp; Security → <b>Open Anyway</b>, once.</p>
               <div class="code" data-copy='xattr -cr "/Applications/Claude RPC.app"'><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> xattr -cr "/Applications/Claude RPC.app"   <span class="cmt"># or clear the quarantine flag directly</span></pre></div>
               <p class="why"><b>Or skip the dmg entirely:</b> <code>brew install rar-file/claude-rpc/claude-rpc</code> has no Gatekeeper friction.</p>
             </div>
 
             <div class="fault">
               <p class="sym">Stats look wrong or missing</p>
-              <p class="why"><b>Cause:</b> a stale or corrupted aggregate — the lifetime numbers are built by scanning your Claude Code transcripts, and the cache can lag a version bump.</p>
+              <p class="why"><b>Cause:</b> a stale or corrupted aggregate: the lifetime numbers are built by scanning your Claude Code transcripts, and the cache can lag a version bump.</p>
               <div class="code" data-copy="claude-rpc rescan"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc rescan    <span class="cmt"># force a full re-parse of ~/.claude/projects</span></pre></div>
             </div>
           </div>
@@ -408,7 +408,7 @@ claude-rpc preview"><button class="copy" type="button">copy</button><pre><span c
           <div class="code" data-copy="claude-rpc uninstall
 npm rm -g claude-rpc"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc uninstall   <span class="cmt"># removes its hooks + the login-autostart entry</span>
 <span class="ps1">$</span> npm rm -g claude-rpc   <span class="cmt"># then remove the package itself</span></pre></div>
-          <p><code>uninstall</code> removes everything that respawns or registers the tool — its own hooks from <code>~/.claude/settings.json</code> (third-party hooks untouched) and the autostart entry — and deliberately leaves your data (config, stats in <code>~/.claude-rpc/</code>) in place. Run <code>claude-rpc stop</code> first if a daemon is up, and <code>claude-rpc mcp uninstall</code> if you wired the MCP server. For a clean wipe, delete <code>~/.claude-rpc</code> and the per-OS config dir afterwards.</p>
+          <p><code>uninstall</code> removes everything that respawns or registers the tool: its own hooks from <code>~/.claude/settings.json</code> (third-party hooks untouched) and the autostart entry. Your data (config, stats in <code>~/.claude-rpc/</code>) is deliberately left in place. Run <code>claude-rpc stop</code> first if a daemon is up, and <code>claude-rpc mcp uninstall</code> if you wired the MCP server. For a clean wipe, delete <code>~/.claude-rpc</code> and the per-OS config dir afterwards.</p>
         </section>
 
       </div><!-- /.content -->

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>claude-rpc — squad</title>
+<title>claude-rpc · squad</title>
 <meta name="description" content="A claude-rpc squad: a private Claude Code mini-leaderboard with friends. Weekly resets, fresh race every Monday." />
 <meta property="og:site_name" content="claude-rpc" />
-<meta property="og:title" content="claude-rpc — squad" />
-<meta property="og:description" content="A private Claude Code leaderboard with friends. Weekly resets — fresh race every Monday." />
+<meta property="og:title" content="claude-rpc · squad" />
+<meta property="og:description" content="A private Claude Code leaderboard with friends. Weekly resets: fresh race every Monday." />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://claude-rpc.com/img/og.png" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -85,17 +85,17 @@
         <thead><tr><th>#</th><th>who</th><th style="text-align:right">tokens</th><th style="text-align:right">hours</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
-      <p class="note" id="weekNote" hidden>Fresh week — scores start at zero and build as each member's daemon reports (about every 30 minutes of Claude Code use). The <strong>lifetime</strong> tab has the full totals.</p>
+      <p class="note" id="weekNote" hidden>Fresh week: scores start at zero and build as each member's daemon reports (about every 30 minutes of Claude Code use). The <strong>lifetime</strong> tab has the full totals.</p>
       <div class="panel" id="memberPanel" hidden>
         <h3>invite your crew</h3>
-        <div>send them this link — they join in one click:</div>
+        <div>send them this link; they join in one click:</div>
         <div class="row">
           <span class="code" id="inviteLink">…</span>
           <button class="btn alt" id="copyInvite">copy</button>
           <button class="btn alt" id="leaveBtn">leave squad</button>
         </div>
       </div>
-      <p class="note">Weekly scores reset every Monday 00:00 UTC. Numbers are each member's self-reported claude-rpc totals — it's a race between friends, not an audited benchmark.</p>
+      <p class="note">Weekly scores reset every Monday 00:00 UTC. Numbers are each member's self-reported claude-rpc totals. It's a race between friends, not an audited benchmark.</p>
     </section>
 
     <!-- join mode -->
@@ -105,17 +105,17 @@
         <div id="joinWho" class="sub" style="margin-bottom:10px"></div>
 
         <div id="joinLogin" hidden>
-          <div style="margin-bottom:12px">You'll need a GitHub login — it links to your claude-rpc profile.</div>
+          <div style="margin-bottom:12px">You'll need a GitHub login. It links to your claude-rpc profile.</div>
           <a class="btn" id="loginBtn" href="#">log in with GitHub →</a>
         </div>
 
         <div id="joinReady" hidden>
-          <div style="margin-bottom:12px">Logged in as <strong id="joinGh"></strong> — ready to race.</div>
+          <div style="margin-bottom:12px">Logged in as <strong id="joinGh"></strong>. Ready to race.</div>
           <button class="btn" id="joinBtn">join the squad →</button>
         </div>
 
         <div id="joinSetup" hidden>
-          <div style="margin-bottom:12px">Logged in as <strong id="setupGh"></strong> — last step is hooking up claude-rpc in your terminal. Click a line to copy; skip steps you've already done.</div>
+          <div style="margin-bottom:12px">Logged in as <strong id="setupGh"></strong>. Last step is hooking up claude-rpc in your terminal. Click a line to copy; skip steps you've already done.</div>
           <div class="steps" id="setupCmds"></div>
           <div class="row">
             <span class="waiting"><span class="pulse"></span> this page joins automatically once you're linked</span>
@@ -198,12 +198,12 @@
 
   async function loadView(id) {
     const res = await fetch(`${WORKER}/squad?id=${encodeURIComponent(id)}`);
-    if (!res.ok) return showErr('No squad here — it may have dissolved, or the link is wrong.');
+    if (!res.ok) return showErr('No squad here. It may have dissolved, or the link is wrong.');
     const j = await res.json();
     document.getElementById('title').textContent = j.squad.name;
     document.getElementById('sub').textContent =
       `${j.squad.members} member${j.squad.members === 1 ? '' : 's'} · week ${j.squad.week} · resets monday 00:00 utc`;
-    document.title = `${j.squad.name} — claude-rpc squad`;
+    document.title = `${j.squad.name} · claude-rpc squad`;
     standings = j.standings;
     // Land on the tab that has something to show: a brand-new squad's week is
     // all zeros, which reads as "no stats" — open on lifetime until the race
@@ -231,7 +231,7 @@
           // Solo squad: the next move is inviting, not staring at a one-row
           // table — lead with the invite panel.
           if (j.squad.members === 1) {
-            panel.querySelector('h3').textContent = 'it\'s just you in here — send your crew the link';
+            panel.querySelector('h3').textContent = 'it\'s just you in here. send your crew the link';
             const view = document.getElementById('view');
             view.insertBefore(panel, view.firstElementChild);
           }
@@ -276,7 +276,7 @@
   async function loadJoin(code) {
     document.getElementById('kicker').textContent = 'squad invite';
     const res = await fetch(`${WORKER}/squad/bycode?code=${encodeURIComponent(code)}`);
-    if (!res.ok) return showErr('This invite isn\'t valid anymore — ask your friend for a fresh code.');
+    if (!res.ok) return showErr('This invite isn\'t valid anymore. Ask your friend for a fresh code.');
     const j = await res.json();
     document.getElementById('title').textContent = j.squad.name;
     document.getElementById('sub').textContent = `${j.squad.members} member${j.squad.members === 1 ? '' : 's'} racing weekly`;
@@ -300,7 +300,7 @@
       const cmds = [
         'npx claude-rpc@latest setup',
         `claude-rpc profile set --handle ${handleSug} && claude-rpc profile on`,
-        pairCode ? `claude-rpc link ${pairCode}` : 'claude-rpc link <code unavailable — hit "new code">',
+        pairCode ? `claude-rpc link ${pairCode}` : 'claude-rpc link <code unavailable, hit "new code">',
       ];
       const holder = document.getElementById('setupCmds');
       holder.innerHTML = cmds.map((cc) =>
@@ -354,13 +354,13 @@
       const out = await r.json().catch(() => ({}));
       if (r.ok && out.squad) { location.href = `/squad/${out.squad.id}`; return; }
       btn.disabled = false;
-      showErr(out.error || 'join failed — try again');
+      showErr(out.error || 'join failed, try again');
     };
   }
 
   if (joinMatch) loadJoin(decodeURIComponent(joinMatch[1]));
   else if (viewMatch) loadView(viewMatch[1]);
-  else showErr('No squad in the URL. Make one: claude-rpc squad create "the night shift" — or from the leaderboard page once you\'re logged in.');
+  else showErr('No squad in the URL. Make one: claude-rpc squad create "the night shift". Or from the leaderboard page once you\'re logged in.');
 </script>
 </body>
 </html>
