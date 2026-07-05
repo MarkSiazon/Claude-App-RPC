@@ -25,7 +25,7 @@ import { spawnDaemonDetached, daemonAlive } from './ensure-daemon.js';
 // the stats/format/install code, so daemon-control and version stay near-instant.
 // (The repo already lazy-imports cold deps like doctor.js/card.js/mcp.js inside
 // their handlers — this just extends that to the graph the main switch needs.)
-let buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses, fmtNum;
+let buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses, fmtNum, fmtHours;
 let scan, readAggregate, findLiveSessions, dayKey, weekKey;
 let weekGrid;
 let runInstall, runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, setupOutro;
@@ -49,7 +49,7 @@ async function loadStats() {
     import('./nudge.js'), import('./badge.js'), import('./pricing.js'),
     import('./privacy.js'), import('./usage.js'), import('./leaderboard.js'),
   ]);
-  ({ buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses, fmtNum } = fmt);
+  ({ buildVars, fillTemplate, humanProject, humanTool, applyIdle, framePasses, fmtNum, fmtHours } = fmt);
   ({ scan, readAggregate, findLiveSessions, dayKey, weekKey } = scn);
   ({ weekGrid } = wk);
   ({ install: runInstall, uninstall: runUninstall, isInstalled, migrateConfig, installHooks, ensureCanonicalExe, installMcp, uninstallMcp, setupOutro } = inst);
@@ -685,6 +685,123 @@ function showWeek() {
     box('this week · daily breakdown', lines);
     console.log('');
   }
+}
+
+// `projects` — every project the scanner has attributed, ranked by active
+// time. The aggregate has carried per-project records since v0.6; this is the
+// first terminal surface for them (the web dashboard's drilldown came first).
+function showProjects(argv = []) {
+  const aggregate = readAggregate();
+  const entries = Object.entries(aggregate?.projects || {});
+  if (!entries.length) {
+    console.log(`\n  No project data yet — run ${c.cyan}claude-rpc scan${c.reset} first.\n`);
+    return;
+  }
+  const limitFlag = argv.indexOf('--limit');
+  const limit = limitFlag !== -1 ? Math.max(1, Number(argv[limitFlag + 1]) || 12) : 12;
+  const ranked = entries.sort((a, b) => (b[1].activeMs || 0) - (a[1].activeMs || 0));
+  const name = (n) => n.length > 22 ? n.slice(0, 21) + '…' : n;
+
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ Projects${c.reset}  ${c.dim}— ${entries.length} tracked, by active time${c.reset}`);
+  console.log('');
+  const maxMs = ranked[0][1].activeMs || 1;
+  const lines = ranked.slice(0, limit).map(([n, p]) => {
+    const toks = (p.inputTokens || 0) + (p.outputTokens || 0);
+    return `${name(n).padEnd(23)} ${bar(p.activeMs || 0, maxMs, 14)} ${c.cyan}${fmtHours(p.activeMs || 0).padStart(6)}${c.reset}` +
+      ` ${c.dim}·${c.reset} ${String(p.sessions || 0).padStart(4)} sess` +
+      ` ${c.dim}·${c.reset} ${fmtNum(toks).padStart(7)} tok` +
+      ` ${c.dim}·${c.reset} ${c.yellow}${fmtCost(p.cost || 0).padStart(8)}${c.reset}`;
+  });
+  if (ranked.length > limit) lines.push(`${c.dim}… ${ranked.length - limit} more — --limit ${ranked.length} to see all${c.reset}`);
+  box('projects', lines, 76);
+  console.log(`\n  ${c.dim}drill in: ${c.reset}${c.cyan}claude-rpc project <name>${c.reset}\n`);
+}
+
+// `project <name>` — one project's full record + its recent daily rhythm
+// (attributed per-day since scan cache v5).
+function showProject(rawName) {
+  if (!rawName) {
+    console.log(`\n  Usage: ${c.cyan}claude-rpc project <name>${c.reset}  (see ${c.cyan}claude-rpc projects${c.reset})\n`);
+    process.exitCode = EX_USER_ERROR;
+    return;
+  }
+  const aggregate = readAggregate();
+  const projects = aggregate?.projects || {};
+  const key = Object.keys(projects).find((k) => k.toLowerCase() === rawName.toLowerCase())
+    || Object.keys(projects).find((k) => k.toLowerCase().includes(rawName.toLowerCase()));
+  if (!key) {
+    console.log(`\n  No project matching ${c.bold}${rawName}${c.reset} — ${c.cyan}claude-rpc projects${c.reset} lists what's tracked.\n`);
+    process.exitCode = EX_USER_ERROR;
+    return;
+  }
+  const p = projects[key];
+  const toks = (p.inputTokens || 0) + (p.outputTokens || 0);
+
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ ${key}${c.reset}`);
+  console.log('');
+  box(key, [
+    pair('active',     `${c.bold}${c.green}${fmtHours(p.activeMs || 0)}${c.reset}`, ''),
+    pair('sessions',   String(p.sessions || 0)),
+    pair('prompts',    fmtNum(p.userMessages || 0), c.yellow),
+    pair('tool calls', fmtNum(p.toolCalls || 0), c.yellow),
+    pair('tokens',     `${c.bold}${fmtNum(toks)}${c.reset}  ${c.dim}in+out${c.reset}`, ''),
+    pair('lines',      `${c.green}+${fmtNum(p.linesAdded || 0)}${c.reset} ${c.red}-${fmtNum(p.linesRemoved || 0)}${c.reset}`, ''),
+    pair('est. cost',  fmtCost(p.cost || 0), c.yellow),
+  ]);
+  console.log('');
+
+  // Last 14 days of per-day attribution, oldest first.
+  const days = Object.entries(aggregate?.byDay || {})
+    .filter(([, d]) => d.projects?.[key])
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-14)
+    .map(([day, d]) => ({ day, ms: d.projects[key].activeMs || 0 }));
+  if (days.length) {
+    const maxMs = Math.max(...days.map((d) => d.ms), 1);
+    box('last 14 active days', days.map(({ day, ms }) =>
+      `${day}  ${bar(ms, maxMs, 20)} ${c.cyan}${fmtHours(ms).padStart(6)}${c.reset}`
+    ));
+    console.log('');
+  }
+}
+
+// `compare` — the full this-week-vs-last-week diff. The deltas existed in
+// three partial forms (insights, showWeek, web api); this is the first
+// complete side-by-side.
+function showCompare() {
+  const aggregate = readAggregate();
+  if (!aggregate?.byWeek) {
+    console.log(`\n  No history yet — run ${c.cyan}claude-rpc scan${c.reset} first.\n`);
+    return;
+  }
+  const prevRef = new Date();
+  prevRef.setHours(12, 0, 0, 0);
+  prevRef.setDate(prevRef.getDate() - 7);
+  const nowKey = weekKey(Date.now());
+  const prevKey = weekKey(prevRef.getTime());
+  const wk = aggregate.byWeek[nowKey] || {};
+  const pw = aggregate.byWeek[prevKey] || {};
+
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ ${nowKey} vs ${prevKey}${c.reset}  ${c.dim}— this week so far vs all of last week${c.reset}`);
+  console.log('');
+  const row = (label, cur, prev, fmt = fmtNum) => {
+    const d = fmtDelta(cur, prev);
+    return pair(label, `${c.bold}${fmt(cur)}${c.reset}  ${c.dim}was ${fmt(prev)}${c.reset}${d ? `  ${d}` : ''}`, '');
+  };
+  box('week over week', [
+    row('active',     wk.activeMs || 0,      pw.activeMs || 0, fmtHours),
+    row('prompts',    wk.userMessages || 0,  pw.userMessages || 0),
+    row('tool calls', wk.toolCalls || 0,     pw.toolCalls || 0),
+    row('sessions',   wk.sessions || 0,      pw.sessions || 0),
+    row('tokens',     dayTokens(wk),         dayTokens(pw)),
+    row('lines +',    wk.linesAdded || 0,    pw.linesAdded || 0),
+    row('ships',      wk.ships || 0,         pw.ships || 0),
+    row('est. cost',  wk.cost || 0,          pw.cost || 0, fmtCost),
+  ], 72);
+  console.log('');
 }
 
 // Rows for the subscription-usage box (shared by `status` and `usage`).
@@ -2084,6 +2201,9 @@ function help() {
     ['status',    'Interactive stats TUI; --dump (or piped) prints static text'],
     ['today',     'Focus view: today\'s stats + 24h activity histogram'],
     ['week',      'Focus view: this week, daily breakdown'],
+    ['compare',   'This week vs last week — the full side-by-side diff'],
+    ['projects',  'Every project ranked by active time (--limit N)'],
+    ['project',   'One project\'s full record + recent daily rhythm'],
     ['usage',     'Subscription limits — session + weekly % (what /usage shows)'],
     ['serve',     'Open a live web dashboard in your browser'],
     ['preview',   'Show how each rotation frame renders right now'],
@@ -2240,6 +2360,9 @@ process.on('unhandledRejection', (e) => {
     case 'dump':      showStatus(); break;
     case 'today':     showToday(); break;
     case 'week':      showWeek(); break;
+    case 'projects':  showProjects(process.argv.slice(3)); break;
+    case 'project':   showProject(process.argv[3]); break;
+    case 'compare':   showCompare(); break;
     case 'usage':     await showUsage(); break;
     case 'serve':     await import('./server/index.js'); break;
     case 'preview':   showPreview(); break;

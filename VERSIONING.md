@@ -48,6 +48,7 @@ a major version. The full set:
 
 `start` · `stop` · `restart` · `daemon` · `setup` (alias `install`) ·
 `uninstall` · `upgrade-config` · `status` (`--dump`) · `today` · `week` ·
+`compare` · `projects` (`--limit`) · `project <name>` ·
 `usage` · `preview` · `scan` · `rescan` · `backfill <dir>` ·
 `export` (`--csv`, `--out`) · `insights` · `vars` ·
 `badge` · `card` · `github-stat` · `statusline` · `calendar` · `session-card` ·

@@ -75,3 +75,27 @@ test('cli: a second config write merges, not clobbers (config dir already exists
   assert.equal(cfg.profile.displayName, 'First', 'prior field survived the second write');
   assert.equal(cfg.profile.handle, 'second-handle');
 });
+
+test('cli: projects/project/compare run clean with no aggregate (v1.2)', async (t) => {
+  // A fresh sandbox has no aggregate.json — all three must print a friendly
+  // pointer (not crash), and `project` without/with an unknown name is a
+  // usage error (non-zero exit).
+  const dir = sandbox();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const projects = await runCli(dir, ['projects']);
+  assert.equal(projects.code, 0, projects.err);
+  assert.match(projects.out, /No project data yet/);
+
+  const compare = await runCli(dir, ['compare']);
+  assert.equal(compare.code, 0, compare.err);
+  assert.match(compare.out, /No history yet/);
+
+  const bare = await runCli(dir, ['project']);
+  assert.notEqual(bare.code, 0, 'project without a name exits non-zero');
+  assert.match(bare.out, /Usage:/);
+
+  const miss = await runCli(dir, ['project', 'nope']);
+  assert.notEqual(miss.code, 0);
+  assert.match(miss.out, /No project matching/);
+});
