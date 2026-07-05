@@ -11,7 +11,9 @@ import { classifyShip } from './ships.js';
 // v5: per-day ships/shipKinds + per-day project attribution (recap).
 // v6: day/week/hour buckets carry firstTs/lastTs (they were declared but
 //     never assigned, leaving {startTimeLabel} permanently blank).
-const CACHE_VERSION = 6;
+// v7: per-day byModel buckets in transcript summaries — bump forces the one
+// full rescan that backfills model-mix history for already-scanned files.
+const CACHE_VERSION = 7;
 
 // Cap counted gap between consecutive timestamps. Anything larger is treated
 // as the user walking away — we count only what's plausibly active time.
@@ -140,6 +142,8 @@ function blankDay() {
     //   shipKinds — { push|commit|pr|issue|tag → count } (only when a ship lands)
     //   projects  — { name → { activeMs, tokens } } (aggregate-level only,
     //               attributed at merge time where the file's project is known)
+    //   byModel   — { pricingKey → { turns, tokens, cost } } (day buckets only —
+    //               week/hour stay lean; powers model-mix-over-time)
   };
 }
 
@@ -159,6 +163,12 @@ function mergeDay(target, src) {
   target.ships += src.ships || 0;
   for (const [k, n] of Object.entries(src.shipKinds || {})) {
     (target.shipKinds ||= {})[k] = (target.shipKinds[k] || 0) + n;
+  }
+  for (const [m, v] of Object.entries(src.byModel || {})) {
+    const t = ((target.byModel ||= {})[m] ||= { turns: 0, tokens: 0, cost: 0 });
+    t.turns += v.turns || 0;
+    t.tokens += v.tokens || 0;
+    t.cost += v.cost || 0;
   }
   if (src.firstTs && (!target.firstTs || src.firstTs < target.firstTs)) target.firstTs = src.firstTs;
   if (src.lastTs && (!target.lastTs || src.lastTs > target.lastTs)) target.lastTs = src.lastTs;
@@ -336,6 +346,13 @@ function parseChunkInto(text, summary, pstate) {
           mb.tokens += (u.input_tokens || 0) + (u.output_tokens || 0)
                      + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
         }
+        // Per-day model split (day granularity only — week/hour stay lean).
+        // Powers model-mix-over-time; the all-time byModel can't trend.
+        if (mkey && dayBucket) {
+          const dm = ((dayBucket.byModel ||= {})[mkey] ||= { turns: 0, tokens: 0, cost: 0 });
+          dm.tokens += (u.input_tokens || 0) + (u.output_tokens || 0)
+                     + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+        }
         // Per-turn cost — uses this turn's model id, not the session's first-seen one.
         const turnCost = costFor({ model: turnModel, usage: u });
         if (turnCost > 0) {
@@ -346,6 +363,10 @@ function parseChunkInto(text, summary, pstate) {
           const ck = mkey || 'sonnet';
           summary.costByModel[ck] = (summary.costByModel[ck] || 0) + turnCost;
           if (mb) mb.cost += turnCost;
+          if (dayBucket) {
+            const dm = ((dayBucket.byModel ||= {})[ck] ||= { turns: 0, tokens: 0, cost: 0 });
+            dm.cost += turnCost;
+          }
           for (const bucket of allBuckets) bucket.cost += turnCost;
         }
       }
@@ -354,6 +375,10 @@ function parseChunkInto(text, summary, pstate) {
         if (firstSeen) {
           summary.modelsUsed[turnModel] = (summary.modelsUsed[turnModel] || 0) + 1;
           if (mb) mb.turns += 1;
+          if (mkey && dayBucket) {
+            const dm = ((dayBucket.byModel ||= {})[mkey] ||= { turns: 0, tokens: 0, cost: 0 });
+            dm.turns += 1;
+          }
         }
       }
       const blocks = r.message?.content || [];
@@ -592,16 +617,29 @@ function readTranscriptCwd(path, mtimeMs) {
 // Per-transcript token cache. Reading a multi-MB .jsonl on every push tick
 // (4s) would be wasteful, so we only re-parse when the file's mtime has
 // advanced since the last read.
-const sessionTokenCache = new Map();  // path → { mtime, size, offset, tokens }
+const sessionTokenCache = new Map();  // path → { mtime, size, offset, tokens, seenIds, model }
 
 // Accumulate assistant-usage tokens from a chunk of complete JSONL lines.
-function sumUsageLines(text, tokens) {
+// Claude Code repeats the same `usage` object on every content-block line of
+// one assistant message, so count each message.id once (`seenIds`, the same
+// bounded-ring dedup parseChunkInto uses) — otherwise the live count drifts
+// above the lifetime aggregate on multi-block turns. Lines with no id
+// (rare/legacy) are counted every time, matching the full scanner. Also
+// captures the newest turn's model so a mid-session /model switch is visible.
+function sumUsageLines(text, tokens, seenIds, meta) {
   for (const line of iterLines(text)) {
     if (!line) continue;
     const r = safeJson(line);
     if (!r || r.type !== 'assistant') continue;
+    if (meta && r.message?.model) meta.model = r.message.model;
     const u = r.message?.usage;
     if (!u) continue;
+    const msgId = r.message?.id;
+    if (msgId && seenIds) {
+      if (seenIds.includes(msgId)) continue;
+      seenIds.push(msgId);
+      if (seenIds.length > RECENT_IDS_MAX) seenIds.shift();
+    }
     tokens.input      += u.input_tokens || 0;
     tokens.output     += u.output_tokens || 0;
     tokens.cacheRead  += u.cache_read_input_tokens || 0;
@@ -636,6 +674,8 @@ export function readSessionTokens(path) {
   const tokens = canAppend
     ? { ...cached.tokens }
     : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  const seenIds = canAppend ? (cached.seenIds || []) : [];
+  const meta = { model: canAppend ? cached.model : null };
   const startOffset = canAppend ? cached.offset : 0;
   let newOffset = startOffset;
 
@@ -654,7 +694,7 @@ export function readSessionTokens(path) {
       if (lastNl !== -1) {
         const complete = text.slice(0, lastNl + 1);
         newOffset = startOffset + Buffer.byteLength(complete, 'utf8');
-        sumUsageLines(complete, tokens);
+        sumUsageLines(complete, tokens, seenIds, meta);
       }
     }
   } catch {
@@ -665,8 +705,24 @@ export function readSessionTokens(path) {
     }
   }
 
-  lruTouch(sessionTokenCache, path, { mtime: st.mtimeMs, size: st.size, offset: newOffset, tokens });
+  lruTouch(sessionTokenCache, path, { mtime: st.mtimeMs, size: st.size, offset: newOffset, tokens, seenIds, model: meta.model });
   return tokens;
+}
+
+// Latest assistant-turn model seen in a transcript — the live answer to "which
+// model is this session on NOW". SessionStart is the only hook that carries a
+// model, so a mid-session /model switch never reaches the state file; the
+// transcript is the only source of truth. Piggybacks on readSessionTokens'
+// cache entry (same parse, same mtime discipline) — call it AFTER
+// readSessionTokens for O(1); standalone calls populate the cache themselves.
+export function readSessionModel(path) {
+  const cached = sessionTokenCache.get(path);
+  let mtime;
+  try { mtime = statSync(path).mtimeMs; } catch { return null; }
+  if (!cached || cached.mtime !== mtime) {
+    if (readSessionTokens(path) === null) return null;
+  }
+  return sessionTokenCache.get(path)?.model || null;
 }
 
 // Detect live sessions by transcript mtime. Returns array of { path, project, cwd, mtime, ageSec }.
@@ -732,10 +788,12 @@ function writeCache(cache) {
 
 // Per-day notification counts come from a hook-side append log, since
 // transcripts don't carry Notification events reliably.
-function readNotificationsByDay() {
-  const out = {};
+function readEventsByDay() {
+  const out = { notifications: {}, compactions: {} };
   // The hook rotates events.jsonl to `.1` at 5MB; read both (oldest first) so a
-  // rotation doesn't silently drop a day's notification counts.
+  // rotation doesn't silently drop a day's counts. PreCompact events have been
+  // appended since the hook first shipped them — counting them here finally
+  // surfaces how hard sessions push context.
   for (const path of [EVENTS_LOG_PATH + '.1', EVENTS_LOG_PATH]) {
     if (!existsSync(path)) continue;
     try {
@@ -743,9 +801,13 @@ function readNotificationsByDay() {
       for (const line of raw.split('\n')) {
         if (!line) continue;
         const e = safeJson(line);
-        if (!e || e.type !== 'notification' || !e.ts) continue;
+        if (!e || !e.ts) continue;
+        const bucket = e.type === 'notification' ? out.notifications
+          : e.type === 'precompact' ? out.compactions
+          : null;
+        if (!bucket) continue;
         const k = dayKey(e.ts);
-        out[k] = (out[k] || 0) + 1;
+        bucket[k] = (bucket[k] || 0) + 1;
       }
     } catch { /* a rotation file unreadable/truncated — count what we can */ }
   }
@@ -772,6 +834,13 @@ export function aggregateFrom(cache) {
     sessions: 0,
     subagentRuns: 0,
     subagentActiveMs: 0,
+    // Session-length distribution (wall clock firstTs→lastTs, top-level
+    // sessions only — subagents overlap their parent). Histogram, not raw
+    // durations, to keep aggregate.json lean; median stays approximate.
+    sessionLengths: {
+      count: 0, totalMs: 0, longestMs: 0,
+      buckets: { lt15m: 0, m15to30: 0, m30to60: 0, h1to2: 0, h2to4: 0, gt4h: 0 },
+    },
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -892,6 +961,12 @@ export function aggregateFrom(cache) {
           for (const [kind, n] of Object.entries(src.shipKinds || {})) {
             (target.shipKinds ||= {})[kind] = (target.shipKinds[kind] || 0) + n;
           }
+          for (const [m, v] of Object.entries(src.byModel || {})) {
+            const t = ((target.byModel ||= {})[m] ||= { turns: 0, tokens: 0, cost: 0 });
+            t.turns += v.turns || 0;
+            t.tokens += v.tokens || 0;
+            t.cost += v.cost || 0;
+          }
         }
       };
       mergeSubBuckets(summary.byDay, agg.byDay);
@@ -906,7 +981,18 @@ export function aggregateFrom(cache) {
       agg.sessions += 1;
       agg.userMessages += summary.userMessages || 0;
       agg.activeMs += summary.activeMs || 0;
-      if (summary.firstTs && summary.lastTs) agg.wallMs += summary.lastTs - summary.firstTs;
+      if (summary.firstTs && summary.lastTs) {
+        agg.wallMs += summary.lastTs - summary.firstTs;
+        const durMs = summary.lastTs - summary.firstTs;
+        const sl = agg.sessionLengths;
+        sl.count += 1;
+        sl.totalMs += durMs;
+        if (durMs > sl.longestMs) sl.longestMs = durMs;
+        const mins = durMs / 60_000;
+        const bucket = mins < 15 ? 'lt15m' : mins < 30 ? 'm15to30' : mins < 60 ? 'm30to60'
+          : mins < 120 ? 'h1to2' : mins < 240 ? 'h2to4' : 'gt4h';
+        sl.buckets[bucket] += 1;
+      }
       if (summary.project) {
         const p = agg.projects[summary.project] = agg.projects[summary.project] || {
           sessions: 0, activeMs: 0, inputTokens: 0, outputTokens: 0, userMessages: 0, toolCalls: 0,
@@ -1072,15 +1158,22 @@ export function aggregateFrom(cache) {
   // Folded line totals.
   agg.linesNet = (agg.linesAdded || 0) - (agg.linesRemoved || 0);
 
-  // Notifications from the hook-side append log.
-  const notifByDay = readNotificationsByDay();
+  // Notifications + compactions from the hook-side append log.
+  const events = readEventsByDay();
   let notifTotal = 0;
-  for (const [k, n] of Object.entries(notifByDay)) {
+  for (const [k, n] of Object.entries(events.notifications)) {
     const d = agg.byDay[k] ||= blankDay();
     d.notifications = (d.notifications || 0) + n;
     notifTotal += n;
   }
   agg.notifications = notifTotal;
+  let compactTotal = 0;
+  agg.compactionsByDay = {};
+  for (const [k, n] of Object.entries(events.compactions)) {
+    agg.compactionsByDay[k] = n;
+    compactTotal += n;
+  }
+  agg.compactions = compactTotal;
 
   return agg;
 }

@@ -598,6 +598,53 @@ test('buildVars: billable-vs-cache breakdown', () => {
   assert.equal(v.allCachePctLabel, '80% from cache');
 });
 
+test('buildVars: tool mix vars from toolBreakdown (v1.2)', () => {
+  const agg = { toolBreakdown: { Read: 60, Edit: 30, Bash: 10 } };
+  const v = buildVars(baseState(), {}, agg);
+  assert.equal(v.topTool, 'Read');
+  assert.equal(v.topToolCount, 60);
+  assert.equal(v.topToolLabel, 'Read × 60');
+  assert.equal(v.toolMixLabel, 'Read 60% · Edit 30% · Bash 10%');
+  const empty = buildVars(baseState(), {}, {});
+  assert.equal(empty.topTool, '');
+  assert.equal(empty.toolMixLabel, '');
+});
+
+test('buildVars: delegated work / rhythm / context vars (v1.2)', () => {
+  const today = dayKey(Date.now());
+  const agg = {
+    subagentActiveMs: 2 * 3_600_000,
+    byWeekday: { 2: { activeMs: 5 * 3_600_000 }, 5: { activeMs: 1 * 3_600_000 } },
+    compactions: 12,
+    compactionsByDay: { [today]: 3 },
+  };
+  const v = buildVars(baseState(), {}, agg);
+  assert.equal(v.subagentHours, '2.0h');
+  assert.equal(v.subagentHoursLabel, '2.0h delegated');
+  assert.equal(v.peakWeekday, 'Tuesday');
+  assert.equal(v.peakWeekdayLabel, 'busiest on Tuesdays');
+  assert.equal(v.compactions, 12);
+  assert.equal(v.compactionsToday, 3);
+  assert.equal(v.compactionsTodayLabel, '3 context squeezes today');
+  const empty = buildVars(baseState(), {}, {});
+  assert.equal(empty.peakWeekday, '');
+  assert.equal(empty.compactionsTodayLabel, '');
+});
+
+test('buildVars: cache savings estimate priced at top-model rates (v1.2)', () => {
+  // 100M cache-read tokens at opus rates: (5.00 - 0.50) per 1M ≈ $450 saved.
+  const agg = {
+    cacheReadTokens: 100e6,
+    modelSplit: [{ model: 'opus', cost: 90, costPct: 1, tokens: 100 }],
+  };
+  const v = buildVars(baseState(), {}, agg);
+  assert.ok(Math.abs(v.cacheSavedUsd - 450) < 1, `expected ≈450, got ${v.cacheSavedUsd}`);
+  assert.match(v.cacheSavedLabel, /saved by cache/);
+  const none = buildVars(baseState(), {}, {});
+  assert.equal(none.cacheSavedUsd, 0);
+  assert.equal(none.cacheSavedLabel, '');
+});
+
 test('buildVars: session milestone fires within window, not outside', () => {
   // 2h + 1min into the session → milestone hit.
   const hit = buildVars(baseState({ sessionStart: now() - (2 * 3_600_000 + 60_000) }), {}, {});

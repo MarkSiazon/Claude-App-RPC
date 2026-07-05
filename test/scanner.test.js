@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 const {
-  parseTranscript, readSessionTokens, cleanProjectName,
+  parseTranscript, readSessionTokens, readSessionModel, cleanProjectName,
   discoverAltProjectDirs, findLiveSessions, aggregateFrom,
 } = await import('../src/scanner.js');
 
@@ -157,6 +157,55 @@ test('readSessionTokens: incremental append accumulates across reads', () => {
   assert.equal(t2.input, 350);
   assert.equal(t2.output, 80);
   assert.equal(t2.cacheRead, 10);
+  rmSync(dir, { recursive: true });
+});
+
+test('readSessionTokens: counts a repeated message.id once (multi-block turns)', () => {
+  // Claude Code repeats the same usage object on every content-block line of
+  // one assistant message; the live count must dedup by message.id exactly
+  // like the lifetime scanner does, or the card drifts above the aggregate.
+  const usage = { input_tokens: 100, output_tokens: 40, cache_read_input_tokens: 10 };
+  const { dir, path } = makeTranscript([
+    { type: 'assistant', message: { id: 'msg_1', usage } },
+    { type: 'assistant', message: { id: 'msg_1', usage } },
+    { type: 'assistant', message: { id: 'msg_1', usage } },
+    { type: 'assistant', message: { id: 'msg_2', usage } },
+    { type: 'assistant', message: { usage } }, // no id (legacy) — always counts
+  ]);
+  const t = readSessionTokens(path);
+  assert.equal(t.input, 300, 'msg_1 once + msg_2 + legacy line');
+  assert.equal(t.output, 120);
+  assert.equal(t.cacheRead, 30);
+  rmSync(dir, { recursive: true });
+});
+
+test('readSessionTokens: id dedup survives incremental appends', () => {
+  const usage = { input_tokens: 50, output_tokens: 20 };
+  const { dir, path } = makeTranscript([
+    { type: 'assistant', message: { id: 'msg_a', usage } },
+  ]);
+  assert.equal(readSessionTokens(path).input, 50);
+  // The same message.id continues in the appended tail (streamed blocks of the
+  // same turn) — it must not be recounted.
+  appendFileSync(path, JSON.stringify({ type: 'assistant', message: { id: 'msg_a', usage } }) + '\n');
+  appendFileSync(path, JSON.stringify({ type: 'assistant', message: { id: 'msg_b', usage } }) + '\n');
+  const future = new Date(Date.now() + 5000);
+  utimesSync(path, future, future);
+  const t = readSessionTokens(path);
+  assert.equal(t.input, 100, 'msg_a once across both reads + msg_b');
+  rmSync(dir, { recursive: true });
+});
+
+test('readSessionModel: reports the newest turn model, tracking /model switches', () => {
+  const { dir, path } = makeTranscript([
+    { type: 'assistant', message: { id: 'm1', model: 'claude-sonnet-5', usage: { input_tokens: 1 } } },
+  ]);
+  assert.equal(readSessionModel(path), 'claude-sonnet-5');
+  appendFileSync(path, JSON.stringify({ type: 'assistant', message: { id: 'm2', model: 'claude-opus-4-8', usage: { input_tokens: 1 } } }) + '\n');
+  const future = new Date(Date.now() + 5000);
+  utimesSync(path, future, future);
+  assert.equal(readSessionModel(path), 'claude-opus-4-8', 'switch shows without a new SessionStart');
+  assert.equal(readSessionModel('/no/such/file.jsonl'), null);
   rmSync(dir, { recursive: true });
 });
 
@@ -433,4 +482,56 @@ test('aggregateFrom: rolls up ships and attributes per-day projects', async () =
   assert.equal(bucket.ships, 1);
   assert.equal(bucket.projects.proj.tokens, 150, 'day tokens attributed to the session project');
   rmSync(dir, { recursive: true });
+});
+
+// ── v7 cache: per-day model buckets + session-length distribution ──────
+
+test('parseTranscript + aggregateFrom: per-day byModel buckets carry turns/tokens/cost', async () => {
+  const { dayKey } = await import('../src/scanner.js');
+  const d1 = '2026-05-22T10:00:30Z';
+  const d2 = '2026-05-23T11:00:30Z';
+  const { dir, path } = makeTranscript([
+    { type: 'user', sessionId: 's1', cwd: '/tmp/proj', timestamp: '2026-05-22T10:00:00Z',
+      message: { content: 'go' } },
+    { type: 'assistant', timestamp: d1,
+      message: { id: 'a1', model: 'claude-opus-4-7', usage: { input_tokens: 100, output_tokens: 50 } } },
+    { type: 'assistant', timestamp: d2,
+      message: { id: 'a2', model: 'claude-sonnet-4-5', usage: { input_tokens: 200, output_tokens: 10 } } },
+  ]);
+  const s = parseTranscript(path);
+  const agg = aggregateFrom({ files: { [path]: s } });
+  const day1 = agg.byDay[dayKey(Date.parse(d1))].byModel;
+  const day2 = agg.byDay[dayKey(Date.parse(d2))].byModel;
+  assert.ok(day1 && day2, 'both days carry a byModel bucket');
+  const k1 = Object.keys(day1), k2 = Object.keys(day2);
+  assert.equal(k1.length, 1, 'day 1 saw one model');
+  assert.equal(day1[k1[0]].tokens, 150);
+  assert.equal(day1[k1[0]].turns, 1);
+  assert.ok(day1[k1[0]].cost > 0, 'per-day model cost accrues');
+  assert.notEqual(k1[0], k2[0], 'the switch shows up as different day-model keys');
+  assert.equal(day2[k2[0]].tokens, 210);
+  rmSync(dir, { recursive: true });
+});
+
+test('aggregateFrom: session-length histogram buckets wall-clock durations', () => {
+  const HOUR = 3_600_000;
+  const t0 = 1700000000000;
+  const mk = (durMs) => ({ isSubagent: false, activeMs: 1000, firstTs: t0, lastTs: t0 + durMs });
+  const agg = aggregateFrom({
+    files: {
+      '/p/a.jsonl': mk(5 * 60_000),        // <15m
+      '/p/b.jsonl': mk(45 * 60_000),       // 30–60m
+      '/p/c.jsonl': mk(3 * HOUR),          // 2–4h (marathon)
+      '/p/d.jsonl': mk(6 * HOUR),          // >4h (longest)
+      '/p/uuid/subagents/agent-1.jsonl': { isSubagent: true, activeMs: 500, firstTs: t0, lastTs: t0 + 9 * HOUR },
+    },
+  });
+  const sl = agg.sessionLengths;
+  assert.equal(sl.count, 4, 'subagents are not sessions');
+  assert.equal(sl.buckets.lt15m, 1);
+  assert.equal(sl.buckets.m30to60, 1);
+  assert.equal(sl.buckets.h2to4, 1);
+  assert.equal(sl.buckets.gt4h, 1);
+  assert.equal(sl.longestMs, 6 * HOUR, 'subagent 9h run does not own the record');
+  assert.equal(sl.totalMs, 5 * 60_000 + 45 * 60_000 + 9 * HOUR);
 });

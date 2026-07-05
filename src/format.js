@@ -1,6 +1,6 @@
 import { basename, dirname, extname } from 'node:path';
 import { dayKey, weekKey, DATE_SUFFIX_RE, cleanProjectName } from './scanner.js';
-import { fmtCost } from './pricing.js';
+import { fmtCost, ratesFor } from './pricing.js';
 import { languageOf } from './languages.js';
 import { detectGitBranch, detectGitRepo } from './git.js';
 import { fmtResetTime, fmtResetDay } from './usage.js';
@@ -296,6 +296,27 @@ export function buildVars(state, config, aggregate) {
   const totalToolCalls = mcpCalls + builtinCalls;
   const mcpPct = totalToolCalls > 0 ? Math.round((mcpCalls / totalToolCalls) * 100) : 0;
 
+  // Tool mix — the actual top tools (Read/Edit/Bash…), not just the MCP split.
+  const toolCallsTotal = Object.values(agg.toolBreakdown || {}).reduce((a, b) => a + b, 0);
+  const toolsTop = topN(agg.toolBreakdown, 3);
+  const topToolEntry = toolsTop[0] || null;
+  const toolMixLabel = toolCallsTotal > 0
+    ? toolsTop.map(([name, n]) => `${name} ${Math.round((n / toolCallsTotal) * 100)}%`).join(' · ')
+    : '';
+
+  // Peak weekday by active time — byWeekday holds one blankDay bucket per 0–6.
+  const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let peakWd = null;
+  for (const [wd, b] of Object.entries(agg.byWeekday || {})) {
+    if ((b.activeMs || 0) > 0 && (!peakWd || b.activeMs > peakWd.activeMs)) {
+      peakWd = { name: WEEKDAY_NAMES[Number(wd)] || '', activeMs: b.activeMs };
+    }
+  }
+
+  // Context compactions — appended by the PreCompact hook since v0.8, counted
+  // into the aggregate since v1.2.
+  const compactionsToday = (agg.compactionsByDay || {})[dayKey(Date.now())] || 0;
+
   // Cost.
   const todayCost = today.cost || 0;
   const weekCost = thisWeek.cost || 0;
@@ -388,6 +409,12 @@ export function buildVars(state, config, aggregate) {
     : 0;
   const TOOL_ELAPSED_THRESHOLD_MS = 5_000;
   const toolElapsed = toolMs >= TOOL_ELAPSED_THRESHOLD_MS ? fmtToolElapsed(toolMs) : '';
+
+  // What cache reuse saved vs. paying fresh-input rates for the same tokens —
+  // an estimate priced at the top-by-spend model's rates (DEFAULT when unknown).
+  const savingsRates = ratesFor(topModelEntry?.model || '');
+  const cacheSavedUsd = ((agg.cacheReadTokens || 0) / 1e6)
+    * Math.max(0, (savingsRates.input || 0) - (savingsRates.cacheRead || 0));
 
   // Compaction vars — populated only while a compaction is in flight so
   // the {compactDuration} suffix in the compacting template collapses
@@ -724,6 +751,26 @@ export function buildVars(state, config, aggregate) {
     builtinToolCallsFmt: fmtNum(builtinCalls),
     mcpToolPercent: mcpPct,
     mcpToolPercentLabel: totalToolCalls ? `${mcpPct}% MCP` : '',
+    // Tool mix (v1.2) — the actual top tools, lifetime.
+    topTool: topToolEntry ? topToolEntry[0] : '',
+    topToolCount: topToolEntry ? topToolEntry[1] : 0,
+    topToolLabel: topToolEntry ? `${topToolEntry[0]} × ${fmtNum(topToolEntry[1])}` : '',
+    toolMixLabel,
+
+    // ── Delegated work / rhythm / context (v1.2) ────────────────
+    subagentActiveMs: agg.subagentActiveMs || 0,
+    subagentHours: fmtHours(agg.subagentActiveMs || 0),
+    subagentHoursLabel: (agg.subagentActiveMs || 0) > 0
+      ? `${fmtHours(agg.subagentActiveMs)} delegated` : '',
+    peakWeekday: peakWd ? peakWd.name : '',
+    peakWeekdayLabel: peakWd ? `busiest on ${peakWd.name}s` : '',
+    compactions: agg.compactions || 0,
+    compactionsToday,
+    compactionsTodayLabel: compactionsToday > 0
+      ? `${compactionsToday} context squeeze${compactionsToday === 1 ? '' : 's'} today` : '',
+    cacheSavedUsd,
+    cacheSavedFmt: fmtCost(cacheSavedUsd),
+    cacheSavedLabel: cacheSavedUsd >= 1 ? `≈${fmtCost(cacheSavedUsd)} saved by cache` : '',
 
     // ── Cost ────────────────────────────────────────────────────
     todayCost,

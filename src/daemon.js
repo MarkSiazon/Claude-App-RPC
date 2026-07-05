@@ -6,7 +6,7 @@ import { Client } from './discord-ipc.js';
 import { readState, sweepStaleStateTmp, listSessionStates, sweepStaleSessionStates } from './state.js';
 import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession, throttleDecision } from './presence.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
-import { scan, readAggregate, findLiveSessions, readSessionTokens } from './scanner.js';
+import { scan, readAggregate, findLiveSessions, readSessionTokens, readSessionModel } from './scanner.js';
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
 import { pauseUntil } from './pause.js';
@@ -167,9 +167,17 @@ if (ownerPid) {
 }
 
 // Reclaim any per-pid state tmp files orphaned by a hard-killed writer, plus
-// per-session state files from sessions that ended long ago.
+// per-session state files from sessions that ended long ago. The session-state
+// sweep repeats every 30 min — a daemon runs for weeks, and every file left
+// behind is re-read by listSessionStates on every render tick, so boot-only
+// sweeping leaks both disk and per-tick CPU.
 sweepStaleStateTmp();
 sweepStaleSessionStates();
+const sweepTimer = setInterval(() => {
+  sweepStaleStateTmp();
+  sweepStaleSessionStates();
+}, 30 * 60 * 1000);
+if (sweepTimer.unref) sweepTimer.unref();
 
 // pickFrames / selectFrame / resolveLargeImageKey now live in presence.js (pure
 // + unit-tested). The rotation cursor (rotationCursor) is owned here and passed
@@ -228,6 +236,11 @@ function resolvePresence(opts = {}) {
     if (match) {
       const t = readSessionTokens(match.path);
       if (t) state.tokens = t;
+      // The hook only learns the model at SessionStart; a mid-session /model
+      // switch is visible only in the transcript. Render-time override — the
+      // state file stays hook-owned.
+      const liveModel = readSessionModel(match.path);
+      if (liveModel) state.model = liveModel;
     }
   }
 
