@@ -1811,7 +1811,48 @@ export async function handlePairClaim(request, env) {
     return jsonOk({ ok: true, githubUser: login, handle: link.handle, verified: true, merged: true });
   }
   if (!link.profile) {
-    return jsonError(409, 'publish a profile first: claude-rpc profile on && claude-rpc profile publish');
+    // Brand-new machine, no existing identity anywhere: mint it right here.
+    // The login is OAuth/gist-proven (that's what the code encodes), so there
+    // is nothing to wait for — this is what makes `setup --link <code>` a
+    // true one-liner. Handle defaults to the GitHub login; on a collision
+    // with a LIVE profile the login gets an id-suffixed handle instead
+    // (renameable later via `profile set`). Totals are zeros until the
+    // machine's first flush fills its slice.
+    const id = body.instanceId;
+    let handle = normHandle(login);
+    if (handle) {
+      const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+      if (owner && owner !== id) {
+        if (await getProfile(env, owner)) handle = null; // live holder — don't steal here
+        else { try { await env.TOTALS.delete(HANDLE_KEY(handle)); } catch { /* orphaned mapping */ } }
+      }
+    }
+    if (!handle) {
+      for (const sfx of [id.slice(0, 4), id.slice(0, 8)]) {
+        const base = (normHandle(login) || 'dev').slice(0, Math.max(2, 32 - sfx.length - 1));
+        const cand = normHandle(`${base}-${sfx}`);
+        if (cand && !(await env.TOTALS.get(HANDLE_KEY(cand)))) { handle = cand; break; }
+      }
+    }
+    if (!handle) return jsonError(503, 'could not derive a handle — set one with `claude-rpc profile set --handle <you>` and retry');
+    const now = Date.now();
+    const prof = {
+      handle, displayName: null, githubUser: login, verified: true,
+      machines: { [id]: { tokens: 0, sessions: 0, activeMs: 0, streak: 0, updatedAt: now } },
+      tokens: 0, sessions: 0, activeMs: 0, streak: 0,
+      createdAt: now, updatedAt: now,
+    };
+    await env.TOTALS.put(PF_KEY(id), JSON.stringify(prof)); // verified → permanent
+    await env.TOTALS.put(HANDLE_KEY(handle), id);
+    await env.TOTALS.put(GH_KEY(login), id);
+    try {
+      const index = pruneBoardIndex(await getBoardIndex(env));
+      index[id] = boardEntry(prof);
+      capBoardIndex(index);
+      await env.TOTALS.put(BOARD_INDEX_KEY, JSON.stringify(index));
+    } catch { /* board heals on first flush */ }
+    try { await env.TOTALS.delete(PAIR_KEY(code)); } catch { /* TTL covers it */ }
+    return jsonOk({ ok: true, githubUser: login, handle, verified: true, created: true });
   }
   try { await env.TOTALS.delete(PAIR_KEY(code)); } catch { /* TTL covers it */ }
   return jsonOk({ ok: true, githubUser: login, handle: link.profile.handle, verified: true });

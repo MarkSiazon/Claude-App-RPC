@@ -190,7 +190,7 @@ via Bearer sessions. Per-instance and per-IP rate limits apply.
 | `POST /verify/start` | `instanceId`, `githubUser?` | Issue a one-time gist-verification token. |
 | `POST /verify/check` | `instanceId`, `gistId` | Confirm the token appears in a public gist; grants the verified check (merges into the canonical identity if one exists). |
 | `POST /pair/start` | Bearer session **or** verified `instanceId` | Mint a one-time machine-link code (10-min TTL). |
-| `POST /pair/claim` | `instanceId`, `code` | Claim a link code on a new machine; grants the same verified check and merges machines into one identity. |
+| `POST /pair/claim` | `instanceId`, `code` | Claim a link code on a new machine; grants the same verified check and merges machines into one identity. A machine with no profile anywhere gets one **minted on the spot** (verified, handle = the GitHub login, suffixed on collision; `created: true` in the response) — this is what makes `setup --link <code>` a one-liner. |
 | `POST /squad/create` | session/`instanceId`, `name` | Create a squad; returns id + invite code. |
 | `POST /squad/join` | session/`instanceId`, `code` | Join via invite code. |
 | `POST /squad/leave` | session/`instanceId`, `squadId` | Leave (ownership transfers, or the squad dissolves when empty). |

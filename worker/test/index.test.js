@@ -1046,3 +1046,44 @@ test('capBoardIndex: evicts lowest-value unverified rows, never verified ones', 
   capBoardIndex(allVerified, 3);
   assert.equal(Object.keys(allVerified).length, 6, 'verified rows are never evicted');
 });
+
+test('pair/claim: a brand-new machine (no profile anywhere) gets its identity minted on the spot', async () => {
+  // The `setup --link <code>` one-liner: fresh install, never published,
+  // no canonical for the login. The claim must create a verified profile
+  // (handle = login), not 409 with "publish a profile first".
+  const env = makeEnv();
+  const kv = env.TOTALS;
+  const FRESH = 'dddddddd-1111-2222-3333-444444444444';
+  kv.store.set('pair:TESTCF', { value: 'newbie', ttl: 600 });
+
+  const res = await handlePairClaim(pairClaimRequest(FRESH, 'TESTCF'), env);
+  const text = await res.text();
+  assert.equal(res.status, 200, text);
+  const body = JSON.parse(text);
+  assert.equal(body.created, true);
+  assert.equal(body.githubUser, 'newbie');
+  assert.equal(body.handle, 'newbie');
+
+  const prof = JSON.parse(await kv.get(`pf:${FRESH}`));
+  assert.equal(prof.verified, true);
+  assert.equal(prof.githubUser, 'newbie');
+  assert.equal(prof.tokens, 0, 'totals start at zero until the first flush');
+  assert.equal(await kv.get('handle:newbie'), FRESH);
+  assert.equal(await kv.get('gh:newbie'), FRESH);
+  assert.equal(await kv.get('pair:TESTCF'), null, 'code consumed');
+  const index = JSON.parse(await kv.get('board:index'));
+  assert.ok(index[FRESH], 'board row exists immediately');
+
+  // Handle squatted by a LIVE unverified profile → suffixed handle, no theft.
+  const FRESH2 = 'eeeeeeee-1111-2222-3333-444444444444';
+  seedPf(kv, 'ffffffff-1111-2222-3333-444444444444', { handle: 'taken' });
+  kv.store.set('handle:taken', { value: 'ffffffff-1111-2222-3333-444444444444', ttl: null });
+  kv.store.set('pair:TESTCG', { value: 'taken', ttl: 600 });
+  const res2 = await handlePairClaim(pairClaimRequest(FRESH2, 'TESTCG'), env);
+  const text2 = await res2.text();
+  assert.equal(res2.status, 200, text2);
+  const body2 = JSON.parse(text2);
+  assert.notEqual(body2.handle, 'taken');
+  assert.match(body2.handle, /^taken-/, 'suffixed instead of stolen');
+  assert.equal(await kv.get('handle:taken'), 'ffffffff-1111-2222-3333-444444444444', 'holder keeps the name');
+});

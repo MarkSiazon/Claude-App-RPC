@@ -221,6 +221,21 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
   const HANDLE = decodeURIComponent(m ? m[1] : (new URLSearchParams(location.search).get('h') || '')).trim().toLowerCase();
   const YEAR_PARAM = new URLSearchParams(location.search).get('year') || '';
 
+  // GitHub login return — /auth/callback 302s back here with the session in
+  // the URL fragment (same contract as /link and /squads). Store + strip.
+  {
+    const fm = location.hash.match(/#token=([^&]+)&gh=([^&]+)/);
+    if (fm) {
+      try {
+        localStorage.setItem('crpcTok', decodeURIComponent(fm[1]));
+        localStorage.setItem('crpcGh', decodeURIComponent(fm[2]));
+      } catch { /* storage blocked — the one-liner block just stays logged-out */ }
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
+  const TOK = localStorage.getItem('crpcTok') || '';
+  const GH = localStorage.getItem('crpcGh') || '';
+
   // ── format helpers ───────────────────────────────────────────
   const fmtNum = (n) => {
     n = +n || 0;
@@ -467,6 +482,64 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
   }
 
   // ── web-only: landing + empty states ─────────────────────────
+  //
+  // THE one-liner: GitHub login (zero scopes) → a 10-min pair code → one
+  // paste. `setup --link <code> --wrapped` installs, wires hooks, starts the
+  // daemon, verifies the machine as the login (the worker mints the board
+  // profile on first contact), runs the first scan, publishes totals, and
+  // puts the year-in-review right back on this page.
+  const ONELINE_ID = 'oneline';
+  function onelineBlock() {
+    if (TOK && GH) {
+      return `<div class="cmds" id="${ONELINE_ID}">
+        <div><span class="d"># signed in as @${esc(GH)} — everything in one line:</span></div>
+        <div><button class="btn primary" id="mint" style="margin-top:6px">⚡ mint my one-liner</button></div>
+      </div>`;
+    }
+    const ret = encodeURIComponent(location.pathname);
+    return `<div class="cmds" id="${ONELINE_ID}">
+      <div><span class="d"># or do EVERYTHING in one line — install, verify, publish:</span></div>
+      <div><a class="btn primary" style="margin-top:6px" href="${WORKER}/auth/login?return=${ret}">⚡ sign in with GitHub → get the one-liner</a></div>
+      <div><span class="d" style="font-size:11px">zero scopes — public identity only</span></div>
+    </div>`;
+  }
+  function wireOneline() {
+    const btn = document.getElementById('mint');
+    if (!btn) return;
+    btn.onclick = async () => {
+      btn.textContent = 'minting…'; btn.disabled = true;
+      try {
+        const r = await fetch(WORKER + '/pair/start', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + TOK, 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        if (r.status === 401) { // session expired — round-trip through GitHub again
+          localStorage.removeItem('crpcTok'); localStorage.removeItem('crpcGh');
+          location.href = WORKER + '/auth/login?return=' + encodeURIComponent(location.pathname);
+          return;
+        }
+        if (!r.ok) throw new Error('http ' + r.status);
+        const { code, expiresInSec } = await r.json();
+        const cmd = `npx claude-rpc@latest setup --link ${code} --wrapped`;
+        const box = document.getElementById(ONELINE_ID);
+        box.innerHTML = `
+          <div><span class="d"># paste in any terminal — installs, verifies you as @${esc(GH)}, publishes your wrapped:</span></div>
+          <div><span class="c" id="cmdtext">${esc(cmd)}</span></div>
+          <div style="margin-top:8px"><button class="btn primary" id="copycmd">copy</button>
+            <span class="d" style="font-size:11px"> code lasts ${Math.round((expiresInSec || 600) / 60)} min · then refresh your wrapped here</span></div>`;
+        const cp = document.getElementById('copycmd');
+        cp.onclick = () => {
+          navigator.clipboard?.writeText(cmd)
+            .then(() => { cp.textContent = 'copied ✓'; setTimeout(() => cp.textContent = 'copy', 1600); })
+            .catch(() => { cp.textContent = 'select + copy above'; });
+        };
+      } catch {
+        btn.textContent = 'try again'; btn.disabled = false;
+      }
+    };
+  }
+
   const CMDS = `<div class="cmds">
       <div><span class="d"># install once</span></div>
       <div><span class="c">npx claude-rpc@latest setup</span></div>
@@ -484,6 +557,7 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
         <input id="h" type="text" placeholder="leaderboard handle" autocomplete="off" spellcheck="false" />
         <button class="btn primary" id="goh">watch →</button>
       </div>
+      ${onelineBlock()}
       ${CMDS}
     </div>`;
     const go = () => {
@@ -492,6 +566,7 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
     };
     document.getElementById('goh').onclick = go;
     document.getElementById('h').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    wireOneline();
   }
 
   function emptyState(title, sub) {
@@ -500,9 +575,11 @@ body.page { overflow: auto; user-select: text; -webkit-user-select: text; }
       <div class="kicker">claude wrapped</div>
       <div class="big">${title}</div>
       <div class="sub">${sub}</div>
+      ${onelineBlock()}
       ${CMDS}
       <div class="handle-row"><a class="btn" href="/wrapped">← try another handle</a></div>
     </div>`;
+    wireOneline();
   }
 
   // ── boot ─────────────────────────────────────────────────────

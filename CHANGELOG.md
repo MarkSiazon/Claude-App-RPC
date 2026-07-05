@@ -2,6 +2,14 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-07-05
+
+**Added — one-line onboarding, straight from the Wrapped page**
+
+- **`npx claude-rpc@latest setup --link <code> [--wrapped]`** — ONE paste does everything: install, hook wiring, daemon, GitHub verification, board profile, first scan, totals publish, and (with `--wrapped`) your year-in-review live on the web. The code comes from **claude-rpc.com/wrapped**: sign in with GitHub (zero scopes) → "mint my one-liner" → copy. Codes last 10 minutes.
+- **Worker: `/pair/claim` mints the identity on first contact.** A brand-new machine with no profile anywhere no longer gets "publish a profile first" — the claim creates a verified profile on the spot (handle = the GitHub login, id-suffixed if a live profile holds that name; `created: true` in the response). The login was OAuth-proven when the code was minted, so there was nothing left to wait for.
+- **`claude-rpc link <code>` now finishes the job locally**: it adopts the server's handle and enables publishing when the local config has neither (explicit settings are always respected) — previously a linked-but-never-configured machine silently never uploaded its slice.
+
 ## [1.2.1] - 2026-07-05
 
 **Changed — the web Wrapped is now the real Wrapped**

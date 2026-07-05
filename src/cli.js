@@ -1673,11 +1673,25 @@ async function doLink(argv) {
     return fail(`link failed: ${r.json?.error || r.status}`,
       { hint: `get a fresh code: run \`claude-rpc link\` on your main machine, or ${LINK_PAGE}`, code: EX_SYS_ERROR });
   }
-  // Mirror the verified identity locally so `profile status` agrees.
+  // Mirror the verified identity locally so `profile status` agrees — and
+  // adopt the server's handle + enable publishing when the local config has
+  // neither (a brand-new machine via `setup --link`): without these the
+  // daemon's 30-min flush never uploads this machine's slice. An explicit
+  // local handle or an explicit enabled:false is always respected.
   const userCfg = readJson(CONFIG_PATH, {});
-  userCfg.profile = { ...(userCfg.profile || {}), githubUser: r.json.githubUser, verified: true };
+  const prevProfile = userCfg.profile || {};
+  userCfg.profile = {
+    ...prevProfile,
+    githubUser: r.json.githubUser,
+    verified: true,
+    ...(prevProfile.handle ? {} : { handle: r.json.handle }),
+    ...(prevProfile.enabled === undefined ? { enabled: true } : {}),
+  };
   writeUserConfig(userCfg);
   console.log(`  ${c.green}✓${c.reset}  linked as ${c.cyan}@${r.json.githubUser}${c.reset} — profile verified, squads unlocked in the browser`);
+  if (r.json.created) {
+    console.log(`  ${c.green}✓${c.reset}  board profile created — handle ${c.cyan}@${r.json.handle}${c.reset} ${c.dim}(rename any time: claude-rpc profile set --handle <you>)${c.reset}`);
+  }
   if (r.json.merged) {
     // This machine joined an existing identity: its stats now roll up under the
     // canonical handle, one board row across all your machines.
@@ -2262,6 +2276,7 @@ function overview() {
 function help() {
   const cmds = [
     ['setup',     'Install Claude Code hooks + Windows startup entry (~/.claude/settings.json)'],
+    ['setup --link <code>', 'One-liner onboarding: install + verify via a claude-rpc.com code (+ --wrapped publishes your year)'],
     ['uninstall', 'Remove Claude Code hooks + Windows startup entry'],
     ['upgrade-config', 'Re-run idempotent migrations on an existing config.json'],
     ['start',     'Start the Discord RPC daemon (detached)'],
@@ -2410,6 +2425,33 @@ process.on('unhandledRejection', (e) => {
       } catch (e) {
         console.log(`  ${c.yellow}!${c.reset}  ${'daemon start'.padEnd(16)}${c.dim}couldn't auto-start: ${e.message}${c.reset}`);
         console.log(`     ${c.gray}↳ run \`claude-rpc start\` when you're ready${c.reset}`);
+      }
+      // One-liner onboarding: `setup --link <code> [--wrapped]` — the wrapped
+      // page mints the code after a GitHub login, so a single paste installs,
+      // verifies the machine as that login (the worker creates the profile on
+      // first contact), runs the first scan, publishes real totals, and —
+      // with --wrapped — puts the year-in-review on the web. Each step is
+      // best-effort-loud: a failure explains itself but never rolls back the
+      // completed install above.
+      {
+        const argv = process.argv.slice(3);
+        const linkAt = argv.indexOf('--link');
+        const linkCode = linkAt !== -1 ? (argv[linkAt + 1] || '').trim() : null;
+        if (linkCode) {
+          console.log('');
+          await doLink([linkCode]);
+          if (process.exitCode) break; // link failed — its own message + hint already printed
+          console.log(`  ${c.dim}first scan — counting your history…${c.reset}`);
+          doScan(false);
+          const { flushProfile } = await import('./community.js');
+          const flushed = await flushProfile(loadConfig());
+          if (flushed.ok) {
+            console.log(`  ${c.green}✓${c.reset}  profile published — ${c.cyan}${fmtNum(flushed.totals.tokens)}${c.reset} tokens on the board`);
+          }
+          if (argv.includes('--wrapped')) await doWrappedPublish(['--yes']);
+        } else if (argv.includes('--wrapped')) {
+          console.log(`  ${c.yellow}!${c.reset}  --wrapped needs a profile — pair it with --link <code>, or run \`claude-rpc wrapped --publish\` after setup`);
+        }
       }
       setupOutro(target, changed);
       break;

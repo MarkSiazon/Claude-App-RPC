@@ -349,8 +349,13 @@ test('pair: claim without a profile, with a bad code, or unauthenticated start a
 
   const sess = await mintToken('sess', { gh: 'someone' }, SECRET, 60_000);
   const { code } = await (await handlePairStart(post('/pair/start', {}, { Authorization: `Bearer ${sess}` }), env)).json();
+  // A machine with no profile anywhere no longer 409s — the claim MINTS the
+  // identity (the `setup --link` one-liner). Verified, handle = login.
   res = await handlePairClaim(post('/pair/claim', { instanceId: IDS.carol, code }), env);
-  assert.equal(res.status, 409, 'no published profile → instructive 409');
+  assert.equal(res.status, 200, 'first contact mints the identity');
+  const minted = await res.json();
+  assert.equal(minted.created, true);
+  assert.equal(minted.handle, 'someone');
   res = await handlePairClaim(post('/pair/claim', { instanceId: IDS.carol, code: 'AAAAAA' }), env);
   assert.equal(res.status, 404, 'unknown code → 404');
 });
