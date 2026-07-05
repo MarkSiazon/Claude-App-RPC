@@ -560,10 +560,11 @@ export function sanitizeWrapped(w) {
         ? { name: label(l, 24), edits: 0 }
         : { name: label(l?.name, 24), edits: num(l?.edits, 100_000_000) })
       .filter((l) => l.name),
+    // 0% rows carry no story ("Sonnet 0%" on the preview) — drop at the door.
     topModels: (Array.isArray(w.topModels) ? w.topModels : []).slice(0, 4)
-      .map((m) => ({ name: label(m?.name), pct: pct(m?.pct) })).filter((m) => m.name),
+      .map((m) => ({ name: label(m?.name), pct: pct(m?.pct) })).filter((m) => m.name && m.pct > 0),
     toolMix: (Array.isArray(w.toolMix) ? w.toolMix : []).slice(0, 3)
-      .map((t) => ({ name: label(t?.name, 24), pct: pct(t?.pct) })).filter((t) => t.name),
+      .map((t) => ({ name: label(t?.name, 24), pct: pct(t?.pct) })).filter((t) => t.name && t.pct > 0),
   };
   if (typeof w.peakDay === 'object' && w.peakDay && /^\d{4}-\d{2}-\d{2}$/.test(String(w.peakDay.date || ''))) {
     out.peakDay = { date: String(w.peakDay.date), activeMs: num(w.peakDay.activeMs, 24 * 60 * 60 * 1000) };
@@ -954,10 +955,88 @@ export async function handleLeaderboard(url, env) {
 
 // ── Claude Wrapped ─────────────────────────────────────────────────────
 //
+// Merge per-machine wrapped slices into the one identity-wide view a
+// multi-machine person actually lived. Each machine publishes only its LOCAL
+// aggregate, so last-writer-wins clobbered the year (a laptop's 8h replaced a
+// dev box's 87h — the bug that motivated this). Same philosophy as the
+// profile's `machines` map: slices keyed by machine, displayed totals derived.
+// Rules per field:
+//   SUM      — volume: activeMs, sessions, prompts, tokens, lines, ships,
+//              compactions, subagentActiveMs, costUsd
+//   MAX      — records/calendar: streakBest, streak, daysSinceFirst,
+//              longestSessionMs, peakDay (by activeMs), hotspot (by count),
+//              daysActive (calendar days OVERLAP across machines — max is the
+//              honest floor; summing would count one day twice)
+//   WEIGHTED — shares: cachePct by tokens, marathonPct by sessions,
+//              topModels/toolMix pcts by tokens (shares lack absolutes, so
+//              the dominant machine dominates — the right approximation)
+//   BY-NAME  — topProjects (sum activeMs), topLanguages (sum edits)
+//   DOMINANT — peakHour/peakWeekday follow the machine with the most active
+//              time (no cross-machine distribution exists to merge)
+export function mergeWrappedSlices(slices) {
+  const list = Object.values(slices || {}).filter(Boolean);
+  if (!list.length) return {};
+  if (list.length === 1) return list[0];
+
+  const sum = (f) => list.reduce((a, s) => a + (s[f] || 0), 0);
+  const max = (f) => list.reduce((a, s) => Math.max(a, s[f] || 0), 0);
+  const byWeight = (f, wf) => {
+    const tw = sum(wf);
+    return tw > 0 ? Math.round(list.reduce((a, s) => a + (s[f] || 0) * (s[wf] || 0), 0) / tw) : 0;
+  };
+  const dominant = list.slice().sort((a, b) => (b.activeMs || 0) - (a.activeMs || 0))[0];
+  const mergeNamed = (f, vf, n) => {
+    const acc = {};
+    for (const s of list) for (const e of s[f] || []) {
+      if (e?.name) acc[e.name] = (acc[e.name] || 0) + (e[vf] || 0);
+    }
+    return Object.entries(acc).sort((a, b) => b[1] - a[1]).slice(0, n)
+      .map(([name, v]) => ({ name, [vf]: v }));
+  };
+  const mergePct = (f, n) => {
+    const tw = sum('tokens');
+    const acc = {};
+    for (const s of list) for (const e of s[f] || []) {
+      if (e?.name) acc[e.name] = (acc[e.name] || 0) + (e.pct || 0) * (tw > 0 ? (s.tokens || 0) / tw : 1 / list.length);
+    }
+    return Object.entries(acc).map(([name, p]) => ({ name, pct: Math.round(p) }))
+      .filter((e) => e.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, n);
+  };
+
+  const out = {
+    activeMs: sum('activeMs'), sessions: sum('sessions'), prompts: sum('prompts'),
+    tokens: sum('tokens'), linesAdded: sum('linesAdded'), linesRemoved: sum('linesRemoved'),
+    ships: sum('ships'), compactions: sum('compactions'),
+    subagentActiveMs: sum('subagentActiveMs'),
+    costUsd: Math.round(sum('costUsd') * 100) / 100,
+    streakBest: max('streakBest'), streak: max('streak'),
+    daysSinceFirst: max('daysSinceFirst'), daysActive: max('daysActive'),
+    longestSessionMs: max('longestSessionMs'),
+    cachePct: byWeight('cachePct', 'tokens'),
+    marathonPct: byWeight('marathonPct', 'sessions'),
+    peakHour: dominant.peakHour ?? 0,
+    topProjects: mergeNamed('topProjects', 'activeMs', 5),
+    topLanguages: mergeNamed('topLanguages', 'edits', 5),
+    topModels: mergePct('topModels', 4),
+    toolMix: mergePct('toolMix', 3),
+  };
+  const peakDays = list.map((s) => s.peakDay).filter((p) => p?.date);
+  if (peakDays.length) out.peakDay = peakDays.sort((a, b) => (b.activeMs || 0) - (a.activeMs || 0))[0];
+  const hotspots = list.map((s) => s.hotspot).filter((h) => h?.name);
+  if (hotspots.length) out.hotspot = hotspots.sort((a, b) => (b.count || 0) - (a.count || 0))[0];
+  if (dominant.peakWeekday) out.peakWeekday = dominant.peakWeekday;
+  return out;
+}
+
 // POST /wrapped — the CLI's one-shot `wrapped --publish`. Requires a published
 // profile (the handle is the public address of the wrapped page); the payload
 // is privacy-valved CLI-side (project names respect the visibility rules) and
-// allowlist-clamped here. One KV write per publish.
+// allowlist-clamped here. The record keeps one sanitized slice per MACHINE
+// (v2) and stores the merged identity-wide view at record.wrapped, so reads
+// stay one KV get and the machines map never leaves the record. Re-publishing
+// from any machine replaces only that machine's slice. One KV write per
+// publish. v1 records (single blob, unknown machine) are superseded whole —
+// each machine's next publish re-adds its slice.
 export async function handleWrappedPublish(request, env) {
   let body;
   try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
@@ -966,18 +1045,27 @@ export async function handleWrappedPublish(request, env) {
   if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
   if (!(await rateOk(env, body.instanceId, 'wrapped'))) return jsonError(429, 'rate limited');
 
-  const id = await resolveCanonical(env, body.instanceId);
+  const machineId = body.instanceId;
+  const id = await resolveCanonical(env, machineId);
   const profile = await getProfile(env, id);
   if (!profile || !profile.handle) {
     return jsonError(403, 'no published profile — run `claude-rpc profile publish` first');
   }
 
   const year = Number(body.year);
+  let machines = {};
+  try {
+    const prev = JSON.parse(await env.TOTALS.get(WRAPPED_KEY(id, year)) || 'null');
+    if (prev?.v >= 2 && prev.machines) machines = prev.machines;
+  } catch { /* corrupt/absent — start fresh */ }
+  machines[machineId] = sanitizeWrapped(body.wrapped);
+
   const record = {
-    v: 1,
+    v: 2,
     year,
     publishedAt: Date.now(),
-    wrapped: sanitizeWrapped(body.wrapped),
+    machines,
+    wrapped: mergeWrappedSlices(machines),
   };
   await env.TOTALS.put(WRAPPED_KEY(id, year), JSON.stringify(record), { expirationTtl: WRAPPED_TTL_SECONDS });
 
@@ -985,6 +1073,7 @@ export async function handleWrappedPublish(request, env) {
     ok: true,
     handle: profile.handle,
     year,
+    machines: Object.keys(machines).length,
     url: `${siteOrigin(env)}/wrapped/${profile.handle}?year=${year}`,
   }), { headers: { ...CORS, 'Content-Type': 'application/json' } });
 }

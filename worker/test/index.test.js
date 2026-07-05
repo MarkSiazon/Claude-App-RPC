@@ -1087,3 +1087,77 @@ test('pair/claim: a brand-new machine (no profile anywhere) gets its identity mi
   assert.match(body2.handle, /^taken-/, 'suffixed instead of stolen');
   assert.equal(await kv.get('handle:taken'), 'ffffffff-1111-2222-3333-444444444444', 'holder keeps the name');
 });
+
+// ── multi-machine wrapped (v2 records) ─────────────────────────────────
+
+const { mergeWrappedSlices } = await import('../src/index.js');
+
+test('mergeWrappedSlices: sums volume, maxes records, weights shares, merges names', () => {
+  const dev = {
+    activeMs: 80 * 3_600_000, sessions: 90, prompts: 1000, tokens: 900,
+    linesAdded: 1000, linesRemoved: 100, ships: 200, costUsd: 100.5,
+    streakBest: 18, daysActive: 28, cachePct: 90, marathonPct: 20,
+    peakHour: 2, peakDay: { date: '2026-06-29', activeMs: 9 },
+    hotspot: { name: 'cli.js', count: 154 },
+    peakWeekday: { name: 'Monday', activeMs: 5 },
+    topProjects: [{ name: 'claude-rpc', activeMs: 100 }],
+    topLanguages: [{ name: 'JavaScript', edits: 2000 }],
+    topModels: [{ name: 'Opus 4.8', pct: 70 }, { name: 'Fable 5', pct: 30 }],
+    toolMix: [{ name: 'Read', pct: 50 }],
+  };
+  const laptop = {
+    activeMs: 8 * 3_600_000, sessions: 10, prompts: 100, tokens: 100,
+    linesAdded: 50, linesRemoved: 5, ships: 0, costUsd: 10.25,
+    streakBest: 2, daysActive: 7, cachePct: 50, marathonPct: 0,
+    peakHour: 20, peakDay: { date: '2026-05-01', activeMs: 3 },
+    hotspot: { name: 'Settings.jsx', count: 24 },
+    topProjects: [{ name: 'claude-rpc', activeMs: 20 }, { name: 'nib', activeMs: 10 }],
+    topLanguages: [{ name: 'JavaScript', edits: 100 }, { name: 'Python', edits: 40 }],
+    topModels: [{ name: 'Opus 4.8', pct: 100 }],
+    toolMix: [{ name: 'Edit', pct: 60 }],
+  };
+  const m = mergeWrappedSlices({ a: dev, b: laptop });
+  assert.equal(m.activeMs, 88 * 3_600_000, 'active time sums');
+  assert.equal(m.sessions, 100);
+  assert.equal(m.tokens, 1000);
+  assert.equal(m.costUsd, 110.75);
+  assert.equal(m.streakBest, 18, 'best streak is a MAX, not a sum');
+  assert.equal(m.daysActive, 28, 'calendar days overlap — max, not sum');
+  assert.equal(m.cachePct, Math.round((90 * 900 + 50 * 100) / 1000), 'cache% weighted by tokens');
+  assert.equal(m.peakHour, 2, 'dominant machine owns the peak hour');
+  assert.equal(m.peakDay.date, '2026-06-29', 'bigger peak day wins');
+  assert.equal(m.hotspot.name, 'cli.js', 'hotter hotspot wins');
+  assert.deepEqual(m.topProjects[0], { name: 'claude-rpc', activeMs: 120 }, 'same project sums across machines');
+  assert.equal(m.topLanguages[0].edits, 2100);
+  assert.equal(m.topModels[0].name, 'Opus 4.8');
+  assert.equal(m.topModels[0].pct, 73, '70%×0.9 + 100%×0.1 = 73%');
+  assert.equal(mergeWrappedSlices({ solo: dev }), dev, 'single slice passes through untouched');
+});
+
+test('wrapped v2: a second machine ADDS its slice instead of clobbering the year', async () => {
+  const env = makeEnv();
+  await handleProfile(profileRequest(profileBody), env);
+  for (const k of [...env.TOTALS.store.keys()]) if (k.startsWith('rate:')) env.TOTALS.store.delete(k);
+
+  // Machine A (the canonical) publishes a big year.
+  await handleWrappedPublish(wrappedRequest(wrappedBody), env);
+  // Machine B is an alias of A (a linked laptop) and publishes a small year.
+  const LAPTOP = '99999999-8888-7777-6666-555555555555';
+  env.TOTALS.store.set(`alias:${LAPTOP}`, { value: profileBody.instanceId, ttl: null });
+  const small = { instanceId: LAPTOP, year: 2026, wrapped: { activeMs: 3_600_000, sessions: 10, tokens: 1000, prompts: 50 } };
+  const res = await handleWrappedPublish(wrappedRequest(small), env);
+  const pub = JSON.parse(await res.text());
+  assert.equal(pub.machines, 2, 'two slices in the record');
+
+  const got = await handleWrappedGet(new URL('http://localhost/wrapped?handle=archer&year=2026'), env);
+  const data = await got.json();
+  assert.equal(data.wrapped.sessions, 420 + 10, 'merged, not clobbered');
+  assert.equal(data.wrapped.tokens, 9_800_000_000 + 1000);
+  assert.equal(data.wrapped.machines, undefined, 'machines map never leaves the record');
+
+  // A re-publish from the laptop replaces ONLY its own slice.
+  for (const k of [...env.TOTALS.store.keys()]) if (k.startsWith('rate:')) env.TOTALS.store.delete(k);
+  await handleWrappedPublish(wrappedRequest({ ...small, wrapped: { ...small.wrapped, sessions: 12 } }), env);
+  const again = await (await handleWrappedGet(new URL('http://localhost/wrapped?handle=archer&year=2026'), env)).json();
+  assert.equal(again.wrapped.sessions, 420 + 12, 'slice replaced, canonical slice intact');
+});
