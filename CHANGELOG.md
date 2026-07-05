@@ -2,6 +2,24 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] - 2026-07-05
+
+**Added — Claude Wrapped, on the web**
+
+- **`claude-rpc wrapped --publish [--year N] [--yes]`** puts your year-in-review at **`claude-rpc.com/wrapped/<handle>`** — a scrolling story page (hours, sessions, tokens, best streak, ships, cache %, marathons, peak day, model mix, tool mix, top projects/languages) plus a **640×336 share card** at `/wrapped/<handle>.svg` for READMEs and link unfurls. Opt-in and one-shot: the CLI prints the exact payload and asks before sending (non-TTY needs `--yes`); project names pass the privacy lists/patterns before they even reach the preview; the worker clamps everything through an allowlist (`validateWrapped`/`sanitizeWrapped`). Requires a published profile; re-publishing overwrites; records expire after ~14 months. Payload documented in `SECURITY.md`, endpoints in `docs/WORKER-API.md`.
+- **New commands:** `projects` (every project ranked by active time, `--limit N`), `project <name>` (full drilldown + last-14-days rhythm), `compare` (the complete this-week-vs-last-week diff: active/prompts/tools/sessions/tokens/lines/ships/cost).
+- **New template vars:** `{topTool}`/`{topToolLabel}`/`{toolMixLabel}` (the actual Read/Edit/Bash mix — previously only the MCP split survived), `{subagentHours}`/`{subagentHoursLabel}` (delegated-agent time, measured since 0.19 but never rendered), `{peakWeekday}`/`{peakWeekdayLabel}`, `{compactions}`/`{compactionsToday}`/`{compactionsTodayLabel}`, and `{cacheSavedUsd}`/`{cacheSavedFmt}`/`{cacheSavedLabel}` — what cache reuse saved vs. fresh-input rates, priced at your top model.
+- **Aggregate v2 dimensions (scan cache v7 — one automatic full rescan on update):** per-day model buckets (model mix can finally trend over time), a session-length histogram measured in **active** time (wall clock lies — a transcript left open a week is not a 170-hour session), and compaction counts from the PreCompact events that were logged since v0.8 but never aggregated.
+- **CI on every push and PR** (`ci.yml`): the same Node 18/20/22 + worker test matrix the release gate runs, plus lint and typecheck — previously tests only ran at tag time.
+- Site: new **`/docs`** page (install paths, verify-it-works, config + template-var reference, privacy controls, community/embeds, a troubleshooting section mirroring doctor's real checks, uninstall) and the **`/wrapped`** pages above; `wrapped`/`docs` in every nav, a `✦ Claude Wrapped` chip on `/u/<handle>` profiles, sitemap/JSON-LD refreshed.
+
+**Fixed**
+
+- **The live token count matches the lifetime aggregate now.** Claude Code repeats the same `usage` object on every content-block line of one assistant message; the live reader summed them all while the scanner deduped by `message.id`, so the card drifted high on multi-block turns. Both paths dedup identically now.
+- **A mid-session `/model` switch shows on the card.** The model was captured only at SessionStart; the daemon now reads the newest turn's model from the transcript it already tails (render-time override — state files stay hook-owned).
+- **Per-session state files are swept every 30 minutes**, not just at daemon boot — a weeks-old daemon re-parsed every dead session's file on every 4-second render tick.
+- **Worker: `board:index` is hard-capped at 2000 entries.** Eviction is by value (lowest capped-token unverified rows first), never by key order and never a verified row — the single-blob index can no longer bloat toward KV's value ceiling.
+
 ## [1.1.4] - 2026-07-05
 
 **Fixed**
