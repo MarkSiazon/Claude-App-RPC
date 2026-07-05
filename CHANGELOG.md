@@ -2,6 +2,13 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.1] - 2026-07-05
+
+**Changed — the web Wrapped is now the real Wrapped**
+
+- **`claude-rpc.com/wrapped/<handle>` is the exact local story** — the same full-screen, auto-advancing, Spotify-style slides `claude-rpc wrapped` opens locally (progress bars, tap/arrow navigation, count-ups, watermark numbers, finale summary card), not a scroll page. The finale's card button links the worker share SVG; share hands out the public wrapped URL.
+- The published payload now carries everything the story renders (worker accepts both old and new shapes): the hotspot file (basename only, privacy-filtered), peak weekday, current streak, days-since-first, per-language edit counts, and a model split by **spend** with humanized names — so a published Wrapped tells the same story the local one does.
+
 ## [1.2.0] - 2026-07-05
 
 **Added — Claude Wrapped, on the web**
