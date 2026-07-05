@@ -315,7 +315,10 @@ test('buildWrappedPayload: year-scoped sums, model mix, and privacy-filtered pro
   assert.equal(w.costUsd, 5);
   assert.equal(w.peakDay.date, '2026-03-01');
   assert.deepEqual(w.topProjects, [{ name: 'visible', activeMs: 2 * 3_600_000 }], 'pattern-matched project excluded');
-  assert.deepEqual(w.topModels, [{ name: 'opus', pct: 90 }, { name: 'sonnet', pct: 10 }]);
+  // Model share is by SPEND (matching the local wrapped slide): opus $4 vs
+  // sonnet $1 → 80/20, names humanized.
+  assert.deepEqual(w.topModels, [{ name: 'Opus', pct: 80 }, { name: 'Sonnet', pct: 20 }]);
+  assert.deepEqual(w.topLanguages, [{ name: 'JavaScript', edits: 10 }], 'languages carry edit counts');
   assert.deepEqual(w.toolMix, [{ name: 'Read', pct: 60 }, { name: 'Edit', pct: 40 }]);
   assert.equal(w.marathonPct, 50, '2 of 4 sessions >= 2h');
   assert.equal(w.compactions, 2, 'compactions year-scoped');

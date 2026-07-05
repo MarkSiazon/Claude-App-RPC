@@ -550,8 +550,16 @@ export function sanitizeWrapped(w) {
     topProjects: (Array.isArray(w.topProjects) ? w.topProjects : []).slice(0, 5)
       .map((p) => ({ name: label(p?.name), activeMs: num(p?.activeMs, MAX_PF_ACTIVE_MS) }))
       .filter((p) => p.name),
+    streak:      num(w.streak, MAX_STREAK),
+    daysSinceFirst: num(w.daysSinceFirst, 36_500),
+    // v1.2.0 clients published plain language names; v1.2.1+ sends
+    // { name, edits } so the story slide can show the edit count. Accept both,
+    // store the object shape.
     topLanguages: (Array.isArray(w.topLanguages) ? w.topLanguages : []).slice(0, 5)
-      .map((l) => label(l, 24)).filter(Boolean),
+      .map((l) => typeof l === 'string'
+        ? { name: label(l, 24), edits: 0 }
+        : { name: label(l?.name, 24), edits: num(l?.edits, 100_000_000) })
+      .filter((l) => l.name),
     topModels: (Array.isArray(w.topModels) ? w.topModels : []).slice(0, 4)
       .map((m) => ({ name: label(m?.name), pct: pct(m?.pct) })).filter((m) => m.name),
     toolMix: (Array.isArray(w.toolMix) ? w.toolMix : []).slice(0, 3)
@@ -559,6 +567,21 @@ export function sanitizeWrapped(w) {
   };
   if (typeof w.peakDay === 'object' && w.peakDay && /^\d{4}-\d{2}-\d{2}$/.test(String(w.peakDay.date || ''))) {
     out.peakDay = { date: String(w.peakDay.date), activeMs: num(w.peakDay.activeMs, 24 * 60 * 60 * 1000) };
+  }
+  // Hotspot file — basename only (the CLI never sends a path; clamp hard
+  // anyway) — and peak weekday, both feeding the story's remaining slides.
+  if (typeof w.hotspot === 'object' && w.hotspot && label(w.hotspot.name, 48)) {
+    out.hotspot = {
+      name: label(w.hotspot.name, 48).split(/[\\/]/).pop(),
+      count: num(w.hotspot.count, 10_000_000),
+      ...(w.hotspot.daysSinceLastEdit != null ? { daysSinceLastEdit: num(w.hotspot.daysSinceLastEdit, 36_500) } : {}),
+    };
+  }
+  if (typeof w.peakWeekday === 'object' && w.peakWeekday) {
+    const wd = label(w.peakWeekday.name, 12);
+    if (wd && /^(Sun|Mon|Tues|Wednes|Thurs|Fri|Satur)day$/.test(wd)) {
+      out.peakWeekday = { name: wd, activeMs: num(w.peakWeekday.activeMs, MAX_PF_ACTIVE_MS) };
+    }
   }
   return out;
 }

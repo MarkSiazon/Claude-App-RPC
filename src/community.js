@@ -26,6 +26,7 @@ import { VERSION } from './version.js';
 import { profileIsPublishable } from './leaderboard.js';
 import { projectNameIsPrivate } from './privacy.js';
 import { cleanProjectName } from './scanner.js';
+import { humanModel } from './format.js';
 
 const CURSOR_PATH = join(STATE_DIR, 'community-cursor.json');
 
@@ -157,24 +158,49 @@ export function buildWrappedPayload(aggregate, config, { instanceId, year, now =
     .map(([name, activeMs]) => ({ name, activeMs }));
 
   // Year-scoped model mix from the per-day byModel buckets (scan cache v7).
-  const modelTok = {};
+  // Share is by SPEND, matching the local wrapped's "your models, by spend"
+  // slide; token share is the fallback when everything costed to zero. Names
+  // are humanized here so the web story renders "Opus 4.8", same as local.
+  const modelAgg = {};
   for (const [, d] of days) {
     for (const [m, v] of Object.entries(d.byModel || {})) {
-      modelTok[m] = (modelTok[m] || 0) + (v.tokens || 0);
+      const t = (modelAgg[m] ||= { tokens: 0, cost: 0 });
+      t.tokens += v.tokens || 0;
+      t.cost += v.cost || 0;
     }
   }
-  const modelTotal = Object.values(modelTok).reduce((a, b) => a + b, 0);
-  const topModels = Object.entries(modelTok).sort((a, b) => b[1] - a[1]).slice(0, 4)
-    .map(([name, t]) => ({ name, pct: modelTotal ? Math.round((t / modelTotal) * 100) : 0 }));
+  const costTotal = Object.values(modelAgg).reduce((a, b) => a + b.cost, 0);
+  const tokTotal = Object.values(modelAgg).reduce((a, b) => a + b.tokens, 0);
+  const share = (v) => costTotal > 0 ? v.cost / costTotal : (tokTotal > 0 ? v.tokens / tokTotal : 0);
+  const topModels = Object.entries(modelAgg).sort((a, b) => share(b[1]) - share(a[1])).slice(0, 4)
+    .map(([name, v]) => ({ name: humanModel(name) || name, pct: Math.round(share(v) * 100) }));
 
   // Lifetime dimensions (no yearly slice exists for these).
   const toolTotal = Object.values(agg.toolBreakdown || {}).reduce((a, b) => a + b, 0);
   const toolMix = Object.entries(agg.toolBreakdown || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
     .map(([name, n]) => ({ name, pct: toolTotal ? Math.round((n / toolTotal) * 100) : 0 }));
   const topLanguages = Object.entries(agg.languages || {})
-    .sort((a, b) => (b[1].edits || 0) - (a[1].edits || 0)).slice(0, 5).map(([n]) => n);
+    .sort((a, b) => (b[1].edits || 0) - (a[1].edits || 0)).slice(0, 5)
+    .map(([name, v]) => ({ name, edits: v.edits || 0 }));
   const sl = agg.sessionLengths || {};
   const marathonPct = sl.count ? Math.round((((sl.buckets?.h2to4 || 0) + (sl.buckets?.gt4h || 0)) / sl.count) * 100) : 0;
+
+  // The hotspot file (basename only, never a path) and peak weekday — the two
+  // remaining slides of the local story. Both lifetime, like the local page.
+  const top = (agg.topEditedFiles || [])[0] || null;
+  const hotName = top ? String(top.path || '').split(/[\\/]/).pop() : null;
+  const hotspot = top && hotName && !projectNameIsPrivate(hotName, config, cleanProjectName)
+    ? { name: hotName, count: top.count || 0, ...(top.daysSinceLastEdit != null ? { daysSinceLastEdit: top.daysSinceLastEdit } : {}) }
+    : null;
+  let peakWeekday = null;
+  {
+    const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    for (const [k, v] of Object.entries(agg.byWeekday || {})) {
+      if ((v.activeMs || 0) > 0 && (!peakWeekday || v.activeMs > peakWeekday.activeMs)) {
+        peakWeekday = { name: WD[Number(k)] || '', activeMs: v.activeMs };
+      }
+    }
+  }
 
   const compactions = Object.entries(agg.compactionsByDay || {})
     .filter(([k]) => k.startsWith(`${y}-`)).reduce((acc, [, n]) => acc + n, 0);
@@ -188,6 +214,8 @@ export function buildWrappedPayload(aggregate, config, { instanceId, year, now =
       tokens,
       prompts: sum('userMessages'),
       streakBest: agg.longestStreak || 0,
+      streak: agg.streak || 0,
+      daysSinceFirst: agg.daysSinceFirst || 0,
       daysActive: days.filter(([, d]) => (d.activeMs || 0) > 0 || (d.userMessages || 0) > 0).length,
       linesAdded: sum('linesAdded'),
       linesRemoved: sum('linesRemoved'),
@@ -204,6 +232,8 @@ export function buildWrappedPayload(aggregate, config, { instanceId, year, now =
       topLanguages,
       topModels,
       toolMix,
+      ...(hotspot ? { hotspot } : {}),
+      ...(peakWeekday ? { peakWeekday } : {}),
     },
   };
 }

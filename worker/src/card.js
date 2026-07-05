@@ -174,7 +174,9 @@ export function renderWrappedCard(data, meta = {}) {
 
   const v = (x) => has ? x : '—';
   const topProject = has && data.topProjects?.[0]?.name ? data.topProjects[0].name : null;
-  const topLanguage = has && data.topLanguages?.[0] ? data.topLanguages[0] : null;
+  // topLanguages entries are { name, edits } since v1.2.1 (plain strings before).
+  const tl = has ? data.topLanguages?.[0] : null;
+  const topLanguage = typeof tl === 'string' ? tl : (tl?.name || null);
   const chips = [
     topProject ? `top project · ${topProject}` : null,
     topLanguage ? `top language · ${topLanguage}` : null,

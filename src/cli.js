@@ -2106,8 +2106,9 @@ async function doWrappedPublish(argv) {
     pair('ships',     fmtNum(w.ships)),
     pair('est. cost', fmtCost(w.costUsd), c.yellow),
     pair('projects',  w.topProjects.map((p) => p.name).join(' · ') || c.dim + '(none public)' + c.reset, ''),
-    pair('languages', w.topLanguages.join(' · ') || '—', ''),
+    pair('languages', w.topLanguages.map((l) => l.name).join(' · ') || '—', ''),
     pair('models',    w.topModels.map((m) => `${m.name} ${m.pct}%`).join(' · ') || '—', ''),
+    pair('hotspot',   w.hotspot ? `${w.hotspot.name} (${fmtNum(w.hotspot.count)} edits)` : '—', ''),
   ], 72);
   console.log(`  ${c.dim}full payload: the fields above plus lines/cache%/peaks — nothing else.${c.reset}`);
   console.log(`  ${c.dim}private-listed and pattern-matched project names are already excluded.${c.reset}\n`);

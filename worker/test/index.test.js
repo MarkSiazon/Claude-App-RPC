@@ -969,7 +969,21 @@ test('sanitizeWrapped: clamps values, caps arrays, drops unknown fields', () => 
   assert.equal(dirty.cachePct, 100);
   assert.equal(dirty.peakHour, 23);
   assert.equal(dirty.topProjects.length, 5, 'project list capped');
-  assert.deepEqual(dirty.topLanguages, ['js', 'evil'], 'bidi overrides stripped, empties dropped');
+  assert.deepEqual(dirty.topLanguages, [{ name: 'js', edits: 0 }, { name: 'evil', edits: 0 }],
+    'v1.2.0 string form normalized to objects; bidi overrides stripped, empties dropped');
+  const objLangs = sanitizeWrapped({ topLanguages: [{ name: 'Rust', edits: 12.9 }, { name: '', edits: 5 }] });
+  assert.deepEqual(objLangs.topLanguages, [{ name: 'Rust', edits: 12 }], 'object form clamps + drops nameless');
+  const extra = sanitizeWrapped({
+    hotspot: { name: '../../etc/passwd', count: 42, daysSinceLastEdit: 3 },
+    peakWeekday: { name: 'Tuesday', activeMs: 5 * 3_600_000 },
+    streak: 7, daysSinceFirst: 400,
+  });
+  assert.equal(extra.hotspot.name, 'passwd', 'hotspot reduced to a basename');
+  assert.equal(extra.hotspot.count, 42);
+  assert.deepEqual(extra.peakWeekday, { name: 'Tuesday', activeMs: 5 * 3_600_000 });
+  assert.equal(sanitizeWrapped({ peakWeekday: { name: 'Blursday', activeMs: 1 } }).peakWeekday, undefined, 'invalid weekday dropped');
+  assert.equal(extra.streak, 7);
+  assert.equal(extra.daysSinceFirst, 400);
   assert.equal('evil' in dirty, false, 'unknown fields dropped');
   assert.equal(dirty.peakDay.date, '2026-03-14');
   const noDay = sanitizeWrapped({ peakDay: { date: 'nope' } });
