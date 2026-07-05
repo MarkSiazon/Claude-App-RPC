@@ -284,10 +284,18 @@ export async function addStartupEntry(exePath) {
   // daemon. Launch through a tiny .vbs shim via wscript (window style 0) so the
   // unattended startup path is windowless, like every other launch path. We
   // avoid schtasks deliberately — SECURITY.md advertises "no scheduled task".
-  let runCmd = `"${exePath}" daemon`;
+  // The command comes from daemonLaunch like the mac/linux branches — the old
+  // hardcoded `"<exe>" daemon` form assumed packaged mode, so npm installs got
+  // a Run entry of `"node.exe" daemon` (no script path) and login-autostart
+  // silently launched nothing.
+  const launch = daemonLaunch(exePath);
+  let runCmd = [launch.exe, ...launch.args].map((p) => `"${p}"`).join(' ');
   try {
     mkdirSync(CANONICAL_INSTALL_DIR, { recursive: true });
-    writeFileSync(STARTUP_VBS, `CreateObject("WScript.Shell").Run """${exePath}"" daemon", 0, False\r\n`);
+    // In a VBS string literal a doubled quote is an escaped quote, so each
+    // `""x""` below reaches the shell as `"x"`.
+    const vbsCmd = [launch.exe, ...launch.args].map((p) => `""${p}""`).join(' ');
+    writeFileSync(STARTUP_VBS, `CreateObject("WScript.Shell").Run "${vbsCmd}", 0, False\r\n`);
     runCmd = `wscript.exe "${STARTUP_VBS}"`;
   } catch { /* couldn't write the shim — fall back to the direct (windowed) entry */ }
   await regCommand([

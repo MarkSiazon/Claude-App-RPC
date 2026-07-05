@@ -7,6 +7,7 @@ import { readState, sweepStaleStateTmp, listSessionStates, sweepStaleSessionStat
 import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession, throttleDecision } from './presence.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
 import { scan, readAggregate, findLiveSessions, readSessionTokens, readSessionModel } from './scanner.js';
+import { detectClaudeProcess } from './claude-proc.js';
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
 import { pauseUntil } from './pause.js';
@@ -100,6 +101,12 @@ try {
 let config = loadConfigWithLog();
 let aggregate = readAggregate() || null;
 let liveSessions = [];
+// OS-level "a Claude Code process exists" flag (see claude-proc.js). Injected
+// into every resolved state so applyIdle can tell "open but quiet" (→ idle)
+// from "actually closed" (→ stale) — transcript mtimes alone can't, which is
+// why an untouched-but-open session used to clear the card after staleSessionMin.
+// null = unknown (never checked / detection unavailable) → old behavior.
+let claudeProcAlive = null;
 let client = null;
 let connected = false;
 let connecting = false; // login() in flight — see the watchdog note in connect()
@@ -147,6 +154,10 @@ const rotationCursor = makeRotationCursor();
 // Which concurrent session's card we're currently showing. pickActiveSession
 // keeps it sticky — see resolvePresence.
 let displayedSessionId = null;
+// sessionId → transcript path, remembered from the last tick the session was
+// inside the live window. Lets token enrichment keep reading the (mtime-
+// cached) transcript after it goes quiet instead of zeroing the card's count.
+const sessionPathMemo = new Map();
 // Stabilizes Discord's elapsed timer: applyIdle can synthesize a sessionStart
 // from a moving transcript mtime, and missing-hook scenarios leave it null —
 // either case would make startTimestamp jump on every rotation.
@@ -216,6 +227,10 @@ function resolvePresence(opts = {}) {
   // Attach live sessions BEFORE applyIdle so the stale/idle decision can
   // see ongoing transcript activity, not just this daemon's hook state.
   state.liveSessions = opts.liveSessions || liveSessions;
+  // Same injection pattern for OS-level process liveness — standalone callers
+  // (preview/api) that pass an explicit state simply leave it undefined and
+  // get the historical transcript-only behavior.
+  if (state.claudeProcessAlive === undefined) state.claudeProcessAlive = claudeProcAlive;
   state = applyIdle(state, config);
   // Shipped overlay sits on top of idle/working/thinking — but never over
   // stale (we don't celebrate when Claude isn't running).
@@ -228,18 +243,43 @@ function resolvePresence(opts = {}) {
   // events is always {0,0,0,0}. The transcript is the only running source
   // of truth — readSessionTokens is mtime-cached, so this is cheap unless
   // the session is actively writing.
-  if (state.cwd && state.status !== 'stale') {
-    const cwdLower = state.cwd.toLowerCase();
-    const match = (state.liveSessions || []).find(s =>
-      (s.cwd || '').toLowerCase() === cwdLower
-    );
-    if (match) {
-      const t = readSessionTokens(match.path);
+  // Matching is by SESSION ID first: the transcript file is named
+  // <sessionId>.jsonl, so this is exact. The old cwd-only match silently
+  // broke whenever the two cwd notions diverged — state.cwd follows the
+  // hooks (UserPromptSubmit re-stamps it after every in-session `cd`) while
+  // the live-session cwd is read from the transcript HEAD (fixed at session
+  // start) — leaving the card's token count stuck at 0. The id→path memo
+  // keeps enrichment alive after the transcript ages out of the live window
+  // (>90s quiet), so an idle card keeps its final token count instead of
+  // dropping to zero. cwd remains the fallback for borrowed states (whose
+  // sessionId belongs to the QUIET session, not the transcript we adopted)
+  // and legacy id-less states.
+  if (state.status !== 'stale') {
+    const live = state.liveSessions || [];
+    let tpath = null;
+    if (state.sessionId && !state.borrowed) {
+      const bySid = live.find((s) => basename(s.path || '', '.jsonl') === state.sessionId);
+      if (bySid) {
+        tpath = bySid.path;
+        if (!sessionPathMemo.has(state.sessionId) && sessionPathMemo.size >= 64) {
+          sessionPathMemo.delete(sessionPathMemo.keys().next().value);
+        }
+        sessionPathMemo.set(state.sessionId, tpath);
+      } else {
+        tpath = sessionPathMemo.get(state.sessionId) || null;
+      }
+    }
+    if (!tpath && state.cwd) {
+      const cwdLower = state.cwd.toLowerCase();
+      tpath = live.find((s) => (s.cwd || '').toLowerCase() === cwdLower)?.path || null;
+    }
+    if (tpath) {
+      const t = readSessionTokens(tpath);
       if (t) state.tokens = t;
       // The hook only learns the model at SessionStart; a mid-session /model
       // switch is visible only in the transcript. Render-time override — the
       // state file stays hook-owned.
-      const liveModel = readSessionModel(match.path);
+      const liveModel = readSessionModel(tpath);
       if (liveModel) state.model = liveModel;
     }
   }
@@ -768,6 +808,45 @@ function refreshLiveSessions() {
 }
 refreshLiveSessions();
 setInterval(refreshLiveSessions, 30_000);
+
+// OS-level Claude Code liveness poll (see claude-proc.js). This is what lets
+// an open-but-untouched session stay 'idle' forever instead of being declared
+// stale after staleSessionMin — hook state and transcript mtimes both go
+// silent when the user merely stops typing, but the process table doesn't lie.
+// 60s cadence: one filtered process-table query per minute is negligible, and
+// a card lingering up to a minute after Claude truly exits is fine (the same
+// order as the transcript-based paths). Kill switch: processDetection:false.
+// A single failed query keeps the last known answer (a transient PowerShell/ps
+// hiccup must not flash the card off); two consecutive failures degrade to
+// null = unknown, which restores the old transcript-only behavior.
+const CLAUDE_PROC_POLL_MS = 60_000;
+let claudeProcFailStreak = 0;
+async function refreshClaudeProc() {
+  if (config.processDetection === false) { claudeProcAlive = null; return; }
+  try {
+    const alive = await detectClaudeProcess();
+    if (alive === null) {
+      claudeProcFailStreak += 1;
+      if (claudeProcFailStreak >= 2 && claudeProcAlive !== null) {
+        log('claude-proc: detection unavailable — falling back to transcript-only liveness');
+        claudeProcAlive = null;
+      }
+      return;
+    }
+    claudeProcFailStreak = 0;
+    if (alive !== claudeProcAlive) {
+      log(`claude-proc: Claude Code process ${alive ? 'detected' : 'gone'}`);
+      claudeProcAlive = alive;
+      resetTransmit();
+      pushPresence();
+    }
+  } catch (e) {
+    log('claude-proc poll failed:', e.message);
+  }
+}
+refreshClaudeProc();
+const claudeProcTimer = setInterval(refreshClaudeProc, CLAUDE_PROC_POLL_MS);
+if (claudeProcTimer.unref) claudeProcTimer.unref();
 
 // ── Connection watchdog (auto-heal) ──────────────────────────────────────────
 // The reconnect path is event-driven (the 'disconnected' handler + login

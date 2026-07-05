@@ -304,6 +304,12 @@ untrusted or remote input into a shell:
   (`src/git.js`).
 - `gh repo view --json isPrivate` — auto-hide GitHub-private repos from the card
   (`src/privacy.js`); 1.5s timeout, silent skip if `gh` is absent.
+- `ps -eo comm=,args=` (macOS/Linux) / `powershell.exe Get-CimInstance
+  Win32_Process` filtered to `claude|node|bun|deno` (Windows) — the daemon's
+  60-second "is Claude Code still running?" liveness poll (`src/claude-proc.js`),
+  so an open-but-quiet session shows *idle* instead of vanishing. Read-only, the
+  result is one boolean, nothing is logged or sent anywhere; disable with
+  `processDetection: false`.
 - `gh gist` / `gh --version` — gist badge publishing, only under 3b
   (`src/gist.js`).
 - `npm root -g` / `npm install -g` — resolve / promote the global install during

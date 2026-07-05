@@ -54,6 +54,12 @@ export const DEFAULT_CONFIG = {
   // up through short pauses, at the cost of a closed terminal showing idle for
   // up to staleSessionMin minutes before clearing).
   idleWhenOpen: false,
+  // OS-level "is a Claude Code process running?" check (src/claude-proc.js,
+  // polled every 60s). When it affirmatively finds one, a quiet-but-open
+  // session stays 'idle' instead of going stale — the transcript-silence
+  // guesswork above only applies when detection is off, unavailable, or the
+  // process is confirmed gone. Set false to disable the process-table query.
+  processDetection: true,
   // When true, the daemon CLEARS Discord activity entirely once the state
   // goes stale — your profile shows nothing instead of an "Away" frame.
   hideWhenStale: true,

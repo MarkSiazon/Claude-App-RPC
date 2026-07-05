@@ -76,10 +76,13 @@ export function pickActiveSession(states, displayedId, now, idleMs) {
   if (current && isLive(current)) {
     return { state: current, sessionId: current.sessionId, liveCount };
   }
-  // Otherwise show the most-recently-active live session — or, if none are live,
-  // the most-recent overall so the card follows the last session into idle/stale
-  // rather than blanking.
-  const chosen = byRecent.find(isLive) || byRecent[0];
+  // Otherwise show the most-recently-active live session — or, if none are
+  // live, the most-recent NOT-closed session (a window sitting idle beats one
+  // that fired SessionEnd: the closed session's fresher lastActivity would
+  // otherwise drag the card stale while a sibling is still open), and only
+  // then the most-recent overall so the card follows the last session into
+  // idle/stale rather than blanking.
+  const chosen = byRecent.find(isLive) || byRecent.find((s) => !s.claudeClosed) || byRecent[0];
   return { state: chosen, sessionId: chosen.sessionId, liveCount };
 }
 

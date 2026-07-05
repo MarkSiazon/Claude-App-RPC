@@ -885,6 +885,15 @@ export function applyIdle(state, cfg = {}) {
   const idleMs = (cfg.idleThresholdSec || 60) * 1000;
   const staleMs = Math.max(60_000, (cfg.staleSessionMin || 5) * 60 * 1000);
   const notificationMs = (cfg.notificationWindowSec || 8) * 1000;
+  // OS-level liveness (set by the daemon from claude-proc.detectClaudeProcess,
+  // like liveSessions): true = a Claude Code process definitely exists right
+  // now. Transcripts and hooks both go silent when the user just stops typing,
+  // so without this every quiet-but-open session eventually read as "closed"
+  // and the card was cleared mid-use. Only an affirmative true changes
+  // behavior — false/null/absent (detection failed, unsupported platform,
+  // standalone preview/API callers) keeps the historical transcript-only
+  // logic, so this can only ever KEEP a card up, never strand one.
+  const procAlive = state.claudeProcessAlive === true;
   // Closing the terminal kills Claude Code without firing SessionEnd, so the
   // only passive "is it gone?" signal is "no transcript is being written".
   // DEFAULT (false): clear the card within ~90-120s of the transcript going
@@ -927,7 +936,24 @@ export function applyIdle(state, cfg = {}) {
   }
 
   // Truly dormant: no live transcripts AND local state is old → stale.
-  if (ageMs > staleMs && liveAgeMs > staleMs) return staleWipe(state);
+  // Unless the OS says a Claude Code process is still running — then the user
+  // simply walked away from an open session, which is 'idle', not 'stale'.
+  // The current-activity slots are wiped like the idle transition below so a
+  // long-dormant card can't keep showing an hours-old tool/file.
+  if (ageMs > staleMs && liveAgeMs > staleMs) {
+    if (procAlive) {
+      return {
+        ...state,
+        status: 'idle',
+        currentTool: null,
+        currentFile: null,
+        filesOpened: [],
+        filesEdited: [],
+        filesRead: [],
+      };
+    }
+    return staleWipe(state);
+  }
 
   // Local state is stale but a live transcript exists somewhere on disk.
   // Borrow the most-recent live session as our "active" context, since the
@@ -944,7 +970,9 @@ export function applyIdle(state, cfg = {}) {
     // clears the card within ~90-120s of the last write. Opt in with
     // idleWhenOpen:true to keep showing 'idle' through short pauses; the
     // staleMs dormancy backstop above still clears it if Claude is truly gone.
-    if (liveSessions.length === 0 && !idleWhenOpen) return staleWipe(state);
+    // A confirmed-alive Claude Code process overrides the heuristic entirely —
+    // the process being up IS the answer the transcript silence was guessing at.
+    if (liveSessions.length === 0 && !idleWhenOpen && !procAlive) return staleWipe(state);
     return state;
   }
   if (ageMs > idleMs) {
@@ -954,8 +982,9 @@ export function applyIdle(state, cfg = {}) {
     // Hooks quiet AND no live transcripts. By default (idleWhenOpen=false)
     // treat Claude as gone and go stale now. With idleWhenOpen:true the
     // session is treated as open-but-paused and drops to idle; the staleMs
-    // backstop above clears it later if Claude actually exited.
-    if (liveSessions.length === 0 && !idleWhenOpen) return staleWipe(state);
+    // backstop above clears it later if Claude actually exited. A confirmed
+    // Claude Code process short-circuits the guess — drop to idle instead.
+    if (liveSessions.length === 0 && !idleWhenOpen && !procAlive) return staleWipe(state);
     // Going idle — wipe "current activity" indicators so rotation frames
     // gated on filesEdited / currentFile / currentTool stop showing stale
     // active-session data. Keep the session counters (messages/tools/tokens)

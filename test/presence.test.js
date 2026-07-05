@@ -183,6 +183,19 @@ test('pickActiveSession: all idle → follows the most-recent rather than blanki
   assert.equal(r.liveCount, 0);
 });
 
+test('pickActiveSession: none live → prefers an open (not-closed) session over a fresher closed one', () => {
+  // Window B fired SessionEnd (claudeClosed, fresher lastActivity); window A is
+  // still open, just quiet. Following B would drag the card stale while A is up.
+  const now = 1_000_000;
+  const states = [
+    { sessionId: 'a', lastActivity: now - 200_000, claudeClosed: false },
+    { sessionId: 'b', lastActivity: now - 90_000, claudeClosed: true },
+  ];
+  const r = pickActiveSession(states, null, now, IDLE);
+  assert.equal(r.sessionId, 'a', 'the open-but-idle window wins');
+  assert.equal(r.liveCount, 0);
+});
+
 // ── throttleDecision (Discord SET_ACTIVITY rate-limit guard) ───────────
 const GAP = 4000;
 

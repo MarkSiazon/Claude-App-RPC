@@ -2,6 +2,19 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.1] - 2026-07-06
+
+Four presence-liveness fixes adopted from a community fork — thanks
+[@Teksya](https://github.com/Teksya/claude-rpc) for the diagnosis, the
+implementation groundwork, and the tests.
+
+**Fixed**
+
+- **An open-but-quiet Claude Code no longer clears the card.** The daemon's only "is Claude Code open?" signals were hook freshness and transcript mtimes, and both go silent the moment you stop typing — so a session left open at the prompt was declared stale after `staleSessionMin` and the presence vanished mid-use. The daemon now also asks the OS whether a Claude Code process exists (new `src/claude-proc.js`, one filtered process-table query per minute): process up → the card stays `idle` indefinitely; process gone → the existing stale paths clear it as before. Matching is deliberately conservative (native `claude`/`claude.exe`, npm installs via `@anthropic-ai/claude-code`, the version store) and explicitly excludes claude-rpc itself and the Claude *desktop* app, either of which would have pinned the card up forever. Failed/unsupported detection falls back to the old transcript-only behavior; kill switch: `processDetection: false`. Documented in `SECURITY.md` §4.
+- **The card's token count no longer sticks at 0 after an in-session `cd`.** Token/model enrichment matched the live transcript by cwd alone, but `state.cwd` follows the hooks (re-stamped after a `cd`) while the transcript-head cwd is fixed at session start — any divergence silently dropped the match. Enrichment now matches by session id (the transcript IS `<sessionId>.jsonl`), remembers the id→path mapping so an idle card keeps its final count instead of zeroing after 90s of quiet, and keeps cwd as the fallback for borrowed/legacy states.
+- **Multi-window: a closed session no longer outranks an open idle one.** With no session live, `pickActiveSession` followed the most-recent state even when that session had fired SessionEnd — dragging the card stale while another window sat open. Not-closed sessions now win the tie.
+- **Windows login autostart actually starts the daemon on npm installs.** The Run-key `.vbs` shim hardcoded the packaged-exe launch shape, so npm/dev installs wrote `"node.exe" daemon` — no script path — and login started nothing. The shim now uses the same `daemonLaunch` command the macOS/Linux entries use.
+
 ## [1.3.0] - 2026-07-05
 
 **Added — one-line onboarding, straight from the Wrapped page**

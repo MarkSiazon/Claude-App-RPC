@@ -184,6 +184,59 @@ test('applyIdle: working past idleMs + live sessions present → idle (not stale
   assert.equal(r.status, 'working');
 });
 
+// ── OS-level process liveness (claudeProcessAlive, injected by the daemon) ──
+//
+// Transcripts and hooks both go silent when the user simply stops typing, so
+// every "no live transcripts → stale" path was indistinguishable from a closed
+// terminal — an open-but-untouched session cleared the card after
+// staleSessionMin. claudeProcessAlive===true is the OS's answer: Claude Code
+// is up, so quiet means 'idle', never 'stale'. Anything but true (false /
+// null / absent) must leave the historical behavior untouched.
+
+test('applyIdle: dormant past staleMs + process alive → idle, not stale', () => {
+  const past = now() - 6 * 60_000; // past staleMs=5min, no transcripts anywhere
+  const s = baseState({ status: 'working', lastActivity: past, liveSessions: [],
+    claudeProcessAlive: true, currentTool: 'Bash', currentFile: 'x.js' });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60 });
+  assert.equal(r.status, 'idle', 'process is up → user just walked away');
+  assert.equal(r.cwd, '/tmp/proj', 'cwd kept so the card can say "Idle in proj"');
+  assert.equal(r.currentTool, null, 'stale current-activity slots still wiped');
+  assert.equal(r.currentFile, null);
+});
+
+test('applyIdle: status=idle + no live sessions + process alive → stays idle (default config)', () => {
+  const s = baseState({ status: 'idle', lastActivity: now() - 30_000, liveSessions: [],
+    claudeProcessAlive: true });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60 });
+  assert.equal(r.status, 'idle', 'confirmed process beats the no-transcript heuristic');
+});
+
+test('applyIdle: working past idleMs + no live sessions + process alive → idle, not stale', () => {
+  const past = now() - 90_000;
+  const s = baseState({ status: 'working', lastActivity: past, liveSessions: [],
+    claudeProcessAlive: true });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60 });
+  assert.equal(r.status, 'idle');
+});
+
+test('applyIdle: process CONFIRMED gone (false) keeps historical behavior', () => {
+  // false must behave exactly like the flag being absent — the stale paths run.
+  const past = now() - 6 * 60_000;
+  const s = baseState({ status: 'working', lastActivity: past, liveSessions: [],
+    claudeProcessAlive: false });
+  const r = applyIdle(s, { staleSessionMin: 5, idleThresholdSec: 60, idleWhenOpen: true });
+  assert.equal(r.status, 'stale');
+  assert.equal(r.cwd, '');
+});
+
+test('applyIdle: process alive does NOT override the authoritative SessionEnd close', () => {
+  // SessionEnd said this session is over; another Claude window being open is
+  // handled by per-session states / sibling borrow, not by resurrecting this one.
+  const s = baseState({ claudeClosed: true, claudeProcessAlive: true, liveSessions: [] });
+  const r = applyIdle(s, { staleSessionMin: 5 });
+  assert.equal(r.status, 'stale');
+});
+
 // ── username-leak suppression (v0.6.2) ─────────────────────────────────
 
 test('buildVars: cwd === home dir suppresses the username', () => {
