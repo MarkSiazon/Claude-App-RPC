@@ -35,6 +35,7 @@
   "rewrites": [
     { "source": "/install", "destination": "/install.sh" },
     { "source": "/u/:handle", "destination": "/u" },
+    { "source": "/wrapped/:handle", "destination": "/wrapped" },
     { "source": "/squad/:path*", "destination": "/squad" }
   ],
   "headers": [

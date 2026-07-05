@@ -268,3 +268,78 @@ test('flushProfile: POSTs absolute totals to /profile (no cursor)', async () => 
     assert.equal(r.totals.tokens, 9_427_309_583);
   } finally { paths.cleanup(); }
 });
+
+// ── Claude Wrapped ─────────────────────────────────────────────────────
+
+const { buildWrappedPayload, publishWrapped } = await import('../src/community.js');
+
+test('buildWrappedPayload: year-scoped sums, model mix, and privacy-filtered projects', () => {
+  const agg = {
+    byDay: {
+      '2026-03-01': {
+        activeMs: 2 * 3_600_000, sessions: 2, userMessages: 30, cost: 4,
+        inputTokens: 1000, outputTokens: 500, cacheReadTokens: 8500, cacheWriteTokens: 0,
+        linesAdded: 100, linesRemoved: 20, ships: 3,
+        projects: { visible: { activeMs: 2 * 3_600_000, tokens: 10000 } },
+        byModel: { opus: { turns: 5, tokens: 9000, cost: 4 } },
+      },
+      '2026-03-02': {
+        activeMs: 1 * 3_600_000, sessions: 1, userMessages: 10, cost: 1,
+        inputTokens: 500, outputTokens: 250, cacheReadTokens: 250, cacheWriteTokens: 0,
+        projects: { secret: { activeMs: 3_600_000, tokens: 1000 } },
+        byModel: { sonnet: { turns: 2, tokens: 1000, cost: 1 } },
+      },
+      '2025-12-31': { activeMs: 9e7, sessions: 9, userMessages: 99, inputTokens: 5e6 }, // other year — excluded
+    },
+    longestStreak: 21,
+    peakHour: { hour: 14, activeMs: 1 },
+    toolBreakdown: { Read: 60, Edit: 40 },
+    languages: { JavaScript: { edits: 10 } },
+    sessionLengths: { count: 4, totalMs: 8 * 3_600_000, longestMs: 5 * 3_600_000, buckets: { h2to4: 1, gt4h: 1 } },
+    compactionsByDay: { '2026-03-01': 2, '2025-01-01': 7 },
+    subagentActiveMs: 1234,
+  };
+  // Name-level privacy: pattern-hide 'secret'.
+  const cfg = { privacy: { patterns: ['secret'] } };
+  const p = buildWrappedPayload(agg, cfg, { instanceId: VALID_ID, year: 2026 });
+  assert.equal(p.year, 2026);
+  const w = p.wrapped;
+  assert.equal(w.activeMs, 3 * 3_600_000, 'other-year day excluded');
+  assert.equal(w.sessions, 3);
+  assert.equal(w.prompts, 40);
+  assert.equal(w.tokens, 11000, 'all four token buckets, year-scoped');
+  assert.equal(w.cachePct, Math.round((8750 / 11000) * 100));
+  assert.equal(w.daysActive, 2);
+  assert.equal(w.streakBest, 21);
+  assert.equal(w.ships, 3);
+  assert.equal(w.costUsd, 5);
+  assert.equal(w.peakDay.date, '2026-03-01');
+  assert.deepEqual(w.topProjects, [{ name: 'visible', activeMs: 2 * 3_600_000 }], 'pattern-matched project excluded');
+  assert.deepEqual(w.topModels, [{ name: 'opus', pct: 90 }, { name: 'sonnet', pct: 10 }]);
+  assert.deepEqual(w.toolMix, [{ name: 'Read', pct: 60 }, { name: 'Edit', pct: 40 }]);
+  assert.equal(w.marathonPct, 50, '2 of 4 sessions >= 2h');
+  assert.equal(w.compactions, 2, 'compactions year-scoped');
+});
+
+test('publishWrapped: posts to /wrapped and surfaces the page URL; maps 403', async () => {
+  const cfg = { community: { endpoint: 'https://worker.test' } };
+  let posted = null;
+  const okFetch = async (url, opts) => {
+    posted = { url, body: JSON.parse(opts.body) };
+    return { ok: true, status: 200, json: async () => ({ ok: true, url: 'https://claude-rpc.com/wrapped/archer?year=2026', handle: 'archer', year: 2026 }) };
+  };
+  const payload = { instanceId: VALID_ID, year: 2026, wrapped: { sessions: 1 } };
+  const res = await publishWrapped(cfg, payload, { fetchImpl: okFetch });
+  assert.equal(res.ok, true);
+  assert.equal(res.handle, 'archer');
+  assert.equal(posted.url, 'https://worker.test/wrapped');
+  assert.equal(posted.body.year, 2026);
+
+  const forbidden = async () => ({ ok: false, status: 403, json: async () => ({ error: 'no profile' }) });
+  const noProfile = await publishWrapped(cfg, payload, { fetchImpl: forbidden });
+  assert.equal(noProfile.ok, false);
+  assert.equal(noProfile.reason, 'no-profile');
+
+  const offline = await publishWrapped({ community: {} }, payload, {});
+  assert.equal(offline.reason, 'no-endpoint');
+});

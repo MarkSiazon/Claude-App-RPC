@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claude Wrapped — your year with Claude Code</title>
+<meta name="description" content="Claude Wrapped: your year with Claude Code on one page — active hours, sessions, tokens, streaks, ships and the projects you lived in. Publish yours with claude-rpc." />
+<link rel="canonical" href="https://claude-rpc.com/wrapped" />
+<meta name="theme-color" content="#d97757" />
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="Claude Wrapped — your year with Claude Code" />
+<meta property="og:description" content="Your year with Claude Code, on one page. Hours, sessions, tokens, streaks and ships. Publish yours: claude-rpc wrapped --publish" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://claude-rpc.com/wrapped" />
+<meta property="og:image" content="https://claude-rpc.com/img/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://claude-rpc.com/img/og.png" />
+<link rel="icon" type="image/png" href="/img/favicon.png" />
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --card: #fbf7ee;
+    --ink: #2b2722; --ink-soft: #4a443c; --ink-mute: #6b6357; --ink-faint: #9a9183;
+    --rust: #d97757; --rust-3: #b8552f; --rust-pale: #f3ddd2;
+    --grass: #5a7d4f; --sky: #4a6b8a; --amber: #a8720d;
+    --tape: rgba(217,119,87,0.32);
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --shadow-lg: 10px 10px 0 rgba(43,39,34,0.14);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.05) 1.2px, transparent 1.2px); background-size: 26px 26px;
+    min-height: 100vh; display: flex; flex-direction: column; }
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 10px; background: var(--rust); z-index: 10; }
+
+  /* ── slim nav, matching the landing page ─────────────────────────── */
+  nav { max-width: 880px; margin: 26px auto 0; padding: 0 24px; width: 100%;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    font-family: var(--font-mono); font-size: 0.82rem; }
+  nav .logo { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 700; }
+  nav .logo img { width: 26px; height: 26px; image-rendering: pixelated; }
+  nav .links { display: flex; gap: 8px 18px; flex-wrap: wrap; }
+  nav .links a { color: var(--ink-mute); text-decoration: none; }
+  nav .links a:hover { color: var(--ink); text-decoration: underline; text-decoration-style: wavy; text-underline-offset: 3px; }
+  nav .links a[aria-current="page"] { color: var(--ink); font-weight: 700;
+    text-decoration: underline; text-decoration-style: wavy; text-decoration-color: var(--rust); text-underline-offset: 3px; }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 46px 24px 64px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3); }
+  h1 { font-family: var(--font-disp); font-size: clamp(2.4rem, 8vw, 4rem); margin: 10px 0 6px; line-height: 1.02; letter-spacing: -0.03em; }
+  h1 .blot { background: linear-gradient(transparent 55%, var(--rust-pale) 55%); padding: 0 4px; }
+  .intro { color: var(--ink-soft); max-width: 620px; line-height: 1.65; margin: 0 0 18px; }
+  .intro code { font-family: var(--font-mono); font-size: 0.88em; background: rgba(43,39,34,0.06); padding: 1px 6px; border-radius: 4px; }
+
+  .wholine { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+  .whoname { font-family: var(--font-disp); font-weight: 700; font-size: clamp(1.2rem, 3.4vw, 1.6rem); letter-spacing: -0.01em; }
+  .stamp { display: inline-block; vertical-align: middle;
+    font-family: var(--font-mono); font-size: 0.66rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--rust-3); border: 2.5px double var(--rust-3); border-radius: 4px; padding: 5px 10px;
+    transform: rotate(-4deg); opacity: 0.9; }
+  .chip { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-soft);
+    border: 1.5px solid var(--ink); background: var(--card); padding: 5px 12px; border-radius: 999px;
+    text-decoration: none; box-shadow: 3px 3px 0 rgba(43,39,34,0.1); }
+  a.chip:hover { background: var(--rust-pale); }
+  .chip.dim { border-color: var(--ink-faint); color: var(--ink-mute); box-shadow: none; }
+
+  /* ── hero stat polaroids (mirrors /u) ─────────────────────────────── */
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin: 44px 0 8px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 430px) { .grid { grid-template-columns: 1fr; } }
+  .stat { position: relative; background: var(--card); border: 1.5px solid var(--ink); box-shadow: var(--shadow);
+    padding: 24px 18px 18px; text-align: center; transition: transform 0.16s ease, box-shadow 0.16s ease; }
+  .stat:nth-child(1) { transform: rotate(-1deg); }
+  .stat:nth-child(2) { transform: rotate(0.8deg); }
+  .stat:nth-child(3) { transform: rotate(-0.5deg); }
+  .stat:nth-child(4) { transform: rotate(1.1deg); }
+  .stat:hover { transform: rotate(0) translate(-2px, -3px); box-shadow: var(--shadow-lg); }
+  .stat::before { content: ''; position: absolute; top: -12px; left: 50%; transform: translateX(-50%) rotate(-2deg);
+    width: 74px; height: 22px; background: var(--tape); border-radius: 2px; }
+  .stat .rule { width: 34px; height: 4px; margin: 2px auto 0; border-radius: 2px; background: var(--ink-faint); display: block; }
+  .stat.hours .rule { background: var(--amber); }
+  .stat.sessions .rule { background: var(--sky); }
+  .stat.tokens .rule { background: var(--rust-3); }
+  .stat.streak .rule { background: var(--grass); }
+  .stat .num { font-family: var(--font-disp); font-weight: 700; font-size: clamp(1.9rem, 4.5vw, 2.4rem); line-height: 1.1; margin-top: 6px; letter-spacing: -0.02em; }
+  .stat .label { font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-mute); margin-top: 6px; }
+  .stat .sub { font-family: var(--font-mono); font-size: 0.7rem; color: var(--ink-faint); margin-top: 8px; border-top: 1px dashed rgba(43,39,34,0.18); padding-top: 8px; }
+  .stat.hours .num { color: var(--amber); }
+  .stat.sessions .num { color: var(--sky); }
+  .stat.tokens .num { color: var(--rust-3); }
+  .stat.streak .num { color: var(--grass); }
+
+  /* ── the year, told in big rows ───────────────────────────────────── */
+  .story { margin: 84px 0; }
+  .story:first-child { margin-top: 64px; }
+  .story .idx { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.18em; color: var(--ink-faint); }
+  .story .big { font-family: var(--font-disp); font-weight: 700; font-size: clamp(2.8rem, 10vw, 5.2rem);
+    line-height: 1; letter-spacing: -0.035em; margin-top: 8px; word-break: break-word; }
+  .story .cap { font-family: var(--font-mono); font-size: 0.86rem; color: var(--ink-mute); line-height: 1.7; margin-top: 12px; max-width: 46ch; }
+  .story.flip { text-align: right; }
+  .story.flip .cap { margin-left: auto; }
+  .story .big.c-rust { color: var(--rust-3); }
+  .story .big.c-sky { color: var(--sky); }
+  .story .big.c-amber { color: var(--amber); }
+  .story .big.c-grass { color: var(--grass); }
+  .story .big .plus { color: var(--grass); }
+  .story .big .minus { color: var(--rust-3); }
+  .story .big small { font-size: 0.42em; font-weight: 700; letter-spacing: -0.01em; color: var(--ink-mute); }
+
+  /* ── ranked lists ─────────────────────────────────────────────────── */
+  .panel { position: relative; background: var(--card); border: 1.5px solid var(--ink); box-shadow: var(--shadow);
+    padding: 26px 26px 24px; margin-top: 44px; }
+  .panel::before { content: ''; position: absolute; top: -13px; left: 34px; transform: rotate(-2deg);
+    width: 96px; height: 24px; background: var(--tape); border-radius: 2px; }
+  .panel h2 { font-family: var(--font-disp); font-size: 1.2rem; margin: 0 0 4px; }
+  .panel .hint { color: var(--ink-mute); font-family: var(--font-mono); font-size: 0.78rem; margin: 0 0 18px; }
+  .listgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; align-items: start; }
+  @media (max-width: 720px) { .listgrid { grid-template-columns: 1fr; } }
+  .listgrid .panel.span { grid-column: 1 / -1; }
+  .rrow { margin-top: 14px; }
+  .rrow:first-of-type { margin-top: 0; }
+  .rrow .line { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    font-family: var(--font-mono); font-size: 0.8rem; }
+  .rrow .line .nm { font-weight: 700; color: var(--ink-soft); overflow-wrap: anywhere; }
+  .rrow .line .vl { color: var(--ink-mute); white-space: nowrap; }
+  .rrow .track { height: 10px; margin-top: 6px; background: var(--paper-2); border: 1px solid rgba(43,39,34,0.28); }
+  .rrow .fill { height: 100%; background: var(--rust); min-width: 2px; }
+  .rrow.alt .fill { background: var(--sky); }
+  .langrow { display: flex; gap: 10px 12px; flex-wrap: wrap; }
+
+  /* ── share ────────────────────────────────────────────────────────── */
+  .cardimg { width: 100%; max-width: 560px; display: block; border: 1.5px solid var(--ink); box-shadow: 4px 4px 0 rgba(43,39,34,0.1); }
+  .sharerow { display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0 0; }
+  .ghost { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    background: transparent; color: var(--ink-soft); border: 1.5px solid var(--ink); padding: 9px 16px;
+    box-shadow: 3px 3px 0 rgba(43,39,34,0.12); text-decoration: none; display: inline-block; }
+  .ghost:hover { background: var(--card); transform: translate(-1px, -2px); box-shadow: 4px 5px 0 rgba(43,39,34,0.14); }
+  .codebox { position: relative; margin-top: 18px; }
+  .codebox pre { background: var(--ink); color: var(--paper); font-family: var(--font-mono); font-size: 0.74rem;
+    line-height: 1.65; padding: 16px 116px 16px 18px; margin: 0; border: 1.5px solid var(--ink);
+    white-space: pre-wrap; word-break: break-all; }
+  .copybtn { position: absolute; top: 10px; right: 10px; font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700;
+    cursor: pointer; background: var(--rust); color: #fff; border: none; padding: 6px 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .copybtn:hover { background: var(--rust-3); }
+
+  /* ── CTA / landing / error ────────────────────────────────────────── */
+  .cmd { position: relative; font-family: var(--font-mono); font-size: 0.86rem; background: var(--ink); color: var(--paper);
+    padding: 14px 96px 14px 18px; border: 1.5px solid var(--ink); word-break: break-all; }
+  .cmd + .cmd { margin-top: 12px; }
+  .cmd .ps1 { color: var(--rust); font-weight: 700; }
+  .lookup { display: flex; gap: 12px; flex-wrap: wrap; margin: 26px 0 0; }
+  .lookup input { font-family: var(--font-mono); font-size: 0.9rem; color: var(--ink); background: var(--card);
+    border: 1.5px solid var(--ink); box-shadow: 3px 3px 0 rgba(43,39,34,0.12); padding: 10px 14px;
+    min-width: 0; flex: 1 1 220px; max-width: 340px; }
+  .lookup input:focus { outline: 2px solid var(--rust); outline-offset: 1px; }
+  .lookup button { font-family: var(--font-mono); font-size: 0.8rem; font-weight: 700; cursor: pointer;
+    background: var(--rust); color: #fff; border: 1.5px solid var(--ink); padding: 10px 20px;
+    box-shadow: 3px 3px 0 rgba(43,39,34,0.12); }
+  .lookup button:hover { background: var(--rust-3); transform: translate(-1px, -2px); box-shadow: 4px 5px 0 rgba(43,39,34,0.14); }
+  .err-panel { text-align: center; padding: 40px 26px; }
+  .err-panel img { width: 72px; height: 72px; image-rendering: pixelated; opacity: 0.85; }
+  .err-panel .big { font-family: var(--font-disp); font-weight: 700; font-size: 1.3rem; margin: 12px 0 6px; }
+  .err-panel .why { color: var(--ink-mute); font-size: 0.94rem; max-width: 460px; margin: 0 auto; line-height: 1.6; }
+
+  footer { border-top: 1.5px dashed var(--ink); padding: 20px 24px; font-family: var(--font-mono); font-size: 0.78rem;
+    color: var(--ink-mute); display: flex; gap: 12px 22px; justify-content: center; flex-wrap: wrap; }
+  footer a { color: var(--ink-soft); text-decoration: none; }
+  footer a:hover { color: var(--ink); text-decoration: underline; text-decoration-style: wavy; }
+
+  /* ── scroll reveal (subtle; off under reduced motion) ─────────────── */
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.55s ease, transform 0.55s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .stat, .ghost, .lookup button { transition: none; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+</head>
+<body>
+  <nav>
+    <a class="logo" href="/"><img src="/img/favicon.png" alt="" /> claude-rpc</a>
+    <div class="links">
+      <a href="/leaderboard">leaderboard</a>
+      <a href="/community">community</a>
+      <a href="/wrapped" aria-current="page">wrapped</a>
+      <a href="https://github.com/rar-file/claude-rpc">github ↗</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <!-- ── hero (data state) ─────────────────────────────────────────── -->
+    <header id="hero" hidden>
+      <span class="kicker">[ claude wrapped ]</span>
+      <h1>Claude Wrapped <span class="blot" id="year">…</span></h1>
+      <div class="wholine">
+        <span class="whoname" id="name"></span>
+        <span class="stamp" id="stamp" hidden>verified ✓</span>
+        <span id="chips"></span>
+      </div>
+      <div class="grid" id="grid">
+        <div class="stat hours"><span class="rule"></span><div class="num" id="st-hours">—</div><div class="label">active hours</div><div class="sub" id="st-hours-sub">&nbsp;</div></div>
+        <div class="stat sessions"><span class="rule"></span><div class="num" id="st-sessions">—</div><div class="label">sessions</div><div class="sub" id="st-sessions-sub">&nbsp;</div></div>
+        <div class="stat tokens"><span class="rule"></span><div class="num" id="st-tokens">—</div><div class="label">tokens</div><div class="sub">in + out + cache</div></div>
+        <div class="stat streak"><span class="rule"></span><div class="num" id="st-streak">—</div><div class="label">best streak</div><div class="sub">consecutive days</div></div>
+      </div>
+    </header>
+
+    <!-- ── the story rows ────────────────────────────────────────────── -->
+    <section id="story" hidden></section>
+
+    <!-- ── ranked lists ──────────────────────────────────────────────── -->
+    <section class="listgrid" id="lists" hidden></section>
+
+    <!-- ── share ─────────────────────────────────────────────────────── -->
+    <section class="panel" id="share" hidden>
+      <h2>share it</h2>
+      <p class="hint">the card is live — it tracks this wrapped and redraws itself. link it anywhere.</p>
+      <img id="cardimg" class="cardimg" alt="Claude Wrapped share card" loading="lazy" />
+      <div class="sharerow">
+        <button class="ghost" id="copylink" type="button">copy link</button>
+        <a class="ghost" id="sharex" target="_blank" rel="noopener">share on x →</a>
+      </div>
+      <div class="codebox">
+        <button class="copybtn" id="copymd" type="button">copy markdown</button>
+        <pre><code id="mdsnippet"></code></pre>
+      </div>
+    </section>
+
+    <!-- ── landing (no handle) ───────────────────────────────────────── -->
+    <section id="landing" hidden>
+      <span class="kicker">[ claude wrapped ]</span>
+      <h1>Your year with Claude Code, <span class="blot">on one page.</span></h1>
+      <p class="intro">Every session, token, streak, ship and marathon — pulled from your own transcripts by
+        <a href="/">claude-rpc</a>, published only when <em>you</em> say so, and rendered here as a story worth sharing.
+        It even makes you a live SVG card for your README.</p>
+      <form class="lookup" id="lookup">
+        <input id="handle-in" type="text" placeholder="builder handle, e.g. archer" autocomplete="off"
+          spellcheck="false" maxlength="32" aria-label="builder handle" />
+        <button type="submit">see their year →</button>
+      </form>
+    </section>
+
+    <!-- ── friendly empty states ─────────────────────────────────────── -->
+    <section class="panel err-panel" id="err" hidden>
+      <img src="/img/favicon.png" alt="" />
+      <div class="big" id="err-title">nothing here (yet)</div>
+      <p class="why" id="err-msg"></p>
+    </section>
+
+    <!-- ── publish-yours CTA (shared by every state) ─────────────────── -->
+    <section class="panel" id="cta" hidden>
+      <h2 id="cta-title">publish yours</h2>
+      <p class="hint">two commands. wrapped is opt-in, built from your local transcripts, and <a href="/link">GitHub-verifiable</a>.</p>
+      <div class="cmd"><button class="copybtn" data-copy="npx claude-rpc@latest setup" type="button">copy</button><span class="ps1">$</span> npx claude-rpc@latest setup</div>
+      <div class="cmd"><button class="copybtn" data-copy="claude-rpc wrapped --publish" type="button">copy</button><span class="ps1">$</span> claude-rpc wrapped --publish</div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.com</a>
+    <a href="/leaderboard">leaderboard</a>
+    <a href="/community">community</a>
+    <a href="/blog">posts</a>
+    <a href="https://github.com/rar-file/claude-rpc">github</a>
+  </footer>
+
+<script>
+  const WORKER = localStorage.getItem('crpcWorkerOverride') || 'https://claude-rpc-totals.claude-rpc.workers.dev';
+  const SITE = 'https://claude-rpc.com';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+  // ── formatters — every one of these must survive missing/0 fields ──
+  const fmt = (n) => { n = +n || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+    return String(Math.round(n)); };
+  const fmtH = (ms) => { const h = (+ms || 0) / 3600000;
+    return (h >= 10 ? String(Math.round(h)) : String(+h.toFixed(1))) + 'h'; };
+  const fmtDur = (ms) => { const m = Math.round((+ms || 0) / 60000);
+    if (m < 60) return m + 'm';
+    return Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
+  const fmtUsd = (n) => { n = +n || 0;
+    if (n >= 1000) return '$' + fmt(n);
+    if (n >= 100) return '$' + Math.round(n);
+    return '$' + n.toFixed(2); };
+  const fmtHour = (h) => { h = +h || 0;
+    if (h === 0) return '12am'; if (h === 12) return '12pm';
+    return h < 12 ? h + 'am' : (h - 12) + 'pm'; };
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtDate = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+    if (!m) return esc(iso);
+    return MONTHS[Math.min(11, Math.max(0, +m[2] - 1))] + ' ' + (+m[3]); };
+
+  // Handle from /wrapped/<handle> (vercel rewrite) or ?h=<handle>; ?year=YYYY optional.
+  const pm = location.pathname.match(/\/wrapped\/([^/?#]+)/);
+  const qs = new URLSearchParams(location.search);
+  const handle = decodeURIComponent(pm ? pm[1] : (qs.get('h') || '')).toLowerCase();
+  const yearParam = /^\d{4}$/.test(qs.get('year') || '') ? qs.get('year') : '';
+
+  // Count-up: 800ms ease-out; instant under prefers-reduced-motion.
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function countUp(el, target, render) {
+    if (reduced || target <= 0) { el.textContent = render(target); return; }
+    const t0 = performance.now();
+    (function tick(t) {
+      const p = Math.min((t - t0) / 800, 1);
+      el.textContent = render(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(tick);
+      else el.textContent = render(target);
+    })(t0);
+  }
+
+  // Scroll reveal: one observer, class-toggled, unobserved once seen.
+  const io = ('IntersectionObserver' in window) && !reduced
+    ? new IntersectionObserver((entries) => {
+        for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      }, { threshold: 0.12 })
+    : null;
+  function reveal(el) { if (!io) return; el.classList.add('reveal'); io.observe(el); }
+
+  function copy(text, btn, restore) {
+    (navigator.clipboard?.writeText(text) || Promise.reject()).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch {}
+      ta.remove();
+    });
+    btn.textContent = 'copied!';
+    setTimeout(() => { btn.textContent = restore; }, 1500);
+  }
+  for (const btn of document.querySelectorAll('[data-copy]')) {
+    btn.onclick = () => copy(btn.dataset.copy, btn, 'copy');
+  }
+
+  // ── landing (no handle in the URL) ──────────────────────────────────
+  function showLanding() {
+    $('landing').hidden = false;
+    $('cta').hidden = false;
+    $('cta-title').textContent = 'publish yours — two commands';
+    reveal($('cta'));
+    $('lookup').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const h = $('handle-in').value.trim().toLowerCase().replace(/^@/, '');
+      if (h) location.href = '/wrapped/' + encodeURIComponent(h);
+    });
+    $('handle-in').focus();
+  }
+
+  // ── empty states: no profile vs no wrapped — different stories ─────
+  function showErr(kind) {
+    document.title = 'Claude Wrapped — not found';
+    if (kind === 'no-profile') {
+      $('err-title').textContent = 'no profile here (yet)';
+      $('err-msg').innerHTML = 'nobody has claimed <b>@' + esc(handle) + '</b> — the handle could be yours. ' +
+        'run the two commands below and this page fills itself in.';
+    } else if (kind === 'no-wrapped') {
+      $('err-title').textContent = 'no wrapped published (yet)';
+      $('err-msg').innerHTML = '<b>@' + esc(handle) + '</b> exists ' +
+        '(<a href="/u/' + encodeURIComponent(handle) + '">see the live profile</a>) but hasn\'t published a wrapped' +
+        (yearParam ? ' for ' + esc(yearParam) : '') + '. if that\'s you, it\'s one command away.';
+    } else {
+      $('err-title').textContent = 'wrapped unavailable';
+      $('err-msg').textContent = 'couldn\'t reach the stats service — try again in a moment.';
+    }
+    $('err').hidden = false;
+    $('cta').hidden = false;
+    $('cta-title').textContent = 'publish yours';
+  }
+
+  // ── the story ───────────────────────────────────────────────────────
+  function storyRows(w) {
+    const rows = []; // { big, cap } — big/cap are pre-escaped HTML
+    if (w.daysActive > 0) rows.push({
+      big: String(w.daysActive) + ' <small>days</small>',
+      cap: 'you showed up ' + w.daysActive + ' days this year. the terminal knew your name.' });
+    if (w.prompts > 0) rows.push({
+      big: fmt(w.prompts),
+      cap: 'prompts sent. every one of them started something.' });
+    if (w.ships > 0) rows.push({
+      big: fmt(w.ships) + ' <small>shipped</small>',
+      cap: w.ships + ' commits, PRs and pushes made it out the door.' });
+    if (w.linesAdded > 0 || w.linesRemoved > 0) rows.push({
+      big: '<span class="plus">+' + fmt(w.linesAdded) + '</span> <span class="minus">−' + fmt(w.linesRemoved) + '</span>',
+      cap: 'lines added and removed. deletion is progress too.' });
+    if (w.cachePct > 0) rows.push({
+      big: w.cachePct + '%',
+      cap: w.cachePct + '% of your context came from cache — the good kind of déjà vu.' });
+    if (w.costUsd > 0) rows.push({
+      big: fmtUsd(w.costUsd),
+      cap: 'estimated API-equivalent cost of your year. worth it.' });
+    if (w.longestSessionMs > 0 || w.marathonPct > 0) rows.push({
+      big: w.longestSessionMs > 0 ? fmtDur(w.longestSessionMs) : w.marathonPct + '%',
+      cap: (w.longestSessionMs > 0 ? 'your longest single session' : 'marathon share') +
+        (w.marathonPct > 0 ? ' — ' + w.marathonPct + '% of your hours came in 3h+ marathon sittings.' : '.') });
+    if (w.peakDay && w.peakDay.date) rows.push({
+      big: fmtH(w.peakDay.activeMs),
+      cap: 'your biggest day was ' + fmtDate(w.peakDay.date) +
+        (w.peakHour != null ? ' — and ' + fmtHour(w.peakHour) + ' is when you do your best work.' : '.') });
+    else if (w.peakHour != null && w.activeMs > 0) rows.push({
+      big: fmtHour(w.peakHour),
+      cap: 'your power hour — more active time lands here than anywhere else in the day.' });
+    if (w.compactions > 0) rows.push({
+      big: fmt(w.compactions) + ' <small>squeezes</small>',
+      cap: 'you squeezed the context ' + fmt(w.compactions) + ' times. the window was never big enough.' });
+    if (w.subagentActiveMs > 0) rows.push({
+      big: fmtH(w.subagentActiveMs) + ' <small>delegated</small>',
+      cap: fmtH(w.subagentActiveMs) + ' of subagent work ran on your behalf. management suits you.' });
+    return rows;
+  }
+
+  const ACCENTS = ['c-rust', 'c-sky', 'c-amber', 'c-grass'];
+  function renderStory(w) {
+    const rows = storyRows(w);
+    if (!rows.length) return;
+    const box = $('story');
+    box.innerHTML = rows.map((r, i) =>
+      '<div class="story' + (i % 2 ? ' flip' : '') + '">' +
+        '<span class="idx">' + String(i + 1).padStart(2, '0') + ' /</span>' +
+        '<div class="big ' + ACCENTS[i % ACCENTS.length] + '">' + r.big + '</div>' +
+        '<p class="cap">' + r.cap + '</p>' +
+      '</div>').join('');
+    box.hidden = false;
+    for (const el of box.children) reveal(el);
+  }
+
+  // ── ranked lists ────────────────────────────────────────────────────
+  function barRows(items, valueOf, labelOf, alt) {
+    const max = Math.max(1, ...items.map(valueOf));
+    return items.map((it) =>
+      '<div class="rrow' + (alt ? ' alt' : '') + '">' +
+        '<div class="line"><span class="nm">' + esc(it.name) + '</span><span class="vl">' + labelOf(it) + '</span></div>' +
+        '<div class="track"><div class="fill" style="width:' + Math.max(2, Math.round((valueOf(it) / max) * 100)) + '%"></div></div>' +
+      '</div>').join('');
+  }
+  function renderLists(w) {
+    const panels = [];
+    const projects = Array.isArray(w.topProjects) ? w.topProjects.filter((p) => p && p.name) : [];
+    if (projects.length) panels.push('<section class="panel span"><h2>where the hours went</h2>' +
+      '<p class="hint">top projects by active time</p>' +
+      barRows(projects, (p) => +p.activeMs || 0, (p) => fmtH(p.activeMs), false) + '</section>');
+    const langs = Array.isArray(w.topLanguages) ? w.topLanguages.filter(Boolean) : [];
+    if (langs.length) panels.push('<section class="panel"><h2>languages</h2>' +
+      '<p class="hint">what you wrote most</p><div class="langrow">' +
+      langs.map((l) => '<span class="chip">' + esc(l) + '</span>').join('') + '</div></section>');
+    const models = Array.isArray(w.topModels) ? w.topModels.filter((m) => m && m.name) : [];
+    if (models.length) panels.push('<section class="panel"><h2>model mix</h2>' +
+      '<p class="hint">share of usage</p>' +
+      barRows(models, (m) => +m.pct || 0, (m) => (+m.pct || 0) + '%', false) + '</section>');
+    const tools = Array.isArray(w.toolMix) ? w.toolMix.filter((t) => t && t.name) : [];
+    if (tools.length) panels.push('<section class="panel"><h2>tool mix</h2>' +
+      '<p class="hint">what Claude reached for</p>' +
+      barRows(tools, (t) => +t.pct || 0, (t) => (+t.pct || 0) + '%', true) + '</section>');
+    if (!panels.length) return;
+    const box = $('lists');
+    box.innerHTML = panels.join('');
+    box.hidden = false;
+    for (const el of box.children) reveal(el);
+  }
+
+  // ── share ───────────────────────────────────────────────────────────
+  function renderShare(h, year, w) {
+    const enc = encodeURIComponent(h);
+    const pageUrl = SITE + '/wrapped/' + enc;
+    $('cardimg').src = WORKER + '/wrapped/' + enc + '.svg?year=' + encodeURIComponent(year);
+    $('copylink').onclick = () => copy(pageUrl, $('copylink'), 'copy link');
+    $('sharex').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(
+      'my Claude Wrapped ' + year + ': ' + fmtH(w.activeMs) + ' active · ' + fmt(w.sessions) + ' sessions · ' +
+      fmt(w.tokens) + ' tokens — via claude-rpc\n' + pageUrl);
+    const md = '[![Claude Wrapped](' + WORKER + '/wrapped/' + enc + '.svg)](' + SITE + '/wrapped/' + enc + '?s=wrapped)';
+    $('mdsnippet').textContent = md;
+    $('copymd').onclick = () => copy(md, $('copymd'), 'copy markdown');
+    $('share').hidden = false;
+    reveal($('share'));
+  }
+
+  // ── main ────────────────────────────────────────────────────────────
+  async function load() {
+    if (!handle) return showLanding();
+    let res, data;
+    try {
+      res = await fetch(WORKER + '/wrapped?handle=' + encodeURIComponent(handle) +
+        (yearParam ? '&year=' + yearParam : ''));
+      data = await res.json();
+    } catch { return showErr('unavailable'); }
+    if (!res.ok || !data || !data.wrapped) {
+      const why = String((data && data.error) || '');
+      return showErr(why.includes('profile') ? 'no-profile' : (res.status === 404 ? 'no-wrapped' : 'unavailable'));
+    }
+
+    const w = data.wrapped;
+    const year = data.year || new Date().getUTCFullYear();
+    const name = data.displayName || ('@' + data.handle);
+    document.title = name + ' — Claude Wrapped ' + year;
+    $('year').textContent = year;
+    $('name').textContent = name;
+    if (data.verified) $('stamp').hidden = false;
+    const chips = [];
+    if (data.verified && data.githubUser) {
+      chips.push('<a class="chip" href="https://github.com/' + esc(data.githubUser) + '" rel="nofollow noopener">↗ github.com/' + esc(data.githubUser) + '</a>');
+    }
+    chips.push('<a class="chip" href="/u/' + encodeURIComponent(data.handle) + '">live profile →</a>');
+    if (data.publishedAt) {
+      const d = new Date(data.publishedAt);
+      if (!isNaN(d)) chips.push('<span class="chip dim">published ' + MONTHS[d.getUTCMonth()] + ' ' + d.getUTCDate() + '</span>');
+    }
+    $('chips').innerHTML = chips.join(' ');
+
+    // the four headline numbers
+    countUp($('st-hours'), (w.activeMs || 0) / 3600000, (n) => (n >= 10 ? Math.round(n) : +n.toFixed(1)) + 'h');
+    countUp($('st-sessions'), w.sessions || 0, (n) => fmt(Math.round(n)));
+    countUp($('st-tokens'), w.tokens || 0, fmt);
+    countUp($('st-streak'), w.streakBest || 0, (n) => Math.round(n) + 'd');
+    if (w.sessions > 0) {
+      $('st-hours-sub').textContent = '≈' + ((w.activeMs || 0) / 3600000 / w.sessions).toFixed(1) + 'h each';
+      $('st-sessions-sub').textContent = '≈' + fmt((w.tokens || 0) / w.sessions) + ' tokens / session';
+    }
+    $('hero').hidden = false;
+
+    renderStory(w);
+    renderLists(w);
+    renderShare(data.handle, year, w);
+    $('cta').hidden = false;
+    $('cta-title').textContent = 'don\'t have one? publish yours';
+    reveal($('cta'));
+  }
+  load();
+</script>
+</body>
+</html>

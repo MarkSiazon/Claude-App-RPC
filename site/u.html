@@ -145,7 +145,9 @@
     <a class="logo" href="/"><img src="/img/favicon.png" alt="" /> claude-rpc</a>
     <div class="links">
       <a href="/leaderboard">leaderboard</a>
+      <a href="/wrapped">wrapped</a>
       <a href="/community">community</a>
+      <a href="/docs">docs</a>
       <a href="https://github.com/rar-file/claude-rpc">github ↗</a>
     </div>
   </nav>
@@ -285,11 +287,24 @@
       $('sharerow').hidden = false;
 
       renderRank(p.handle);
+      renderWrappedChip(p.handle);
       renderEmbed(p.handle);
       $('cta').hidden = false;
     } catch (e) {
       showErr('profile unavailable — try again in a moment.');
     }
+  }
+
+  // Claude Wrapped chip — shown only when this profile has published one.
+  // Decorative: a miss (404 / network) just means no chip.
+  async function renderWrappedChip(h) {
+    try {
+      const res = await fetch(`${WORKER}/wrapped?handle=${encodeURIComponent(h)}`);
+      if (!res.ok) return;
+      const { year } = await res.json();
+      $('subrow').insertAdjacentHTML('beforeend',
+        `<a class="chip" href="/wrapped/${encodeURIComponent(h)}">✦ Claude Wrapped ${esc(String(year))}</a>`);
+    } catch { /* decorative */ }
   }
 
   // Board position — one cached read; silently skipped if the board is busy.

@@ -46,7 +46,7 @@
 // credential; bearer-authed requests resolve to it server-side via gh:<login>.
 
 import { renderBadge, fmtNum, fmtHours } from './badge.js';
-import { renderProfileCard } from './card.js';
+import { renderProfileCard, renderWrappedCard } from './card.js';
 import { mintToken, verifyToken, SESSION_TTL_MS, STATE_TTL_MS } from './auth.js';
 
 const SCHEMA_VERSION = 1;
@@ -450,6 +450,22 @@ const ALIAS_KEY  = (id) => `alias:${id}`;
 // Unverified pf: entries also get a 90-day TTL so squatted profiles expire.
 const BOARD_INDEX_KEY           = 'board:index';
 const PF_UNVERIFIED_TTL_SECONDS = 90 * 24 * 60 * 60;
+// Hard entry bound on the board:index blob. Verified rows are permanent and
+// unverified ones TTL out, but a patient attacker (or organic growth) could
+// still walk the single blob toward KV's 25MB value ceiling — the cap evicts
+// lowest-VALUE unverified rows (never by key order — the v1.1.1 lesson, and
+// never a verified row) once the index exceeds it.
+const BOARD_INDEX_MAX_ENTRIES   = 2000;
+
+// Claude Wrapped — an opt-in, user-published year-in-review blob rendered at
+// claude-rpc.com/wrapped/<handle>. Keyed by canonical identity + year;
+// seasonal data, so even verified rows carry a TTL (re-publishing is one
+// command). One KV write per publish — a deliberate one-shot user action, not
+// a flush-path write (free-tier write budget).
+const WRAPPED_KEY         = (id, year) => `wrapped:${id}:${year}`;
+const WRAPPED_TTL_SECONDS = 425 * 24 * 60 * 60; // ~14 months
+const WRAPPED_MIN_YEAR    = 2024;
+const WRAPPED_MAX_YEAR    = 2100;
 
 // Server-side identity normalizers. Mirrors src/leaderboard.js; the worker is a
 // separate package so it can't import that module — keep the rules in sync.
@@ -488,6 +504,63 @@ export function validateProfile(body) {
   if (typeof body.osFamily !== 'string' || !/^(linux|darwin|win32)$/.test(body.osFamily)) return 'osFamily invalid';
   if (body.githubUser != null && !normGithub(body.githubUser)) return 'githubUser invalid';
   return null;
+}
+
+// Schema pair with the CLI's buildWrappedPayload (src/community.js) — add
+// fields in BOTH places. Validation rejects malformed shapes; sanitizeWrapped
+// below clamps values. The payload is an explicit allowlist: nothing the
+// client sends survives except the fields enumerated there.
+export function validateWrapped(body) {
+  if (!body || typeof body !== 'object') return 'body must be an object';
+  if (!isUuidish(body.instanceId)) return 'instanceId must be a UUID';
+  const year = Number(body.year);
+  if (!Number.isInteger(year) || year < WRAPPED_MIN_YEAR || year > WRAPPED_MAX_YEAR) return 'year invalid';
+  if (!body.wrapped || typeof body.wrapped !== 'object') return 'wrapped must be an object';
+  return null;
+}
+
+// Clamp + allowlist the published wrapped blob. Numbers are floored into
+// sane ceilings (plausibility clamps, not rejections — same policy as
+// profile totals); strings pass through cleanName's spoof-stripping and get
+// length caps; arrays get element caps. Unknown fields are dropped.
+export function sanitizeWrapped(w) {
+  const num = (v, max) => Math.min(max, Math.max(0, Math.floor(Number(v) || 0)));
+  const pct = (v) => Math.min(100, Math.max(0, Math.round(Number(v) || 0)));
+  const label = (v, n = 32) => {
+    const s = cleanName(v);
+    return s ? s.slice(0, n) : null;
+  };
+  const out = {
+    activeMs:    num(w.activeMs, MAX_PF_ACTIVE_MS),
+    sessions:    num(w.sessions, MAX_PF_SESSIONS),
+    tokens:      num(w.tokens, MAX_PF_TOKENS),
+    prompts:     num(w.prompts, 10_000_000),
+    streakBest:  num(w.streakBest, MAX_STREAK),
+    daysActive:  num(w.daysActive, 366),
+    linesAdded:  num(w.linesAdded, 1_000_000_000),
+    linesRemoved: num(w.linesRemoved, 1_000_000_000),
+    ships:       num(w.ships, 1_000_000),
+    cachePct:    pct(w.cachePct),
+    peakHour:    Math.min(23, num(w.peakHour, 23)),
+    longestSessionMs: num(w.longestSessionMs, 7 * 24 * 60 * 60 * 1000),
+    marathonPct: pct(w.marathonPct),
+    compactions: num(w.compactions, 1_000_000),
+    subagentActiveMs: num(w.subagentActiveMs, MAX_PF_ACTIVE_MS),
+    costUsd:     Math.min(1_000_000, Math.max(0, Math.round((Number(w.costUsd) || 0) * 100) / 100)),
+    topProjects: (Array.isArray(w.topProjects) ? w.topProjects : []).slice(0, 5)
+      .map((p) => ({ name: label(p?.name), activeMs: num(p?.activeMs, MAX_PF_ACTIVE_MS) }))
+      .filter((p) => p.name),
+    topLanguages: (Array.isArray(w.topLanguages) ? w.topLanguages : []).slice(0, 5)
+      .map((l) => label(l, 24)).filter(Boolean),
+    topModels: (Array.isArray(w.topModels) ? w.topModels : []).slice(0, 4)
+      .map((m) => ({ name: label(m?.name), pct: pct(m?.pct) })).filter((m) => m.name),
+    toolMix: (Array.isArray(w.toolMix) ? w.toolMix : []).slice(0, 3)
+      .map((t) => ({ name: label(t?.name, 24), pct: pct(t?.pct) })).filter((t) => t.name),
+  };
+  if (typeof w.peakDay === 'object' && w.peakDay && /^\d{4}-\d{2}-\d{2}$/.test(String(w.peakDay.date || ''))) {
+    out.peakDay = { date: String(w.peakDay.date), activeMs: num(w.peakDay.activeMs, 24 * 60 * 60 * 1000) };
+  }
+  return out;
 }
 
 // 32 hex chars of randomness for a one-time verification token. Uses the Web
@@ -552,6 +625,26 @@ export function pruneBoardIndex(index, now = Date.now()) {
   const cutoff = now - PF_UNVERIFIED_TTL_SECONDS * 1000;
   for (const [id, e] of Object.entries(index)) {
     if (!e || (!e.verified && (e.updatedAt || 0) < cutoff)) delete index[id];
+  }
+  return index;
+}
+
+// Bound the index blob to BOARD_INDEX_MAX_ENTRIES. Eviction is by VALUE —
+// lowest capped-token unverified rows go first — never by key order (minted
+// low-sorting ids must not evict real users) and never a verified row. If the
+// board is saturated with verified rows the cap simply stops evicting: those
+// are real, permanent identities and the ceiling exists to stop unverified
+// bloat, not to cull the community.
+export function capBoardIndex(index, max = BOARD_INDEX_MAX_ENTRIES) {
+  let size = Object.keys(index).length;
+  if (size <= max) return index;
+  const unverified = Object.entries(index)
+    .filter(([, e]) => e && !e.verified)
+    .sort((a, b) => (Math.min(a[1].tokens || 0, UNVERIFIED_TOKENS_CAP)) - (Math.min(b[1].tokens || 0, UNVERIFIED_TOKENS_CAP)));
+  for (const [id] of unverified) {
+    if (size <= max) break;
+    delete index[id];
+    size--;
   }
   return index;
 }
@@ -746,6 +839,7 @@ export async function handleProfile(request, env) {
   try {
     const index = pruneBoardIndex(await getBoardIndex(env));
     index[id] = boardEntry(next);
+    capBoardIndex(index);
     await env.TOTALS.put(BOARD_INDEX_KEY, JSON.stringify(index));
   } catch { /* best-effort */ }
 
@@ -833,6 +927,99 @@ export async function handleLeaderboard(url, env) {
   }, null, 2), {
     headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=60' },
   });
+}
+
+// ── Claude Wrapped ─────────────────────────────────────────────────────
+//
+// POST /wrapped — the CLI's one-shot `wrapped --publish`. Requires a published
+// profile (the handle is the public address of the wrapped page); the payload
+// is privacy-valved CLI-side (project names respect the visibility rules) and
+// allowlist-clamped here. One KV write per publish.
+export async function handleWrappedPublish(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return jsonError(400, 'invalid JSON'); }
+  const bad = validateWrapped(body);
+  if (bad) return jsonError(400, bad);
+  if (!(await ipRateOk(env, clientIp(request)))) return jsonError(429, 'rate limited (ip)');
+  if (!(await rateOk(env, body.instanceId, 'wrapped'))) return jsonError(429, 'rate limited');
+
+  const id = await resolveCanonical(env, body.instanceId);
+  const profile = await getProfile(env, id);
+  if (!profile || !profile.handle) {
+    return jsonError(403, 'no published profile — run `claude-rpc profile publish` first');
+  }
+
+  const year = Number(body.year);
+  const record = {
+    v: 1,
+    year,
+    publishedAt: Date.now(),
+    wrapped: sanitizeWrapped(body.wrapped),
+  };
+  await env.TOTALS.put(WRAPPED_KEY(id, year), JSON.stringify(record), { expirationTtl: WRAPPED_TTL_SECONDS });
+
+  return new Response(JSON.stringify({
+    ok: true,
+    handle: profile.handle,
+    year,
+    url: `${siteOrigin(env)}/wrapped/${profile.handle}?year=${year}`,
+  }), { headers: { ...CORS, 'Content-Type': 'application/json' } });
+}
+
+// Resolve handle → canonical id → wrapped record. Shared by the JSON GET and
+// the SVG card. Returns { profile, record } (either may be null).
+async function readWrapped(env, rawHandle, yearParam) {
+  const handle = normHandle(rawHandle || '');
+  if (!handle) return { profile: null, record: null };
+  const owner = await env.TOTALS.get(HANDLE_KEY(handle));
+  const profile = owner ? await getProfile(env, owner) : null;
+  if (!profile) return { profile: null, record: null };
+  // No explicit year → current year, falling back to the previous one so a
+  // January visitor still lands on last year's wrapped instead of a 404.
+  // (Guard the null/'' case explicitly — Number(null) is 0, which would
+  // otherwise read as a literal "year 0" request.)
+  const explicit = yearParam == null || yearParam === '' ? NaN : Number(yearParam);
+  const years = Number.isInteger(explicit) ? [explicit] : [new Date().getUTCFullYear(), new Date().getUTCFullYear() - 1];
+  for (const y of years) {
+    const raw = await env.TOTALS.get(WRAPPED_KEY(owner, y));
+    if (raw) {
+      try { return { profile, record: JSON.parse(raw) }; } catch { /* corrupt — treat as absent */ }
+    }
+  }
+  return { profile, record: null };
+}
+
+// GET /wrapped?handle=<h>&year=<y> — the wrapped page's data source.
+export async function handleWrappedGet(url, env) {
+  const { profile, record } = await readWrapped(env, url.searchParams.get('handle'), url.searchParams.get('year'));
+  if (!profile) return jsonError(404, 'no such profile');
+  if (!record) return jsonError(404, 'no wrapped published');
+  return new Response(JSON.stringify({
+    schemaVersion: SCHEMA_VERSION,
+    handle: profile.handle,
+    displayName: profile.displayName || null,
+    githubUser: profile.verified ? (profile.githubUser || null) : null,
+    verified: !!profile.verified,
+    year: record.year,
+    publishedAt: record.publishedAt,
+    wrapped: record.wrapped,
+    ts: Date.now(),
+  }, null, 2), {
+    headers: { ...CORS, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=300, stale-while-revalidate=3600' },
+  });
+}
+
+// GET /wrapped/<handle>.svg — the share card. Unknown handle or unpublished
+// wrapped renders a neutral placeholder at 200 (never a broken <img>).
+export async function handleWrappedCard(rawHandle, url, env) {
+  const { profile, record } = await readWrapped(env, rawHandle, url.searchParams.get('year'));
+  const meta = profile ? {
+    handle: profile.handle,
+    displayName: profile.displayName || null,
+    verified: !!profile.verified,
+    year: record?.year,
+  } : {};
+  return svgBadgeResponse(renderWrappedCard(record ? record.wrapped : null, meta), record ? 300 : 60);
 }
 
 export async function handleVerifyStart(request, env) {
@@ -1711,6 +1898,18 @@ export default {
       let raw = url.pathname.slice('/card/'.length, -'.svg'.length);
       try { raw = decodeURIComponent(raw); } catch { /* keep raw — normHandle rejects junk */ }
       return handleUserCard(raw, env);
+    }
+    // Claude Wrapped: publish (CLI), read (site page), share card (embeds).
+    if (request.method === 'POST' && url.pathname === '/wrapped') {
+      return handleWrappedPublish(request, env);
+    }
+    if (request.method === 'GET' && url.pathname.startsWith('/wrapped/') && url.pathname.endsWith('.svg')) {
+      let raw = url.pathname.slice('/wrapped/'.length, -'.svg'.length);
+      try { raw = decodeURIComponent(raw); } catch { /* keep raw — normHandle rejects junk */ }
+      return handleWrappedCard(raw, url, env);
+    }
+    if (request.method === 'GET' && url.pathname === '/wrapped') {
+      return handleWrappedGet(url, env);
     }
     if (request.method === 'GET' && url.pathname === '/total.json') {
       return handleJson(env);

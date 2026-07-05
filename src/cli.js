@@ -2068,6 +2068,74 @@ async function profileVerify() {
   }
 }
 
+// `wrapped --publish [--year N] [--yes]` — put your year-in-review on the web
+// at claude-rpc.com/wrapped/<handle>. Opt-in and explicit: the exact payload
+// is printed and confirmed before anything leaves the machine (the name-level
+// privacy filter can't see everything the presence valve can, so the human
+// check is part of the design, not politeness).
+async function doWrappedPublish(argv) {
+  await loadStats();
+  const cfg = loadConfig();
+  const aggregate = readAggregate();
+  if (!aggregate) return fail('no aggregate yet', { hint: 'run `claude-rpc scan` first', code: EX_BAD_STATE });
+  if (!cfg.profile?.handle || cfg.profile?.enabled === false) {
+    return fail('wrapped publishes under your leaderboard profile', {
+      hint: 'set one up first: `claude-rpc profile set --handle <you>` then `claude-rpc profile publish`',
+      code: EX_BAD_STATE,
+    });
+  }
+  const instanceId = cfg.community?.instanceId;
+  if (!instanceId) return fail('no instanceId — run `claude-rpc setup`', { code: EX_BAD_STATE });
+
+  const yearFlag = argv.indexOf('--year');
+  const year = yearFlag !== -1 ? Number(argv[yearFlag + 1]) : new Date().getFullYear();
+  const { buildWrappedPayload, publishWrapped } = await import('./community.js');
+  const payload = buildWrappedPayload(aggregate, cfg, { instanceId, year });
+  const w = payload.wrapped;
+
+  console.log('');
+  console.log(`  ${c.bold}${c.magenta}◆ Claude Wrapped ${year}${c.reset}  ${c.dim}— what will be published${c.reset}`);
+  console.log('');
+  box(`wrapped ${year}`, [
+    pair('active',    fmtHours(w.activeMs), c.green),
+    pair('sessions',  fmtNum(w.sessions)),
+    pair('tokens',    fmtNum(w.tokens)),
+    pair('prompts',   fmtNum(w.prompts), c.yellow),
+    pair('best streak', `${w.streakBest}d`),
+    pair('days active', String(w.daysActive)),
+    pair('ships',     fmtNum(w.ships)),
+    pair('est. cost', fmtCost(w.costUsd), c.yellow),
+    pair('projects',  w.topProjects.map((p) => p.name).join(' · ') || c.dim + '(none public)' + c.reset, ''),
+    pair('languages', w.topLanguages.join(' · ') || '—', ''),
+    pair('models',    w.topModels.map((m) => `${m.name} ${m.pct}%`).join(' · ') || '—', ''),
+  ], 72);
+  console.log(`  ${c.dim}full payload: the fields above plus lines/cache%/peaks — nothing else.${c.reset}`);
+  console.log(`  ${c.dim}private-listed and pattern-matched project names are already excluded.${c.reset}\n`);
+
+  if (!argv.includes('--yes')) {
+    if (!process.stdout.isTTY) {
+      return fail('refusing to publish without confirmation on a non-TTY', {
+        hint: 'pass --yes to publish non-interactively', code: EX_USER_ERROR,
+      });
+    }
+    const answer = (await prompt(`  publish to claude-rpc.com/wrapped/${cfg.profile.handle}? [y/N] `)).trim().toLowerCase();
+    if (answer !== 'y' && answer !== 'yes') { console.log(`  ${c.dim}nothing sent.${c.reset}\n`); return; }
+  }
+
+  const res = await publishWrapped(cfg, payload);
+  if (!res.ok) {
+    if (res.reason === 'no-profile') {
+      return fail('the worker has no published profile for this machine yet', {
+        hint: 'run `claude-rpc profile publish` once, then retry', code: EX_BAD_STATE,
+      });
+    }
+    return fail(`publish failed: ${res.reason}${res.error ? ` (${res.error})` : ''}`, { code: EX_SYS_ERROR });
+  }
+  console.log(`  ${c.green}✓ published${c.reset}  ${c.bold}${res.url}${c.reset}`);
+  console.log(`  ${c.dim}share card:${c.reset} ${(cfg.community?.endpoint || '').replace(/\/+$/, '')}/wrapped/${res.handle}.svg`);
+  console.log(`  ${c.dim}re-publish any time — same command overwrites.${c.reset}\n`);
+}
+
 async function doProfile(argv) {
   const sub = (argv[0] || 'status').toLowerCase();
   if (sub === 'status' || sub === '') return profileStatus();
@@ -2223,6 +2291,7 @@ function help() {
     ['mcp uninstall', 'Remove the stats MCP server from Claude Code'],
     ['mcp',       'Run the MCP server (stdio) — exposes your stats to Claude'],
     ['wrapped',   'Open your animated year-in-review (Claude Wrapped)'],
+    ['wrapped --publish', 'Put your Wrapped on the web at claude-rpc.com/wrapped/<handle>'],
     ['pause',     'Snooze the Discord card globally (pause [30m|2h], default 1h)'],
     ['resume',    'Lift a pause early'],
     ['export',    'Dump the aggregate as JSON, or daily rows as CSV (--csv --out)'],
@@ -2386,7 +2455,9 @@ process.on('unhandledRejection', (e) => {
       await doMcp();
       break;
     }
-    case 'wrapped':   process.env.CLAUDE_RPC_OPEN_PATH = '/wrapped'; await import('./server/index.js'); break;
+    case 'wrapped':
+      if (process.argv.slice(3).includes('--publish')) { await doWrappedPublish(process.argv.slice(3)); break; }
+      process.env.CLAUDE_RPC_OPEN_PATH = '/wrapped'; await import('./server/index.js'); break;
     case 'pause':     doPause(process.argv.slice(3)); break;
     case 'resume':
     case 'unpause':   doResume(); break;

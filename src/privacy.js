@@ -255,6 +255,30 @@ export function resolveVisibility(cwd, config = {}) {
   return { visibility: 'public', projectName: proj?.projectName ?? null, reason: 'default' };
 }
 
+// Name-level privacy check for surfaces that only have a project NAME, not a
+// cwd (the wrapped publish payload). Weaker than resolveVisibility — without a
+// cwd it can't read .claude-rpc.json or auto-detect gh-private — which is why
+// the wrapped publish ALSO shows the exact payload and asks before sending.
+// `clean` lets the caller pass scanner.cleanProjectName so list entries match
+// the cleaned names the aggregate uses (kept an argument to keep this module
+// import-light for the hook path).
+export function projectNameIsPrivate(name, config = {}, clean = (s) => s) {
+  if (!name) return true;
+  const n = String(name).toLowerCase();
+  const matches = (cwd) => {
+    const leaf = basename(cwd);
+    return leaf.toLowerCase() === n || String(clean(leaf)).toLowerCase() === n;
+  };
+  for (const cwd of listPrivateCwds()) if (matches(cwd)) return true;
+  for (const [cwd, level] of Object.entries(listVisibility())) {
+    if (level !== 'public' && matches(cwd)) return true;
+  }
+  for (const p of config?.privacy?.patterns || []) {
+    if (matchesPattern(n, p)) return true;
+  }
+  return false;
+}
+
 // Glob-lite. '*' matches any run; otherwise plain text. Case-insensitive.
 function matchesPattern(name, pattern) {
   if (pattern === name) return true;

@@ -834,9 +834,11 @@ export function aggregateFrom(cache) {
     sessions: 0,
     subagentRuns: 0,
     subagentActiveMs: 0,
-    // Session-length distribution (wall clock firstTs→lastTs, top-level
-    // sessions only — subagents overlap their parent). Histogram, not raw
-    // durations, to keep aggregate.json lean; median stays approximate.
+    // Session-length distribution (ACTIVE time, top-level sessions only —
+    // subagents overlap their parent). Wall clock was tried first and lies:
+    // a transcript left open across a week reads as a 170h "session".
+    // activeMs already excludes ≥5-min gaps, so it measures the sitting, not
+    // the tab. Histogram, not raw durations, to keep aggregate.json lean.
     sessionLengths: {
       count: 0, totalMs: 0, longestMs: 0,
       buckets: { lt15m: 0, m15to30: 0, m30to60: 0, h1to2: 0, h2to4: 0, gt4h: 0 },
@@ -981,9 +983,9 @@ export function aggregateFrom(cache) {
       agg.sessions += 1;
       agg.userMessages += summary.userMessages || 0;
       agg.activeMs += summary.activeMs || 0;
-      if (summary.firstTs && summary.lastTs) {
-        agg.wallMs += summary.lastTs - summary.firstTs;
-        const durMs = summary.lastTs - summary.firstTs;
+      if (summary.firstTs && summary.lastTs) agg.wallMs += summary.lastTs - summary.firstTs;
+      const durMs = summary.activeMs || 0;
+      if (durMs > 0) {
         const sl = agg.sessionLengths;
         sl.count += 1;
         sl.totalMs += durMs;

@@ -513,25 +513,27 @@ test('parseTranscript + aggregateFrom: per-day byModel buckets carry turns/token
   rmSync(dir, { recursive: true });
 });
 
-test('aggregateFrom: session-length histogram buckets wall-clock durations', () => {
+test('aggregateFrom: session-length histogram buckets ACTIVE durations (not wall clock)', () => {
   const HOUR = 3_600_000;
   const t0 = 1700000000000;
-  const mk = (durMs) => ({ isSubagent: false, activeMs: 1000, firstTs: t0, lastTs: t0 + durMs });
+  // Wall clock spans a week (a session left open) — only activeMs counts.
+  const mk = (activeMs) => ({ isSubagent: false, activeMs, firstTs: t0, lastTs: t0 + 7 * 24 * HOUR });
   const agg = aggregateFrom({
     files: {
       '/p/a.jsonl': mk(5 * 60_000),        // <15m
       '/p/b.jsonl': mk(45 * 60_000),       // 30–60m
       '/p/c.jsonl': mk(3 * HOUR),          // 2–4h (marathon)
       '/p/d.jsonl': mk(6 * HOUR),          // >4h (longest)
-      '/p/uuid/subagents/agent-1.jsonl': { isSubagent: true, activeMs: 500, firstTs: t0, lastTs: t0 + 9 * HOUR },
+      '/p/idle.jsonl': { isSubagent: false, activeMs: 0, firstTs: t0, lastTs: t0 + HOUR }, // no active work — not a sitting
+      '/p/uuid/subagents/agent-1.jsonl': { isSubagent: true, activeMs: 9 * HOUR, firstTs: t0, lastTs: t0 + 9 * HOUR },
     },
   });
   const sl = agg.sessionLengths;
-  assert.equal(sl.count, 4, 'subagents are not sessions');
+  assert.equal(sl.count, 4, 'subagents and zero-active sessions are not sittings');
   assert.equal(sl.buckets.lt15m, 1);
   assert.equal(sl.buckets.m30to60, 1);
   assert.equal(sl.buckets.h2to4, 1);
   assert.equal(sl.buckets.gt4h, 1);
-  assert.equal(sl.longestMs, 6 * HOUR, 'subagent 9h run does not own the record');
+  assert.equal(sl.longestMs, 6 * HOUR, 'week-long wall clock does not own the record; neither does the subagent');
   assert.equal(sl.totalMs, 5 * 60_000 + 45 * 60_000 + 9 * HOUR);
 });

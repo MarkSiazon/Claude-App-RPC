@@ -153,3 +153,81 @@ export function renderProfileCard(p) {
   ${tapeSticker(W - 132, H - 36, 'claude-rpc', -3)}
 </svg>`;
 }
+
+// ── Claude Wrapped share card ─────────────────────────────────────────────
+//
+// The year-in-review social object: GET /wrapped/<handle>.svg. Rendered from
+// the published (opt-in, privacy-valved) wrapped payload — same poster
+// language as the profile card, sized for link unfurls and README embeds.
+// `data` is the sanitized wrapped blob or null (placeholder — never a broken
+// <img>); `meta` carries { handle, displayName, verified, year }.
+
+const WW = 640;
+const WH = 336;
+
+export function renderWrappedCard(data, meta = {}) {
+  const has = !!data;
+  const year = meta.year || new Date().getUTCFullYear();
+  const rawName = meta.displayName || (meta.handle ? `@${meta.handle}` : 'claude-rpc');
+  const name = rawName.length > 24 ? `${rawName.slice(0, 23)}…` : rawName;
+  const dim = PALETTE.inkFaint;
+
+  const v = (x) => has ? x : '—';
+  const topProject = has && data.topProjects?.[0]?.name ? data.topProjects[0].name : null;
+  const topLanguage = has && data.topLanguages?.[0] ? data.topLanguages[0] : null;
+  const chips = [
+    topProject ? `top project · ${topProject}` : null,
+    topLanguage ? `top language · ${topLanguage}` : null,
+    has && data.daysActive ? `${data.daysActive} days active` : null,
+    has && data.ships ? `${fmtNum(data.ships)} ships` : null,
+  ].filter(Boolean).slice(0, 3);
+
+  const chipRow = chips.map((text, i) => {
+    const x = 32 + chips.slice(0, i).reduce((acc, t) => acc + t.length * 7.4 + 34, 0);
+    const w = text.length * 7.4 + 22;
+    return `<g transform="translate(${x} ${WH - 84})">
+      <rect x="1.5" y="2" width="${w}" height="26" fill="${PALETTE.ink}"/>
+      <rect x="0" y="0" width="${w}" height="26" fill="${PALETTE.paper2}" stroke="${PALETTE.ink}" stroke-width="1.4"/>
+      <text x="${w / 2}" y="17.5" text-anchor="middle" font-family="JetBrains Mono, ui-monospace, monospace"
+            font-size="11" font-weight="700" fill="${PALETTE.inkMute}">${escapeXml(text)}</text>
+    </g>`;
+  }).join('');
+
+  const boxes = [
+    statBox(42,  v(fmtHours(data?.activeMs || 0)),  'hours',    has ? PALETTE.amber : dim, iconClock, -1.2),
+    statBox(190, v(fmtNum(data?.sessions || 0)),    'sessions', has ? PALETTE.blue : dim,  iconBubble, 0.9),
+    statBox(338, v(fmtNum(data?.tokens || 0)),      'tokens',   has ? PALETTE.rust : dim,  (a, b, c) => spark(a, b, 8, c), -0.8),
+    statBox(486, v(`${data?.streakBest || 0}d`),    'best streak', has ? PALETTE.grass : dim, iconFlame, 1.2),
+  ];
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${WW} ${WH}" width="${WW}" height="${WH}" role="img" aria-label="Claude Wrapped ${year}: ${escapeXml(name)}">
+  <defs>
+    <pattern id="dg" width="22" height="22" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="${PALETTE.ink}" opacity="0.07"/>
+    </pattern>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>
+      <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.04 0"/>
+    </filter>
+  </defs>
+  <rect x="3" y="4" width="${WW - 6}" height="${WH - 7}" fill="${PALETTE.ink}"/>
+  <rect x="0.75" y="0.75" width="${WW - 7}" height="${WH - 9}" fill="${PALETTE.paper}" stroke="${PALETTE.ink}" stroke-width="2"/>
+  <rect x="0.75" y="0.75" width="${WW - 7}" height="${WH - 9}" fill="url(#dg)"/>
+  <rect x="0.75" y="0.75" width="${WW - 7}" height="${WH - 9}" filter="url(#grain)" opacity="0.55"/>
+
+  ${spark(46, 52, 12, PALETTE.rust)}
+  <text x="70" y="50" font-family="Space Grotesk, Inter, system-ui, sans-serif"
+        font-size="28" font-weight="800" letter-spacing="-1" fill="${PALETTE.ink}">Claude Wrapped ${year}</text>
+  <text x="71" y="73" font-family="JetBrains Mono, ui-monospace, monospace"
+        font-size="12.5" fill="${PALETTE.inkMute}">${escapeXml(has ? name : 'no wrapped published yet')}</text>
+  ${meta.verified ? verifiedStamp(WW - 42, 50) : ''}
+
+  ${boxes.join('')}
+
+  ${chipRow}
+
+  <text x="32" y="${WH - 24}" font-family="JetBrains Mono, ui-monospace, monospace"
+        font-size="11" fill="${PALETTE.inkFaint}">claude-rpc.com/wrapped${meta.handle ? '/' + escapeXml(meta.handle) : ''}</text>
+  ${tapeSticker(WW - 148, WH - 40, 'claude-rpc', -3)}
+</svg>`;
+}

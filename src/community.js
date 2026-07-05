@@ -24,6 +24,8 @@ import { platform } from 'node:os';
 import { AGGREGATE_PATH, STATE_DIR } from './paths.js';
 import { VERSION } from './version.js';
 import { profileIsPublishable } from './leaderboard.js';
+import { projectNameIsPrivate } from './privacy.js';
+import { cleanProjectName } from './scanner.js';
 
 const CURSOR_PATH = join(STATE_DIR, 'community-cursor.json');
 
@@ -114,6 +116,123 @@ export function buildProfilePayload(aggregate, profileCfg, { instanceId, now = D
     osFamily: osFamily(),
     ts: now,
   };
+}
+
+// ── Claude Wrapped ───────────────────────────────────────────────────────
+//
+// Schema pair with the worker's validateWrapped/sanitizeWrapped — add fields
+// in BOTH places. Everything here is derived from aggregate.json; per-day
+// slices are year-scoped, and the few lifetime-only dimensions (languages,
+// tool mix, session lengths) are labeled as such on the page. Project names
+// pass the name-level privacy check AND the whole payload is shown to the
+// user before anything is sent — publish is a one-shot, explicit action.
+export function buildWrappedPayload(aggregate, config, { instanceId, year, now = Date.now() }) {
+  const agg = aggregate || {};
+  const y = year || new Date(now).getFullYear();
+  const days = Object.entries(agg.byDay || {}).filter(([k]) => k.startsWith(`${y}-`));
+
+  const sum = (f) => days.reduce((acc, [, d]) => acc + (d[f] || 0), 0);
+  const tokensOf = (d) => (d.inputTokens || 0) + (d.outputTokens || 0) + (d.cacheReadTokens || 0) + (d.cacheWriteTokens || 0);
+  const tokens = days.reduce((acc, [, d]) => acc + tokensOf(d), 0);
+  const cacheTokens = days.reduce((acc, [, d]) => acc + (d.cacheReadTokens || 0) + (d.cacheWriteTokens || 0), 0);
+
+  // Peak day by active time.
+  let peakDay = null;
+  for (const [date, d] of days) {
+    if ((d.activeMs || 0) > 0 && (!peakDay || d.activeMs > peakDay.activeMs)) {
+      peakDay = { date, activeMs: d.activeMs };
+    }
+  }
+
+  // Year-scoped project ranking from per-day attribution, privacy-filtered.
+  const projMs = {};
+  for (const [, d] of days) {
+    for (const [name, p] of Object.entries(d.projects || {})) {
+      projMs[name] = (projMs[name] || 0) + (p.activeMs || 0);
+    }
+  }
+  const topProjects = Object.entries(projMs)
+    .filter(([name]) => !projectNameIsPrivate(name, config, cleanProjectName))
+    .sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([name, activeMs]) => ({ name, activeMs }));
+
+  // Year-scoped model mix from the per-day byModel buckets (scan cache v7).
+  const modelTok = {};
+  for (const [, d] of days) {
+    for (const [m, v] of Object.entries(d.byModel || {})) {
+      modelTok[m] = (modelTok[m] || 0) + (v.tokens || 0);
+    }
+  }
+  const modelTotal = Object.values(modelTok).reduce((a, b) => a + b, 0);
+  const topModels = Object.entries(modelTok).sort((a, b) => b[1] - a[1]).slice(0, 4)
+    .map(([name, t]) => ({ name, pct: modelTotal ? Math.round((t / modelTotal) * 100) : 0 }));
+
+  // Lifetime dimensions (no yearly slice exists for these).
+  const toolTotal = Object.values(agg.toolBreakdown || {}).reduce((a, b) => a + b, 0);
+  const toolMix = Object.entries(agg.toolBreakdown || {}).sort((a, b) => b[1] - a[1]).slice(0, 3)
+    .map(([name, n]) => ({ name, pct: toolTotal ? Math.round((n / toolTotal) * 100) : 0 }));
+  const topLanguages = Object.entries(agg.languages || {})
+    .sort((a, b) => (b[1].edits || 0) - (a[1].edits || 0)).slice(0, 5).map(([n]) => n);
+  const sl = agg.sessionLengths || {};
+  const marathonPct = sl.count ? Math.round((((sl.buckets?.h2to4 || 0) + (sl.buckets?.gt4h || 0)) / sl.count) * 100) : 0;
+
+  const compactions = Object.entries(agg.compactionsByDay || {})
+    .filter(([k]) => k.startsWith(`${y}-`)).reduce((acc, [, n]) => acc + n, 0);
+
+  return {
+    instanceId,
+    year: y,
+    wrapped: {
+      activeMs: sum('activeMs'),
+      sessions: sum('sessions'),
+      tokens,
+      prompts: sum('userMessages'),
+      streakBest: agg.longestStreak || 0,
+      daysActive: days.filter(([, d]) => (d.activeMs || 0) > 0 || (d.userMessages || 0) > 0).length,
+      linesAdded: sum('linesAdded'),
+      linesRemoved: sum('linesRemoved'),
+      ships: sum('ships'),
+      cachePct: tokens ? Math.round((cacheTokens / tokens) * 100) : 0,
+      peakHour: agg.peakHour?.hour ?? 0,
+      ...(peakDay ? { peakDay } : {}),
+      longestSessionMs: sl.longestMs || 0,
+      marathonPct,
+      compactions,
+      subagentActiveMs: agg.subagentActiveMs || 0,
+      costUsd: Math.round(sum('cost') * 100) / 100,
+      topProjects,
+      topLanguages,
+      topModels,
+      toolMix,
+    },
+  };
+}
+
+// One-shot POST of a built wrapped payload. Mirrors flushProfile's error
+// contract: never throws, returns { ok, reason?, url? }.
+export async function publishWrapped(cfg, payload, { fetchImpl = globalThis.fetch } = {}) {
+  const community = cfg?.community || {};
+  if (!community.endpoint) return { ok: false, reason: 'no-endpoint' };
+  const url = community.endpoint.replace(/\/+$/, '') + '/wrapped';
+  let res;
+  try {
+    res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e) {
+    return { ok: false, reason: 'network', error: e.message };
+  }
+  let body = null;
+  try { body = await res.json(); } catch { /* non-JSON error body */ }
+  if (!res.ok) {
+    if (res.status === 403) return { ok: false, reason: 'no-profile' };
+    if (res.status === 429) return { ok: false, reason: 'rate-limited' };
+    return { ok: false, reason: `http-${res.status}`, error: body?.error };
+  }
+  return { ok: true, url: body?.url, handle: body?.handle, year: body?.year };
 }
 
 export async function flushProfile(cfg, {

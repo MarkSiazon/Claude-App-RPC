@@ -59,6 +59,40 @@ profile metrics (tokens, sessions, active hours, streak). Path param only.
 Always returns an SVG; unknown handle renders a neutral placeholder card.
 Cache: `max-age=300` (`60` placeholder).
 
+### `GET /wrapped?handle=<handle>&year=<y>`
+A published **Claude Wrapped** year-in-review (powers the `/wrapped/<handle>`
+page). `year` optional — defaults to the current UTC year, falling back to the
+previous one (so January visitors still land on last year's wrapped).
+
+Response (abridged):
+```json
+{
+  "schemaVersion": 1,
+  "handle": "rarfile", "displayName": "Archer", "githubUser": "rar-file", "verified": true,
+  "year": 2026, "publishedAt": 1751700000000,
+  "wrapped": {
+    "activeMs": 0, "sessions": 0, "tokens": 0, "prompts": 0,
+    "streakBest": 0, "daysActive": 0, "linesAdded": 0, "linesRemoved": 0,
+    "ships": 0, "cachePct": 0, "peakHour": 0, "peakDay": { "date": "2026-03-14", "activeMs": 0 },
+    "longestSessionMs": 0, "marathonPct": 0, "compactions": 0, "subagentActiveMs": 0, "costUsd": 0,
+    "topProjects": [{ "name": "...", "activeMs": 0 }],
+    "topLanguages": ["..."], "topModels": [{ "name": "...", "pct": 0 }],
+    "toolMix": [{ "name": "...", "pct": 0 }]
+  },
+  "ts": 1718600000000
+}
+```
+`404` if the handle is unknown or nothing is published for that year. The blob
+is exactly what the owner published (opt-in, privacy-valved client-side,
+clamped server-side) — never derived from private data. Cache: `max-age=300,
+stale-while-revalidate=3600`.
+
+### `GET /wrapped/<handle>.svg?year=<y>`
+The Wrapped **share card** (640×336) — poster-style headline numbers for link
+unfurls, READMEs, and Discord embeds. Always returns an SVG; unknown handle or
+unpublished year renders a neutral placeholder. Cache: `max-age=300` (`60`
+placeholder).
+
 ### `GET /profile?handle=<handle>`
 A single public profile (powers the `/u/<handle>` pages on the site).
 
@@ -152,6 +186,7 @@ via Bearer sessions. Per-instance and per-IP rate limits apply.
 | ----- | ----------------- | ------------ |
 | `POST /report` | `instanceId`, `sessionsDelta`, `tokensDelta`, `version`, `osFamily` | Add anonymous community deltas. This is the **entire telemetry payload** — see [`validateReport`](../worker/src/index.js) and [`SECURITY.md`](../SECURITY.md). |
 | `POST /profile` | `instanceId`, `handle`, `tokens?`, `sessions?`, `activeMs?`, `streak?`, `displayName?`, `version`, `osFamily` | Upsert a public leaderboard profile (absolute totals, clamped). `verified`/`githubUser` are set only by the verify/link flow, never the client. |
+| `POST /wrapped` | `instanceId`, `year`, `wrapped` (allowlisted blob — see `GET /wrapped`) | Publish a Claude Wrapped year-in-review under the caller's published profile handle (403 without one). Opt-in one-shot (`claude-rpc wrapped --publish`); values are clamped, unknown fields dropped. Returns the public page URL. |
 | `POST /verify/start` | `instanceId`, `githubUser?` | Issue a one-time gist-verification token. |
 | `POST /verify/check` | `instanceId`, `gistId` | Confirm the token appears in a public gist; grants the verified check (merges into the canonical identity if one exists). |
 | `POST /pair/start` | Bearer session **or** verified `instanceId` | Mint a one-time machine-link code (10-min TTL). |

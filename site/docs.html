@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Docs — claude-rpc</title>
+<meta name="description" content="Install, verify, configure, and troubleshoot claude-rpc — Discord Rich Presence for Claude Code. Every install path, the doctor checklist, config and template variables, privacy controls, badges, and fixes for the real-world failures." />
+<link rel="canonical" href="https://claude-rpc.com/docs" />
+
+<meta property="og:site_name" content="claude-rpc" />
+<meta property="og:title" content="claude-rpc docs — install, verify, troubleshoot" />
+<meta property="og:description" content="Every install path, the doctor checklist, config deep-merge, 200+ template variables, layered privacy controls, README badges, and fixes for the failures people actually hit." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://claude-rpc.com/docs" />
+<meta property="og:image" content="https://claude-rpc.com/img/og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="claude-rpc docs — install, verify, troubleshoot" />
+<meta name="twitter:description" content="Every install path, the doctor checklist, config, privacy controls, and fixes for the failures people actually hit." />
+<meta name="twitter:image" content="https://claude-rpc.com/img/og.png" />
+
+<link rel="icon" type="image/png" href="/img/favicon.png" />
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png" />
+<style>
+  :root {
+    --paper: #f4ede0; --paper-2: #ebe2d2; --card: #fbf7ee;
+    --ink: #2b2722; --ink-soft: #4a443c; --ink-mute: #6b6357; --ink-faint: #9a9183;
+    --rust: #d97757; --rust-3: #b8552f; --rust-pale: #f3ddd2;
+    --grass: #5a7d4f;
+    --tape: rgba(217,119,87,0.32);
+    --shadow: 6px 6px 0 rgba(43,39,34,0.12);
+    --font-disp: "Space Grotesk","Inter Tight",system-ui,sans-serif;
+    --font-mono: "JetBrains Mono",ui-monospace,monospace;
+    --font-body: -apple-system,BlinkMacSystemFont,"Inter",system-ui,sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body);
+    background-image: radial-gradient(rgba(43,39,34,0.05) 1.2px, transparent 1.2px); background-size: 26px 26px;
+    min-height: 100vh; display: flex; flex-direction: column;
+    line-height: 1.6;
+  }
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 10px; background: var(--rust); z-index: 10; }
+
+  nav.top { max-width: 1080px; margin: 26px auto 0; padding: 0 24px; width: 100%;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    font-family: var(--font-mono); font-size: 0.82rem; }
+  nav.top .logo { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; font-weight: 700; }
+  nav.top .logo img { width: 26px; height: 26px; image-rendering: pixelated; }
+  nav.top .links { display: flex; gap: 8px 18px; flex-wrap: wrap; }
+  nav.top .links a { color: var(--ink-mute); text-decoration: none; }
+  nav.top .links a:hover { color: var(--ink); text-decoration: underline; text-decoration-style: wavy; text-underline-offset: 3px; }
+  nav.top .links a.here { color: var(--ink); font-weight: 700; border-bottom: 2px solid var(--rust); }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 46px 24px 64px; width: 100%; flex: 1; }
+  a { color: var(--rust-3); }
+  .kicker { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; color: var(--rust-3); }
+  h1 { font-family: var(--font-disp); font-size: clamp(2.2rem, 7vw, 3.2rem); margin: 10px 0 10px; line-height: 1.05; letter-spacing: -0.02em; }
+  h1 .blot { background: linear-gradient(transparent 55%, var(--rust-pale) 55%); padding: 0 4px; }
+  .intro { color: var(--ink-soft); max-width: 640px; line-height: 1.65; margin: 0 0 8px; }
+  code { font-family: var(--font-mono); font-size: 0.88em; background: rgba(43,39,34,0.07); padding: 1px 6px; border-radius: 4px; }
+
+  /* ── layout: sticky anchor rail + content ─────────────────────── */
+  .cols { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 44px; margin-top: 40px; align-items: start; }
+  aside.toc { position: sticky; top: 34px; }
+  aside.toc .toc-title { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--ink-faint); margin-bottom: 10px; }
+  aside.toc a {
+    display: block; padding: 6px 10px; margin: 2px 0;
+    font-family: var(--font-mono); font-size: 0.8rem;
+    color: var(--ink-mute); text-decoration: none;
+    border-left: 2px solid rgba(43,39,34,0.15);
+  }
+  aside.toc a:hover { color: var(--ink); border-left-color: var(--ink); }
+  aside.toc a.on { color: var(--rust-3); font-weight: 700; border-left-color: var(--rust); background: rgba(217,119,87,0.08); }
+
+  section.doc { padding: 8px 0 40px; scroll-margin-top: 30px; }
+  section.doc + section.doc { border-top: 1.5px dashed var(--ink); padding-top: 40px; }
+  section.doc .sec-kicker { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; color: var(--rust-3); }
+  section.doc h2 { font-family: var(--font-disp); font-size: clamp(1.5rem, 3.4vw, 2.1rem); margin: 6px 0 14px; line-height: 1.1; letter-spacing: -0.015em; }
+  section.doc h3 { font-family: var(--font-disp); font-size: 1.05rem; margin: 26px 0 8px; letter-spacing: -0.01em; }
+  section.doc p { color: var(--ink-soft); max-width: 66ch; margin: 10px 0; }
+  section.doc ul { color: var(--ink-soft); max-width: 66ch; padding-left: 22px; margin: 10px 0; }
+  section.doc li { margin: 5px 0; }
+  .small { font-family: var(--font-mono); font-size: 0.76rem; color: var(--ink-faint); }
+
+  /* ── code blocks (ink slabs with a copy button) ───────────────── */
+  .code {
+    position: relative; background: var(--ink); color: var(--paper);
+    border: 1.5px solid var(--ink); box-shadow: var(--shadow);
+    margin: 14px 0; max-width: 720px;
+  }
+  .code pre { margin: 0; padding: 14px 88px 14px 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.84rem; line-height: 1.55; }
+  .code .ps1 { color: var(--rust); user-select: none; }
+  .code .cmt { color: rgba(244,237,224,0.55); }
+  .code .copy {
+    position: absolute; top: 8px; right: 8px;
+    font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+    background: var(--paper); color: var(--ink); border: 1.5px solid var(--paper);
+    padding: 3px 9px; cursor: pointer;
+  }
+  .code .copy:hover { background: var(--rust); border-color: var(--rust); color: var(--paper); }
+  .code .copy.ok { background: var(--grass); border-color: var(--grass); color: var(--paper); }
+  .code .label {
+    position: absolute; top: -11px; left: 12px;
+    font-family: var(--font-mono); font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;
+    background: var(--tape); color: var(--ink); padding: 2px 8px; border: 1.5px solid var(--ink);
+  }
+  .code.labeled { margin-top: 24px; }
+
+  /* ── tables ───────────────────────────────────────────────────── */
+  .tbl-wrap { overflow-x: auto; margin: 14px 0; max-width: 720px; }
+  table.tbl { border-collapse: collapse; width: 100%; background: var(--card); border: 1.5px solid var(--ink); box-shadow: var(--shadow); font-size: 0.86rem; }
+  table.tbl th { font-family: var(--font-mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-mute); text-align: left; padding: 9px 14px; border-bottom: 1.5px solid var(--ink); background: var(--paper-2); }
+  table.tbl td { padding: 8px 14px; border-bottom: 1px solid rgba(43,39,34,0.12); vertical-align: top; color: var(--ink-soft); }
+  table.tbl tr:last-child td { border-bottom: none; }
+  table.tbl td.v { font-family: var(--font-mono); font-size: 0.8rem; white-space: nowrap; color: var(--rust-3); font-weight: 700; }
+
+  /* ── troubleshooting cards ────────────────────────────────────── */
+  .trouble { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; }
+  .fault { background: var(--card); border: 1.5px solid var(--ink); box-shadow: var(--shadow); padding: 18px 20px 8px; max-width: 720px; }
+  .fault .sym { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; color: var(--rust-3); margin: 0 0 6px; }
+  .fault .why { color: var(--ink-soft); margin: 6px 0; font-size: 0.92rem; max-width: 64ch; }
+  .fault .why b { color: var(--ink); }
+  .fault .code { box-shadow: none; margin: 12px 0 14px; }
+
+  /* ── note card ────────────────────────────────────────────────── */
+  .note { background: var(--paper-2); border: 1.5px dashed var(--ink); padding: 12px 16px; max-width: 720px; margin: 14px 0; font-size: 0.9rem; color: var(--ink-soft); }
+  .note b { color: var(--ink); }
+
+  footer { border-top: 1.5px dashed var(--ink); padding: 20px 24px; font-family: var(--font-mono); font-size: 0.78rem;
+    display: flex; justify-content: center; gap: 10px 22px; flex-wrap: wrap; color: var(--ink-faint); }
+  footer a { color: var(--ink-soft); text-decoration: none; }
+  footer a:hover { color: var(--ink); text-decoration: underline; text-decoration-style: wavy; }
+
+  @media (max-width: 860px) {
+    .cols { grid-template-columns: 1fr; gap: 8px; }
+    aside.toc { position: static; display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 10px; border-bottom: 1.5px dashed var(--ink); }
+    aside.toc .toc-title { width: 100%; }
+    aside.toc a { border: 1.5px solid var(--ink); border-radius: 999px; padding: 4px 12px; margin: 0; background: var(--card); }
+    aside.toc a.on { border-color: var(--rust-3); }
+    .code pre { padding-right: 16px; padding-top: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+  <nav class="top">
+    <a class="logo" href="/"><img src="/img/favicon.png" alt="" /> claude-rpc</a>
+    <div class="links">
+      <a class="here" href="/docs" aria-current="page">docs</a>
+      <a href="/community">community</a>
+      <a href="/leaderboard">leaderboard</a>
+      <a href="/blog">posts</a>
+      <a href="https://github.com/rar-file/claude-rpc">github ↗</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <span class="kicker">[ docs ]</span>
+    <h1>install it, prove it, <span class="blot">fix it.</span></h1>
+    <p class="intro">Everything you need to run <a href="/">claude-rpc</a> — every install path, how to verify the pipe end-to-end, the two-line config philosophy, the privacy valves, and the handful of failures people actually hit (with the one command that fixes each). When in doubt: <code>claude-rpc doctor</code>.</p>
+
+    <div class="cols">
+      <aside class="toc" aria-label="sections">
+        <div class="toc-title">on this page</div>
+        <a href="#install">install</a>
+        <a href="#verify">verify it works</a>
+        <a href="#config">configuration</a>
+        <a href="#privacy">privacy</a>
+        <a href="#community">community &amp; profiles</a>
+        <a href="#troubleshooting">troubleshooting</a>
+        <a href="#uninstall">uninstall</a>
+      </aside>
+
+      <div class="content">
+
+        <!-- ──────────────────────────────── 1 · INSTALL -->
+        <section class="doc" id="install">
+          <span class="sec-kicker">01 · install</span>
+          <h2>one command, whatever your setup</h2>
+          <p>Every path below ends in the same place: <code>setup</code> wires nine lifecycle hooks into <code>~/.claude/settings.json</code> (as absolute, PATH-independent commands — only claude-rpc's own entries, third-party hooks are never touched), seeds a default config, starts the daemon, registers login autostart (LaunchAgent on macOS, <code>systemd --user</code> on Linux, a Run-key entry on Windows), and test-fires a synthetic <code>SessionStart</code> so a broken pipe surfaces immediately. All of it is reversible — see <a href="#uninstall">uninstall</a>.</p>
+
+          <h3>npm / npx — macOS · Linux · WSL (Node 18+)</h3>
+          <div class="code" data-copy="npx claude-rpc@latest setup"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> npx claude-rpc@latest setup</pre></div>
+          <p class="small">the @latest matters — bare npx will happily reuse a stale cached copy.</p>
+
+          <h3>Homebrew — macOS · Linux</h3>
+          <div class="code" data-copy="brew install rar-file/claude-rpc/claude-rpc &amp;&amp; claude-rpc setup"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> brew install rar-file/claude-rpc/claude-rpc &amp;&amp; claude-rpc setup</pre></div>
+
+          <h3>the one-liner that figures it out</h3>
+          <div class="code" data-copy="curl -fsSL https://claude-rpc.com/install | sh"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> curl -fsSL https://claude-rpc.com/install | sh</pre></div>
+          <p class="small">detects Node 18+ (installs the npm package) or falls back to the prebuilt Apple-Silicon binary, then runs setup for you. <a href="/install">read install.sh before piping it</a>.</p>
+
+          <h3>Windows — no Node required</h3>
+          <p>Download the <code>…-setup.exe</code> from the <a href="https://github.com/rar-file/claude-rpc/releases/latest">latest GitHub release</a> and run it. Since v1.1.2 the desktop app runs the full <code>setup</code> itself on first launch (and again after every update) — hooks, daemon, autostart, all of it — and reports the outcome in its Daemon tab. The exe is unsigned (solo project), so SmartScreen's <em>More info → Run anyway</em> is expected. Prefer no GUI? There's also a portable <code>…-portable.exe</code>: run <code>claude-rpc setup</code> from it once.</p>
+
+          <h3>from inside Claude Code — the plugin</h3>
+          <div class="code" data-copy="/plugin marketplace add rar-file/claude-rpc
+/plugin install claude-rpc@claude-rpc"><button class="copy" type="button">copy</button><pre>/plugin marketplace add rar-file/claude-rpc
+/plugin install claude-rpc@claude-rpc</pre></div>
+          <p class="small">typed inside Claude Code. a thin bootstrapper: on the first session it runs <code>npx claude-rpc@latest setup</code> for you, then stays out of the way. macOS / Linux / WSL — on Windows use the exe above.</p>
+
+          <h3>VS Code</h3>
+          <p>The <a href="https://marketplace.visualstudio.com/items?itemName=rarfile.claude-rpc-presence">Claude RPC Presence extension</a> (<code>rarfile.claude-rpc-presence</code>) puts your live session in the VS Code status bar — it reads the same local state the daemon writes, so install claude-rpc itself first with any path above.</p>
+        </section>
+
+        <!-- ──────────────────────────────── 2 · VERIFY -->
+        <section class="doc" id="verify">
+          <span class="sec-kicker">02 · verify</span>
+          <h2>prove the pipe works</h2>
+          <p>One command checks the whole chain and prints a pass/fail checklist with a one-line fix hint per failure:</p>
+          <div class="code" data-copy="claude-rpc doctor"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc doctor</pre></div>
+          <p>It covers Node version, install mode, <code>config.json</code> (presence + clientId), that <code>~/.claude</code> and your transcripts exist, hook registration — including hooks wired the old PATH-dependent way, or against a Node that's since been removed — daemon liveness, the Discord IPC state read from the daemon log, aggregate freshness, usage polling, and how the current directory resolves for privacy.</p>
+          <div class="code" data-copy="claude-rpc doctor --fix"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc doctor --fix</pre></div>
+          <p class="small">applies only the targeted repairs doctor found (re-wire hooks/config, restart the daemon, rebuild the aggregate) — it doesn't blindly re-run everything. Discord itself can't be auto-fixed; that one stays advice.</p>
+          <p>For a look at your data rather than your plumbing:</p>
+          <div class="code" data-copy="claude-rpc status"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc status   <span class="cmt"># TUI — heatmap, hour histogram, leaderboards</span></pre></div>
+
+          <h3>what healthy looks like on Discord</h3>
+          <ul>
+            <li>The Discord <b>desktop</b> app must be running — the browser client doesn't expose the local IPC bridge Rich Presence uses.</li>
+            <li>In Discord: User Settings → <b>Activity Privacy</b> → enable <em>Share your detected activities with others</em>, or the card renders for no one.</li>
+            <li>Open Claude Code in any project — the card appears within a second, the large image swaps between working / thinking / waiting / idle as you work, and the two text lines rotate through your frames. Closing Claude Code clears the card instantly.</li>
+          </ul>
+        </section>
+
+        <!-- ──────────────────────────────── 3 · CONFIGURATION -->
+        <section class="doc" id="config">
+          <span class="sec-kicker">03 · configuration</span>
+          <h2>two lines is a complete config</h2>
+          <p>Every key has a baked default (<a href="https://github.com/rar-file/claude-rpc/blob/main/src/default-config.js">src/default-config.js</a> is the canonical list). Your <code>config.json</code> only holds <em>overrides</em> — whatever you put there deep-merges over the shipped defaults, so you never copy the full shape and updates never fight your file.</p>
+          <div class="tbl-wrap"><table class="tbl">
+            <tr><th>os</th><th>config.json lives at</th></tr>
+            <tr><td>Linux</td><td class="v">$XDG_CONFIG_HOME/claude-rpc/config.json <span style="color:var(--ink-faint);font-weight:400">(usually ~/.config/claude-rpc/)</span></td></tr>
+            <tr><td>macOS</td><td class="v">~/Library/Application Support/claude-rpc/config.json</td></tr>
+            <tr><td>Windows</td><td class="v">%APPDATA%\claude-rpc\config.json</td></tr>
+          </table></div>
+          <div class="code labeled" data-copy='{
+  "clientId": "1506443909406920948"
+}'><span class="label">a complete config.json</span><button class="copy" type="button">copy</button><pre>{
+  "clientId": "1506443909406920948"
+}</pre></div>
+
+          <h3>frames: byStatus + rotation</h3>
+          <p>The card is templated per status under <code>presence.byStatus</code> — <code>working</code>, <code>thinking</code>, <code>idle</code>, and friends each get a base frame, plus an optional <code>rotation</code> array that cycles after it. Each frame can declare <code>requires</code>: the daemon skips any frame whose required variables resolve empty, so you can write ambitious frames knowing only the relevant ones render.</p>
+          <div class="code labeled" data-copy='{
+  "presence": {
+    "byStatus": {
+      "idle": {
+        "details": "Idle in {project}",
+        "state": "{modelPretty} · {todayHours} today",
+        "rotation": [
+          { "details": "This week · {weekHours}",
+            "state": "{weekPromptsLabel} · {weekTokensFmt} tokens",
+            "requires": ["weekActiveMs"] }
+        ]
+      }
+    }
+  }
+}'><span class="label">override one status, keep the rest</span><button class="copy" type="button">copy</button><pre>{
+  "presence": {
+    "byStatus": {
+      "idle": {
+        "details": "Idle in {project}",
+        "state": "{modelPretty} · {todayHours} today",
+        "rotation": [
+          { "details": "This week · {weekHours}",
+            "state": "{weekPromptsLabel} · {weekTokensFmt} tokens",
+            "requires": ["weekActiveMs"] }
+        ]
+      }
+    }
+  }
+}</pre></div>
+
+          <h3>template variables</h3>
+          <p>Over <b>200</b> variables are available in any frame. Twelve favourites:</p>
+          <div class="tbl-wrap"><table class="tbl">
+            <tr><th>variable</th><th>renders as</th></tr>
+            <tr><td class="v">{project}</td><td>the project on the card (respects your privacy aliases)</td></tr>
+            <tr><td class="v">{model}</td><td>the model driving the session (<code>{modelPretty}</code> for the friendly name)</td></tr>
+            <tr><td class="v">{todayHours}</td><td>active hours today</td></tr>
+            <tr><td class="v">{allTokensFmt}</td><td>lifetime tokens, formatted — "2.4B"</td></tr>
+            <tr><td class="v">{streakLabel}</td><td>"12-day streak"</td></tr>
+            <tr><td class="v">{topTool}</td><td>your most-called tool</td></tr>
+            <tr><td class="v">{toolMixLabel}</td><td>how your tool calls split across the top tools</td></tr>
+            <tr><td class="v">{cacheSavedLabel}</td><td>"≈$41 saved by cache"</td></tr>
+            <tr><td class="v">{subagentHours}</td><td>hours your subagents have worked for you</td></tr>
+            <tr><td class="v">{peakWeekday}</td><td>your busiest weekday</td></tr>
+            <tr><td class="v">{currentFile}</td><td>the file Claude is touching right now</td></tr>
+            <tr><td class="v">{gitBranch}</td><td>current branch of the working directory</td></tr>
+          </table></div>
+          <div class="code" data-copy="claude-rpc vars
+claude-rpc preview"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc vars      <span class="cmt"># dump all 200+ variables, live, as JSON</span>
+<span class="ps1">$</span> claude-rpc preview   <span class="cmt"># render every frame with your real data</span></pre></div>
+        </section>
+
+        <!-- ──────────────────────────────── 4 · PRIVACY -->
+        <section class="doc" id="privacy">
+          <span class="sec-kicker">04 · privacy</span>
+          <h2>layered valves, all one-way</h2>
+          <p>Privacy sits between your local state and Discord — a one-way valve. Your local stats, dashboards, and aggregates are never affected by any of these.</p>
+
+          <h3>per directory</h3>
+          <div class="code" data-copy="claude-rpc private"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc private   <span class="cmt"># hide the current project from the card</span>
+<span class="ps1">$</span> claude-rpc public    <span class="cmt"># un-hide it</span>
+<span class="ps1">$</span> claude-rpc privacy   <span class="cmt"># show how this directory resolves, and why</span></pre></div>
+          <p class="small">or drop a <code>.claude-rpc.json</code> at the project root: <code>{"private": true}</code>, <code>{"visibility": "name-only"}</code>, or <code>{"projectName": "redacted"}</code> to show an alias instead.</p>
+
+          <h3>by pattern, globally</h3>
+          <div class="code labeled" data-copy='{ "privacy": { "patterns": ["client-*", "secret-stuff"], "mode": "hidden" } }'><span class="label">config.json</span><button class="copy" type="button">copy</button><pre>{ "privacy": { "patterns": ["client-*", "secret-stuff"], "mode": "hidden" } }</pre></div>
+
+          <h3>auto-detected</h3>
+          <p>If the <code>gh</code> CLI is installed and authenticated, GitHub-<b>private</b> repos hide themselves (<code>privacy.githubPrivateMode</code>, default <code>hidden</code>; opt out with <code>privacy.autoDetectGithubPrivate: false</code>). Without <code>gh</code>, doctor warns when a private repo's link could reach the card.</p>
+
+          <h3>screen-sharing</h3>
+          <div class="code" data-copy="claude-rpc pause 30m"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc pause 30m   <span class="cmt"># snooze the card (also 2h, 1h30m; bare pause = 1h)</span>
+<span class="ps1">$</span> claude-rpc resume      <span class="cmt"># lift it early</span></pre></div>
+
+          <h3>telemetry</h3>
+          <div class="code" data-copy="claude-rpc community off"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc community off   <span class="cmt"># stop reporting anonymous totals</span></pre></div>
+          <p>What gets sent while it's on: two counters, the version, the OS family, and an anonymous UUID — nothing else. The byte-level payload, every outbound request, and the persistence mechanics are documented in <a href="https://github.com/rar-file/claude-rpc/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+        </section>
+
+        <!-- ──────────────────────────────── 5 · COMMUNITY -->
+        <section class="doc" id="community">
+          <span class="sec-kicker">05 · community &amp; profiles</span>
+          <h2>put your stats where people can see them</h2>
+          <h3>join the leaderboard</h3>
+          <div class="code" data-copy="claude-rpc profile set --handle &lt;you&gt; &amp;&amp; claude-rpc profile on"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc profile set --handle &lt;you&gt; &amp;&amp; claude-rpc profile on
+<span class="ps1">$</span> claude-rpc profile publish   <span class="cmt"># optional: push now instead of the next flush</span></pre></div>
+          <p>Verified profiles (a proven GitHub identity) rank first on the <a href="/leaderboard">leaderboard</a> and get the ✓. Two ways to verify: log in with GitHub at <a href="/link">claude-rpc.com/link</a> and claim the code it mints with <code>claude-rpc link &lt;code&gt;</code>, or — no browser — <code>claude-rpc profile verify</code> proves ownership through a public gist. Extra machines link into the same identity: run <code>claude-rpc link</code> on the verified machine, claim the code on the new one.</p>
+
+          <h3>badges &amp; cards for your README</h3>
+          <p>With a published profile, the community worker serves an always-current card and badges — paste once, they refresh themselves (~every 30 min as the daemon flushes):</p>
+          <div class="code labeled" data-copy="[![Claude Code stats](https://claude-rpc-totals.claude-rpc.workers.dev/card/&lt;you&gt;.svg)](https://claude-rpc.com/u/&lt;you&gt;)
+
+[![Claude Code hours](https://claude-rpc-totals.claude-rpc.workers.dev/badge/&lt;you&gt;.svg?metric=hours)](https://claude-rpc.com/?ref=badge)"><span class="label">paste-ready markdown</span><button class="copy" type="button">copy</button><pre>[![Claude Code stats](https://claude-rpc-totals.claude-rpc.workers.dev/card/&lt;you&gt;.svg)](https://claude-rpc.com/u/&lt;you&gt;)
+
+[![Claude Code hours](https://claude-rpc-totals.claude-rpc.workers.dev/badge/&lt;you&gt;.svg?metric=hours)](https://claude-rpc.com/?ref=badge)</pre></div>
+          <p class="small">badge <code>metric=</code> is one of <code>tokens · sessions · hours · streak</code> (optional <code>&amp;label=</code> to retitle). <code>claude-rpc readme</code> prints the whole block filled in with your handle, and your profile page at <code>/u/&lt;you&gt;</code> has one-click copy. Full route reference: <a href="https://github.com/rar-file/claude-rpc/blob/main/docs/WORKER-API.md">WORKER-API.md</a>.</p>
+
+          <h3>squads</h3>
+          <div class="code" data-copy='claude-rpc squad create "the night shift"'><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc squad create "the night shift"   <span class="cmt"># private mini-board; friends join with the invite code</span></pre></div>
+
+          <h3>Claude Wrapped</h3>
+          <p>Your whole year on Claude — hours, streaks, peak day, top projects, tool mix — as an animated year-in-review you can publish to the web in one command: <code>claude-rpc wrapped --publish</code> puts it at <code>claude-rpc.com/wrapped/&lt;you&gt;</code>, share card included. <a href="/wrapped">See what a Wrapped looks like →</a></p>
+        </section>
+
+        <!-- ──────────────────────────────── 6 · TROUBLESHOOTING -->
+        <section class="doc" id="troubleshooting">
+          <span class="sec-kicker">06 · troubleshooting</span>
+          <h2>the failures people actually hit</h2>
+          <p>First step is always <code>claude-rpc doctor</code> — every failure below is something it checks for, with a fix hint. The catalogue, for when you'd rather match symptoms:</p>
+
+          <div class="trouble">
+            <div class="fault">
+              <p class="sym">Claude Code shows hook errors: "claude-rpc: command not found"</p>
+              <p class="why"><b>Cause:</b> hooks wired by a pre-v0.19.1 install depend on PATH — and Claude Code runs hooks through a minimal-PATH shell that, under a version manager like nvm, has neither <code>claude-rpc</code> nor <code>node</code> on it. So every tool use errors. The same happens if nvm later removed the Node version the hooks were wired against.</p>
+              <div class="code" data-copy="npx claude-rpc@latest setup"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> npx claude-rpc@latest setup</pre></div>
+              <p class="why"><b>Fix:</b> setup rewrites the hooks as absolute, PATH-independent commands. Restart Claude Code afterwards so it re-reads its hook config. <code>doctor</code> flags this state explicitly (as of v1.1.4) and <code>doctor --fix</code> repairs it.</p>
+            </div>
+
+            <div class="fault">
+              <p class="sym">No card on Discord at all</p>
+              <p class="why"><b>Cause:</b> nine times out of ten, the Discord <b>desktop</b> app isn't running (the browser client can't do Rich Presence), or Discord's Activity Privacy is off.</p>
+              <div class="code" data-copy="claude-rpc doctor"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc doctor</pre></div>
+              <p class="why"><b>Fix:</b> start Discord desktop, then check User Settings → Activity Privacy → <em>Share your detected activities with others</em>. Doctor's "discord IPC connection" line tells you which side is broken.</p>
+            </div>
+
+            <div class="fault">
+              <p class="sym">Card is frozen or showing stale data</p>
+              <p class="why"><b>Cause:</b> usually a daemon that lost its Discord connection or is running an old version after an update.</p>
+              <div class="code" data-copy="claude-rpc restart"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc restart
+<span class="ps1">$</span> claude-rpc tail      <span class="cmt"># watch what the daemon is actually doing</span></pre></div>
+            </div>
+
+            <div class="fault">
+              <p class="sym">Windows: installed the app, nothing happened</p>
+              <p class="why"><b>Cause:</b> installers before v1.1.2 put the settings GUI on disk but never ran the one step that matters — <code>setup</code> lived only in the CLI, so no hooks were wired and no daemon started.</p>
+              <p class="why"><b>Fix:</b> update (the auto-updater pulls it, or grab the <a href="https://github.com/rar-file/claude-rpc/releases/latest">latest setup exe</a>). The app now runs setup itself on first launch and after every update — and there's a visible <b>Run setup</b> button in the Daemon tab (plus a tray menu entry) that's safe to click any time.</p>
+            </div>
+
+            <div class="fault">
+              <p class="sym">macOS: "Claude RPC is damaged and can't be opened"</p>
+              <p class="why"><b>Cause:</b> dmg builds before v1.1.3 shipped unsigned, and Apple Silicon refuses those outright. Current builds are ad-hoc signed — you get the standard <em>unverified developer</em> prompt instead: System Settings → Privacy &amp; Security → <b>Open Anyway</b>, once.</p>
+              <div class="code" data-copy='xattr -cr "/Applications/Claude RPC.app"'><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> xattr -cr "/Applications/Claude RPC.app"   <span class="cmt"># or clear the quarantine flag directly</span></pre></div>
+              <p class="why"><b>Or skip the dmg entirely:</b> <code>brew install rar-file/claude-rpc/claude-rpc</code> has no Gatekeeper friction.</p>
+            </div>
+
+            <div class="fault">
+              <p class="sym">Stats look wrong or missing</p>
+              <p class="why"><b>Cause:</b> a stale or corrupted aggregate — the lifetime numbers are built by scanning your Claude Code transcripts, and the cache can lag a version bump.</p>
+              <div class="code" data-copy="claude-rpc rescan"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc rescan    <span class="cmt"># force a full re-parse of ~/.claude/projects</span></pre></div>
+            </div>
+          </div>
+
+          <div class="note">Still stuck? <code>claude-rpc tail</code> shows the daemon log live, and <a href="https://github.com/rar-file/claude-rpc/issues">issues on GitHub</a> get read by the person who wrote the code.</div>
+        </section>
+
+        <!-- ──────────────────────────────── 7 · UNINSTALL -->
+        <section class="doc" id="uninstall">
+          <span class="sec-kicker">07 · uninstall</span>
+          <h2>leave no trace</h2>
+          <div class="code" data-copy="claude-rpc uninstall
+npm rm -g claude-rpc"><button class="copy" type="button">copy</button><pre><span class="ps1">$</span> claude-rpc uninstall   <span class="cmt"># removes its hooks + the login-autostart entry</span>
+<span class="ps1">$</span> npm rm -g claude-rpc   <span class="cmt"># then remove the package itself</span></pre></div>
+          <p><code>uninstall</code> removes everything that respawns or registers the tool — its own hooks from <code>~/.claude/settings.json</code> (third-party hooks untouched) and the autostart entry — and deliberately leaves your data (config, stats in <code>~/.claude-rpc/</code>) in place. Run <code>claude-rpc stop</code> first if a daemon is up, and <code>claude-rpc mcp uninstall</code> if you wired the MCP server. For a clean wipe, delete <code>~/.claude-rpc</code> and the per-OS config dir afterwards.</p>
+        </section>
+
+      </div><!-- /.content -->
+    </div><!-- /.cols -->
+  </main>
+
+  <footer>
+    <a href="/">claude-rpc.com</a>
+    <a href="/community">community</a>
+    <a href="/leaderboard">leaderboard</a>
+    <a href="/blog">posts</a>
+    <a href="https://github.com/rar-file/claude-rpc">github</a>
+    <a href="https://github.com/rar-file/claude-rpc/releases">releases</a>
+  </footer>
+
+<script>
+  // copy buttons — the copyable text lives in data-copy on the .code block
+  // (kept separate from the rendered pre so prompts/comments never get copied).
+  document.querySelectorAll('.code').forEach((block) => {
+    const btn = block.querySelector('.copy');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      const text = block.getAttribute('data-copy') || block.querySelector('pre').textContent;
+      (navigator.clipboard && navigator.clipboard.writeText(text) || Promise.reject()).then(() => {
+        btn.textContent = 'copied';
+        btn.classList.add('ok');
+        setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('ok'); }, 1400);
+      }).catch(() => {
+        btn.textContent = 'select + copy';
+        setTimeout(() => { btn.textContent = 'copy'; }, 1800);
+      });
+    });
+  });
+
+  // scrollspy — highlight the anchor-nav entry for the section in view
+  const tocLinks = Array.from(document.querySelectorAll('aside.toc a'));
+  const byId = Object.fromEntries(tocLinks.map((a) => [a.getAttribute('href').slice(1), a]));
+  const spy = new IntersectionObserver((entries) => {
+    entries.forEach((e) => {
+      if (!e.isIntersecting) return;
+      tocLinks.forEach((a) => a.classList.remove('on'));
+      const link = byId[e.target.id];
+      if (link) link.classList.add('on');
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  document.querySelectorAll('section.doc').forEach((s) => spy.observe(s));
+</script>
+</body>
+</html>

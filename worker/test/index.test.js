@@ -920,3 +920,115 @@ test('pair/claim merge: a canonical with member machines repoints their aliases 
   assert.equal(merged.machines[UUID_N].tokens, 3000, 'N contributes its OWN slice, not the double-counting profile sum');
   assert.equal(merged.tokens, 1000 + 3000 + 2000, 'recomputed total sums slices exactly once');
 });
+
+// ── Claude Wrapped ─────────────────────────────────────────────────────
+
+const { validateWrapped, sanitizeWrapped, capBoardIndex,
+  handleWrappedPublish, handleWrappedGet, handleWrappedCard } = await import('../src/index.js');
+
+const wrappedBody = {
+  instanceId: profileBody.instanceId,
+  year: 2026,
+  wrapped: {
+    activeMs: 500 * 3_600_000, sessions: 420, tokens: 9_800_000_000, prompts: 5200,
+    streakBest: 44, daysActive: 210, cachePct: 87, ships: 320, marathonPct: 12,
+    topProjects: [{ name: 'claude-rpc', activeMs: 100 * 3_600_000 }],
+    topLanguages: ['JavaScript', 'Rust'],
+    topModels: [{ name: 'Opus 4.8', pct: 62 }],
+    toolMix: [{ name: 'Read', pct: 40 }],
+  },
+};
+
+function wrappedRequest(body) {
+  return new Request('http://localhost/wrapped', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+test('validateWrapped: gates shape, uuid, and year range', () => {
+  assert.equal(validateWrapped(wrappedBody), null);
+  assert.match(validateWrapped({}), /instanceId/);
+  assert.match(validateWrapped({ ...wrappedBody, year: 1999 }), /year/);
+  assert.match(validateWrapped({ ...wrappedBody, year: '20x6' }), /year/);
+  assert.match(validateWrapped({ ...wrappedBody, wrapped: null }), /wrapped/);
+});
+
+test('sanitizeWrapped: clamps values, caps arrays, drops unknown fields', () => {
+  const dirty = sanitizeWrapped({
+    tokens: 9e18,                       // beyond the 1T ceiling
+    cachePct: 400,                      // beyond 100
+    peakHour: 99,
+    topProjects: Array.from({ length: 9 }, (_, i) => ({ name: `p${i}`, activeMs: 1000 })),
+    topLanguages: ['js', '‮evil‬', ''],
+    evil: 'must not survive',
+    peakDay: { date: '2026-03-14', activeMs: 5 * 3_600_000 },
+  });
+  assert.equal(dirty.tokens, 1_000_000_000_000, 'token ceiling applied');
+  assert.equal(dirty.cachePct, 100);
+  assert.equal(dirty.peakHour, 23);
+  assert.equal(dirty.topProjects.length, 5, 'project list capped');
+  assert.deepEqual(dirty.topLanguages, ['js', 'evil'], 'bidi overrides stripped, empties dropped');
+  assert.equal('evil' in dirty, false, 'unknown fields dropped');
+  assert.equal(dirty.peakDay.date, '2026-03-14');
+  const noDay = sanitizeWrapped({ peakDay: { date: 'nope' } });
+  assert.equal('peakDay' in noDay, false, 'malformed peakDay dropped');
+});
+
+test('wrapped: publish → get → svg round-trip (and 403 with no profile)', async () => {
+  const env = makeEnv();
+
+  // No published profile yet → publish refused.
+  const early = await handleWrappedPublish(wrappedRequest(wrappedBody), env);
+  assert.equal(early.status, 403);
+
+  await handleProfile(profileRequest(profileBody), env);
+  for (const k of [...env.TOTALS.store.keys()]) if (k.startsWith('rate:')) env.TOTALS.store.delete(k);
+
+  const pub = await handleWrappedPublish(wrappedRequest(wrappedBody), env);
+  const pubText = await pub.text();
+  assert.equal(pub.status, 200, pubText);
+  const pubBody = JSON.parse(pubText);
+  assert.equal(pubBody.handle, 'archer');
+  assert.match(pubBody.url, /\/wrapped\/archer\?year=2026$/);
+
+  const got = await handleWrappedGet(new URL('http://localhost/wrapped?handle=archer&year=2026'), env);
+  assert.equal(got.status, 200);
+  const data = await got.json();
+  assert.equal(data.year, 2026);
+  assert.equal(data.wrapped.sessions, 420);
+  assert.equal(data.wrapped.topProjects[0].name, 'claude-rpc');
+
+  // No explicit year → falls back through current/previous year.
+  const noYear = await handleWrappedGet(new URL('http://localhost/wrapped?handle=archer'), env);
+  assert.equal(noYear.status, 200, 'year fallback finds the published record');
+
+  const svg = await handleWrappedCard('archer', new URL('http://localhost/wrapped/archer.svg'), env);
+  assert.equal(svg.status, 200);
+  const svgText = await svg.text();
+  assert.match(svgText, /Claude Wrapped 2026/);
+  assert.match(svgText, /claude-rpc/, 'top project chip rendered');
+
+  const ghost = await handleWrappedCard('ghost', new URL('http://localhost/wrapped/ghost.svg'), env);
+  assert.equal(ghost.status, 200, 'unknown handle still returns an image');
+  assert.match(await ghost.text(), /no wrapped published yet/);
+});
+
+test('capBoardIndex: evicts lowest-value unverified rows, never verified ones', () => {
+  const index = {};
+  for (let i = 0; i < 10; i++) {
+    index[`u${i}`] = { handle: `u${i}`, verified: false, tokens: i * 100, updatedAt: Date.now() };
+  }
+  index.vip = { handle: 'vip', verified: true, tokens: 1, updatedAt: Date.now() };
+  capBoardIndex(index, 5);
+  assert.equal(Object.keys(index).length, 5);
+  assert.ok(index.vip, 'verified row survives despite lowest tokens');
+  assert.ok(index.u9 && index.u8, 'highest-value unverified rows survive');
+  assert.equal(index.u0, undefined, 'lowest-value unverified evicted first');
+  // Saturated with verified rows → cap stops evicting rather than culling real identities.
+  const allVerified = Object.fromEntries(Array.from({ length: 6 }, (_, i) =>
+    [`v${i}`, { handle: `v${i}`, verified: true, tokens: i, updatedAt: Date.now() }]));
+  capBoardIndex(allVerified, 3);
+  assert.equal(Object.keys(allVerified).length, 6, 'verified rows are never evicted');
+});

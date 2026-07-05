@@ -208,6 +208,22 @@ anonymous 3a report, this one carries your chosen public identity. The
 It sends absolute totals (not deltas) and is idempotent worker-side (a SET, not
 an add). `profile off` stops it.
 
+**Claude Wrapped (opt-in one-shot, never automatic).** `claude-rpc wrapped
+--publish` publishes a year-in-review blob under your profile handle to
+`<endpoint>/wrapped`, rendered at `claude-rpc.com/wrapped/<handle>`. It never
+runs on a timer — it is a single explicit command, and the CLI **prints the
+exact payload and asks for confirmation** before sending (non-TTY requires
+`--yes`). The complete payload (`buildWrappedPayload`, enforced by the
+worker's `validateWrapped`/`sanitizeWrapped` allowlist) is year-scoped
+aggregate numbers — active time, sessions, prompts, tokens, cache %, lines,
+ships, streak/peaks, estimated cost — plus up to 5 top project **names**, 5
+language names, 4 model names with share %, and 3 tool names with share %. No
+file paths, no prompts, no per-day breakdowns. Project names respect the
+privacy lists and `privacy.patterns` before they ever appear in the preview;
+anything you see in the confirmation box is everything the server sees. Each
+publish overwrites the previous one; records expire worker-side after ~14
+months unless re-published.
+
 ### 3d. Subscription usage — your own token, to its issuer, ON by default
 
 **Source:** `src/usage.js`; consumed by the daemon poll, `claude-rpc usage`,
