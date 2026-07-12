@@ -814,7 +814,7 @@ function readEventsByDay() {
   return out;
 }
 
-function writeAggregate(agg) {
+export function writeAggregate(agg) {
   ensureDataDir();
   const tmp = `${AGGREGATE_PATH}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(agg, null, 2));

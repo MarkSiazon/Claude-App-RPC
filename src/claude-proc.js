@@ -55,7 +55,7 @@ export function looksLikeClaudeCode(name, cmdline) {
   return false;
 }
 
-function execText(file, args) {
+export function execText(file, args) {
   return new Promise((resolve) => {
     execFile(file, args, { timeout: EXEC_TIMEOUT_MS, windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout) => resolve(err ? null : String(stdout || '')));

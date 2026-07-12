@@ -60,6 +60,27 @@ export const DEFAULT_CONFIG = {
   // guesswork above only applies when detection is off, unavailable, or the
   // process is confirmed gone. Set false to disable the process-table query.
   processDetection: true,
+  // Detection mode: which Claude client to show on the Discord card.
+  //   'code'    — Claude Code (CLI) only, via hooks + process detection (default)
+  //   'desktop' — Claude Desktop App only, via process detection (no hooks)
+  //   'both'    — show whichever is active; Code takes priority when both running
+  mode: 'code',
+  // Desktop App settings (used when mode is 'desktop' or 'both').
+  desktop: {
+    // Poll interval (ms). Faster than Code's 60s because process detection is
+    // our only signal — no hooks fire from the desktop app.
+    pollIntervalMs: 5000,
+    // Primary text shown in the Discord card details line.
+    detailsLabel: 'Chatting with Claude',
+    // Use window-title changes to detect activity (resets idle timer).
+    // The title is used ONLY for idle detection — never sent to Discord
+    // unless showWindowTitle is explicitly true.
+    detectWindowTitle: true,
+    // Show the actual window title on the Discord card state line.
+    // OFF by default — window titles may contain conversation names you
+    // don't want on Discord. When off, the card shows elapsed time instead.
+    showWindowTitle: false,
+  },
   // When true, the daemon CLEARS Discord activity entirely once the state
   // goes stale — your profile shows nothing instead of an "Away" frame.
   hideWhenStale: true,
@@ -159,13 +180,15 @@ export const DEFAULT_CONFIG = {
   showElapsed: true,
   activityType: 0,
   statusAssets: {
-    working:      "https://cdn.qualit.ly/clawd-working-building.gif",
-    thinking:     "https://cdn.qualit.ly/clawd-working-typing.gif",
-    compacting:   "https://cdn.qualit.ly/clawd-working-typing.gif",
-    shipped:      "https://cdn.qualit.ly/clawd-working-building.gif",
-    idle:         "https://cdn.qualit.ly/clawd-sleeping.gif",
-    stale:        "https://cdn.qualit.ly/clawd-sleeping.gif",
-    notification: "https://cdn.qualit.ly/clawd-notification.gif",
+    working:        "https://cdn.qualit.ly/clawd-working-building.gif",
+    thinking:       "https://cdn.qualit.ly/clawd-working-typing.gif",
+    compacting:     "https://cdn.qualit.ly/clawd-working-typing.gif",
+    shipped:        "https://cdn.qualit.ly/clawd-working-building.gif",
+    idle:           "https://cdn.qualit.ly/clawd-sleeping.gif",
+    stale:          "https://cdn.qualit.ly/clawd-sleeping.gif",
+    notification:   "https://cdn.qualit.ly/clawd-notification.gif",
+    desktopActive:  "https://cdn.qualit.ly/clawd-working-typing.gif",
+    desktopIdle:    "https://cdn.qualit.ly/clawd-sleeping.gif",
   },
   presence: {
     largeImageKey: "https://cdn.qualit.ly/clawd-sleeping.gif",
@@ -233,6 +256,21 @@ export const DEFAULT_CONFIG = {
           { details: "Monthly budget",                         state: "{budgetLabel}",                                requires: ["budgetLabel"] },
         ],
       },
+      // Desktop App presence templates (mode: 'desktop' or 'both').
+      desktopActive: {
+        details: "{desktopDetailsLabel}",
+        state:   "Session · {desktopElapsed}",
+        largeImageText: "Using Claude Desktop",
+      },
+      desktopIdle: {
+        details: "{desktopDetailsLabel}",
+        state:   "Idle · {desktopIdleTime}",
+        largeImageText: "Claude Desktop · Idle",
+        rotation: [
+          { details: "Today · {desktopTodayTime}",             state: "{desktopSessionCount} sessions",              requires: ["desktopTodayTime"] },
+          { details: "{desktopTotalTime} on Claude all-time",  state: "{desktopAllSessions} sessions",               requires: ["desktopTotalTime"] },
+        ],
+      },
     },
 
     // Auto-prepend a "View on GitHub →" button when the cwd is a github repo.
@@ -251,12 +289,14 @@ export const DEFAULT_CONFIG = {
     ],
   },
   statusIcons: {
-    working:      "working",
-    thinking:     "thinking",
-    compacting:   "thinking",
-    shipped:      "working",
-    idle:         "idle",
-    notification: "",
-    stale:        "",
+    working:        "working",
+    thinking:       "thinking",
+    compacting:     "thinking",
+    shipped:        "working",
+    idle:           "idle",
+    notification:   "",
+    stale:          "",
+    desktopActive:  "working",
+    desktopIdle:    "idle",
   },
 };

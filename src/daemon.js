@@ -6,8 +6,10 @@ import { Client } from './discord-ipc.js';
 import { readState, sweepStaleStateTmp, listSessionStates, sweepStaleSessionStates } from './state.js';
 import { makeRotationCursor, pickFrames, selectFrame, resolveLargeImageKey, shouldShowGithubButton, pickActiveSession, throttleDecision } from './presence.js';
 import { buildVars, fillTemplate, framePasses, applyIdle, applyShipped, applyTrigger } from './format.js';
-import { scan, readAggregate, findLiveSessions, readSessionTokens, readSessionModel } from './scanner.js';
+import { scan, readAggregate, writeAggregate, findLiveSessions, readSessionTokens, readSessionModel } from './scanner.js';
 import { detectClaudeProcess } from './claude-proc.js';
+import { detectClaudeDesktop } from './desktop-proc.js';
+import { deriveDesktopState } from './desktop-state.js';
 import { detectGithubUrl } from './git.js';
 import { applyPrivacy } from './privacy.js';
 import { pauseUntil } from './pause.js';
@@ -107,6 +109,9 @@ let liveSessions = [];
 // why an untouched-but-open session used to clear the card after staleSessionMin.
 // null = unknown (never checked / detection unavailable) → old behavior.
 let claudeProcAlive = null;
+// Desktop App detection state (mode: 'desktop' or 'both'). This holds the
+// derived state object from desktop-state.js (status, sessionStart, etc.).
+let desktopState = null;
 let client = null;
 let connected = false;
 let connecting = false; // login() in flight — see the watchdog note in connect()
@@ -204,6 +209,38 @@ function resolvePresence(opts = {}) {
   let state;
   if (opts.state) {
     state = opts.state; // standalone caller (preview/api) passes an explicit state
+  } else if ((config.mode === 'desktop' || config.mode === 'both') && desktopState) {
+    // Desktop mode: use the process-detection-derived state.
+    // In 'both' mode, prefer Code's state when it's active (not stale/idle).
+    if (config.mode === 'both') {
+      const sessions = listSessionStates();
+      let codeState;
+      if (sessions.length) {
+        const idleMs = Math.max(30_000, (config.idleThresholdSec || 60) * 1000);
+        const picked = pickActiveSession(sessions, displayedSessionId, Date.now(), idleMs);
+        displayedSessionId = picked.sessionId;
+        codeState = picked.state || readState();
+      } else {
+        codeState = readState();
+      }
+      // Code is active if it has fresh activity (not stale, not idle > 5min).
+      const codeActive = codeState && codeState.status
+        && codeState.status !== 'stale'
+        && !(codeState.status === 'idle' && codeState.lastActivity && (Date.now() - codeState.lastActivity) > 300_000);
+      if (codeActive) {
+        state = codeState;
+      } else {
+        // Use desktop state — map status to desktop-specific byStatus keys.
+        state = { ...desktopState };
+        if (state.status === 'active') state.status = 'desktopActive';
+        else if (state.status === 'idle') state.status = 'desktopIdle';
+      }
+    } else {
+      // Pure desktop mode.
+      state = { ...desktopState };
+      if (state.status === 'active') state.status = 'desktopActive';
+      else if (state.status === 'idle') state.status = 'desktopIdle';
+    }
   } else {
     // Multi-session: each session writes its own state-<id>.json. Pick which one
     // to show, sticking with the current session while it's active so the card
@@ -224,63 +261,53 @@ function resolvePresence(opts = {}) {
       state = readState();
     }
   }
-  // Attach live sessions BEFORE applyIdle so the stale/idle decision can
-  // see ongoing transcript activity, not just this daemon's hook state.
-  state.liveSessions = opts.liveSessions || liveSessions;
-  // Same injection pattern for OS-level process liveness — standalone callers
-  // (preview/api) that pass an explicit state simply leave it undefined and
-  // get the historical transcript-only behavior.
-  if (state.claudeProcessAlive === undefined) state.claudeProcessAlive = claudeProcAlive;
-  state = applyIdle(state, config);
-  // Shipped overlay sits on top of idle/working/thinking — but never over
-  // stale (we don't celebrate when Claude isn't running).
-  state = applyShipped(state, config);
-  // Custom-command trigger overlay (config.triggers) — never over stale/shipped.
-  state = applyTrigger(state, config);
+  // Desktop-derived states skip Code-specific enrichment (applyIdle, shipped
+  // overlays, transcript token resolution) — they have their own status logic.
+  if (!state._desktopMode) {
+    // Attach live sessions BEFORE applyIdle so the stale/idle decision can
+    // see ongoing transcript activity, not just this daemon's hook state.
+    state.liveSessions = opts.liveSessions || liveSessions;
+    // Same injection pattern for OS-level process liveness — standalone callers
+    // (preview/api) that pass an explicit state simply leave it undefined and
+    // get the historical transcript-only behavior.
+    if (state.claudeProcessAlive === undefined) state.claudeProcessAlive = claudeProcAlive;
+    state = applyIdle(state, config);
+    // Shipped overlay sits on top of idle/working/thinking — but never over
+    // stale (we don't celebrate when Claude isn't running).
+    state = applyShipped(state, config);
+    // Custom-command trigger overlay (config.triggers) — never over stale/shipped.
+    state = applyTrigger(state, config);
 
-  // Pull live session tokens from the transcript file. Claude Code's hook
-  // payloads don't include usage data, so state.tokens from PostToolUse
-  // events is always {0,0,0,0}. The transcript is the only running source
-  // of truth — readSessionTokens is mtime-cached, so this is cheap unless
-  // the session is actively writing.
-  // Matching is by SESSION ID first: the transcript file is named
-  // <sessionId>.jsonl, so this is exact. The old cwd-only match silently
-  // broke whenever the two cwd notions diverged — state.cwd follows the
-  // hooks (UserPromptSubmit re-stamps it after every in-session `cd`) while
-  // the live-session cwd is read from the transcript HEAD (fixed at session
-  // start) — leaving the card's token count stuck at 0. The id→path memo
-  // keeps enrichment alive after the transcript ages out of the live window
-  // (>90s quiet), so an idle card keeps its final token count instead of
-  // dropping to zero. cwd remains the fallback for borrowed states (whose
-  // sessionId belongs to the QUIET session, not the transcript we adopted)
-  // and legacy id-less states.
-  if (state.status !== 'stale') {
-    const live = state.liveSessions || [];
-    let tpath = null;
-    if (state.sessionId && !state.borrowed) {
-      const bySid = live.find((s) => basename(s.path || '', '.jsonl') === state.sessionId);
-      if (bySid) {
-        tpath = bySid.path;
-        if (!sessionPathMemo.has(state.sessionId) && sessionPathMemo.size >= 64) {
-          sessionPathMemo.delete(sessionPathMemo.keys().next().value);
+    // Pull live session tokens from the transcript file. Claude Code's hook
+    // payloads don't include usage data, so state.tokens from PostToolUse
+    // events is always {0,0,0,0}. The transcript is the only running source
+    // of truth — readSessionTokens is mtime-cached, so this is cheap unless
+    // the session is actively writing.
+    if (state.status !== 'stale') {
+      const live = state.liveSessions || [];
+      let tpath = null;
+      if (state.sessionId && !state.borrowed) {
+        const bySid = live.find((s) => basename(s.path || '', '.jsonl') === state.sessionId);
+        if (bySid) {
+          tpath = bySid.path;
+          if (!sessionPathMemo.has(state.sessionId) && sessionPathMemo.size >= 64) {
+            sessionPathMemo.delete(sessionPathMemo.keys().next().value);
+          }
+          sessionPathMemo.set(state.sessionId, tpath);
+        } else {
+          tpath = sessionPathMemo.get(state.sessionId) || null;
         }
-        sessionPathMemo.set(state.sessionId, tpath);
-      } else {
-        tpath = sessionPathMemo.get(state.sessionId) || null;
       }
-    }
-    if (!tpath && state.cwd) {
-      const cwdLower = state.cwd.toLowerCase();
-      tpath = live.find((s) => (s.cwd || '').toLowerCase() === cwdLower)?.path || null;
-    }
-    if (tpath) {
-      const t = readSessionTokens(tpath);
-      if (t) state.tokens = t;
-      // The hook only learns the model at SessionStart; a mid-session /model
-      // switch is visible only in the transcript. Render-time override — the
-      // state file stays hook-owned.
-      const liveModel = readSessionModel(tpath);
-      if (liveModel) state.model = liveModel;
+      if (!tpath && state.cwd) {
+        const cwdLower = state.cwd.toLowerCase();
+        tpath = live.find((s) => (s.cwd || '').toLowerCase() === cwdLower)?.path || null;
+      }
+      if (tpath) {
+        const t = readSessionTokens(tpath);
+        if (t) state.tokens = t;
+        const liveModel = readSessionModel(tpath);
+        if (liveModel) state.model = liveModel;
+      }
     }
   }
 
@@ -847,6 +874,74 @@ async function refreshClaudeProc() {
 refreshClaudeProc();
 const claudeProcTimer = setInterval(refreshClaudeProc, CLAUDE_PROC_POLL_MS);
 if (claudeProcTimer.unref) claudeProcTimer.unref();
+
+// ── Desktop App detection (mode: 'desktop' or 'both') ─────────────────────────
+// When the user has configured desktop mode, poll the OS for the Claude Desktop
+// App process. This drives the presence card when no Claude Code hooks exist.
+// In 'both' mode, Code's state takes priority when it's active.
+const DESKTOP_POLL_MS = Math.max(config.desktop?.pollIntervalMs || 5000, 2000);
+let desktopPrevStatus = null;
+
+async function refreshDesktopState() {
+  if (config.mode !== 'desktop' && config.mode !== 'both') return;
+  try {
+    const detection = await detectClaudeDesktop();
+    const { state: derived, aggregate: agg } = deriveDesktopState(detection, config);
+    const prevStatus = desktopPrevStatus;
+    desktopState = derived;
+    desktopPrevStatus = derived.status;
+
+    // Accumulate desktop stats into aggregate.
+    if (agg.deltaMs > 0 || agg.newSession || agg.sessionEnded) {
+      try {
+        const freshAgg = readAggregate() || {};
+        if (!freshAgg.desktop) freshAgg.desktop = { totalActiveMs: 0, sessions: 0, byDay: {}, streak: { current: 0, best: 0, lastDay: null } };
+        const desk = freshAgg.desktop;
+        desk.totalActiveMs += agg.deltaMs;
+        if (!desk.byDay[agg.day]) desk.byDay[agg.day] = { activeMs: 0, sessions: 0 };
+        desk.byDay[agg.day].activeMs += agg.deltaMs;
+        if (agg.newSession) {
+          desk.sessions += 1;
+          desk.byDay[agg.day].sessions += 1;
+          // Update streak.
+          if (desk.streak.lastDay !== agg.day) {
+            const y = new Date(Date.now() - 86400000);
+            const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+            if (desk.streak.lastDay === yesterday) {
+              desk.streak.current += 1;
+            } else {
+              desk.streak.current = 1;
+            }
+            desk.streak.lastDay = agg.day;
+            if (desk.streak.current > desk.streak.best) {
+              desk.streak.best = desk.streak.current;
+            }
+          }
+        }
+        // Persist aggregate (re-import to avoid circular dep issues at top level).
+        writeAggregate(freshAgg);
+        aggregate = freshAgg;
+      } catch (e) {
+        log('desktop aggregate update failed:', e.message);
+      }
+    }
+
+    // Trigger presence update on status change.
+    if (derived.status !== prevStatus) {
+      log(`desktop-proc: Claude Desktop ${derived.status}${derived.status !== 'stale' ? ' (detected)' : ' (gone)'}`);
+      resetTransmit();
+      pushPresence();
+    }
+  } catch (e) {
+    log('desktop-proc poll failed:', e.message);
+  }
+}
+
+if (config.mode === 'desktop' || config.mode === 'both') {
+  refreshDesktopState();
+  const desktopTimer = setInterval(refreshDesktopState, DESKTOP_POLL_MS);
+  if (desktopTimer.unref) desktopTimer.unref();
+}
 
 // ── Connection watchdog (auto-heal) ──────────────────────────────────────────
 // The reconnect path is event-driven (the 'disconnected' handler + login

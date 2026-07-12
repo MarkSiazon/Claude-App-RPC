@@ -802,6 +802,21 @@ export function buildVars(state, config, aggregate) {
     // ── Notifications ───────────────────────────────────────────
     notificationCount,
     notificationLabel: notificationCount ? plural(notificationCount, 'notification') : '',
+
+    // ── Desktop App mode (v-desktop) ──────────────────────────────
+    // Populated when state._desktopMode is true. Empty-string defaults
+    // ensure `requires`-gated frames using these vars simply vanish in
+    // Code mode (where the desktop aggregate doesn't exist).
+    desktopDetailsLabel: config?.desktop?.detailsLabel || 'Chatting with Claude',
+    desktopElapsed: state._desktopMode && state.sessionStart
+      ? fmtDuration(Date.now() - state.sessionStart) : '',
+    desktopIdleTime: state._desktopMode && state.lastActivity
+      ? fmtDuration(Date.now() - state.lastActivity) : '',
+    desktopTodayTime: fmtHours(agg.desktop?.byDay?.[dayKey(Date.now())]?.activeMs || 0),
+    desktopSessionCount: plural(
+      agg.desktop?.byDay?.[dayKey(Date.now())]?.sessions || 0, 'session'),
+    desktopTotalTime: fmtHours(agg.desktop?.totalActiveMs || 0),
+    desktopAllSessions: fmtNum(agg.desktop?.sessions || 0),
   };
 }
 

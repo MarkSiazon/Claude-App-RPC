@@ -7,6 +7,7 @@ import {
   copyFileSync, chmodSync, renameSync, statSync,
   readdirSync, unlinkSync,
 } from 'node:fs';
+import { createInterface } from 'node:readline';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { spawn, spawnSync } from 'node:child_process';
@@ -747,6 +748,30 @@ export function selfHealOnUpdate({ exePath = null, silent = true } = {}) {
   return { changed: true, from, rewired, autostart };
 }
 
+// Interactive mode selection for setup. Returns 'code', 'desktop', or 'both'.
+// Falls through to null (caller uses default) if stdin isn't a TTY or user
+// enters an invalid response. Timeout: 30s → default to 'code'.
+function promptMode() {
+  return new Promise((resolve) => {
+    console.log('');
+    console.log(`  ${c.bold}What are you using?${c.reset}`);
+    console.log(`    ${c.cyan}1${c.reset})  Claude Code ${c.dim}(CLI — hooks into lifecycle events)${c.reset}`);
+    console.log(`    ${c.cyan}2${c.reset})  Claude Desktop App ${c.dim}(process detection only)${c.reset}`);
+    console.log(`    ${c.cyan}3${c.reset})  Both ${c.dim}(shows whichever is active, Code takes priority)${c.reset}`);
+    console.log('');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const timer = setTimeout(() => { rl.close(); resolve(null); }, 30_000);
+    rl.question(`  ${c.dim}Choice [1]:${c.reset} `, (answer) => {
+      clearTimeout(timer);
+      rl.close();
+      const n = (answer || '').trim();
+      if (n === '2') resolve('desktop');
+      else if (n === '3') resolve('both');
+      else resolve('code');
+    });
+  });
+}
+
 export async function install({ exePath, withStartup = true } = {}) {
   resetRun();
   console.log('');
@@ -775,19 +800,40 @@ export async function install({ exePath, withStartup = true } = {}) {
   seedConfig();
   migrateConfig();
 
-  phase('claude code');
-  installHooks(target);
-  // Proof the hook pipe actually fires. A setup that returns success
-  // without verification is a lie — we caught broken-hook-path bugs
-  // twice during v0.3.x because no one ran a real event after install.
-  const probe = verifyHookPipe(target);
-  if (!probe.ok) {
-    step(SYM_FAIL, 'hook verify', probe.detail, console.warn);
-    hintLine('run `claude-rpc doctor` for a full diagnostic', process.stderr);
-  } else if (runDirty) {
-    step(SYM_OK, 'hook verified', probe.detail);
+  // Mode selection: ask which Claude client the user wants to track.
+  // Only prompt when the config doesn't already have a mode set (fresh install
+  // or upgraders whose config lacks the key). Interactive TTY only — headless
+  // setups (CI, --silent) default to 'code'.
+  const cfg = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+  if (!cfg.mode && process.stdin.isTTY) {
+    const mode = await promptMode();
+    if (mode) {
+      cfg.mode = mode;
+      writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+      step(SYM_OK, 'mode', mode === 'code' ? 'Claude Code (hooks)' : mode === 'desktop' ? 'Claude Desktop App (process detection)' : 'Both (Code priority)');
+    }
+  }
+  const activeMode = cfg.mode || 'code';
+
+  let probe = { ok: true };
+  if (activeMode === 'code' || activeMode === 'both') {
+    phase('claude code');
+    installHooks(target);
+    // Proof the hook pipe actually fires. A setup that returns success
+    // without verification is a lie — we caught broken-hook-path bugs
+    // twice during v0.3.x because no one ran a real event after install.
+    probe = verifyHookPipe(target);
+    if (!probe.ok) {
+      step(SYM_FAIL, 'hook verify', probe.detail, console.warn);
+      hintLine('run `claude-rpc doctor` for a full diagnostic', process.stderr);
+    } else if (runDirty) {
+      step(SYM_OK, 'hook verified', probe.detail);
+    } else {
+      noop('hook pipe verified');
+    }
   } else {
-    noop('hook pipe verified');
+    // Desktop-only mode: no hooks to wire.
+    step(SYM_OK, 'hooks', 'skipped (desktop mode — no hooks needed)');
   }
 
   // The CLI's setup case launches the daemon right after this returns, so its
