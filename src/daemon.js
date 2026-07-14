@@ -482,6 +482,22 @@ function pushPresence() {
     fireStatusSideEffects(resolved, suppressed);
 
     if (suppressed) {
+      // In 'both' mode, when Code's session is privacy-hidden but the
+      // Desktop App is running, fall back to the generic desktop presence
+      // instead of clearing entirely. The desktop card shows no project
+      // names, files, or tools — just "Chatting with Claude" + elapsed time.
+      if (privacyHidden && !pausedUntil
+          && (config.mode === 'desktop' || config.mode === 'both')
+          && desktopState && desktopState.status !== 'stale') {
+        const fallback = { ...desktopState };
+        if (fallback.status === 'active') fallback.status = 'desktopActive';
+        else if (fallback.status === 'idle') fallback.status = 'desktopIdle';
+        // Inject live Code sessions so {concurrentLabel} shows the real count.
+        fallback.liveSessions = liveSessions;
+        const activity = buildActivity({ resolved: fallback });
+        transmit('set', activity, `Presence updated (desktop fallback): ${activity.details || '-'} | ${activity.state || '-'}`);
+        return;
+      }
       // Wipe effectiveSessionStart so the next active push gets a fresh
       // elapsed timer rather than counting from a previous session.
       effectiveSessionStart = null;

@@ -188,7 +188,7 @@ export const DEFAULT_CONFIG = {
     stale:          "https://cdn.qualit.ly/clawd-sleeping.gif",
     notification:   "https://cdn.qualit.ly/clawd-notification.gif",
     desktopActive:  "https://cdn.qualit.ly/clawd-working-typing.gif",
-    desktopIdle:    "https://cdn.qualit.ly/clawd-sleeping.gif",
+    desktopIdle:    "https://cdn.qualit.ly/clawd-working-typing.gif",
   },
   presence: {
     largeImageKey: "https://cdn.qualit.ly/clawd-sleeping.gif",
@@ -259,17 +259,13 @@ export const DEFAULT_CONFIG = {
       // Desktop App presence templates (mode: 'desktop' or 'both').
       desktopActive: {
         details: "{desktopDetailsLabel}",
-        state:   "Session · {desktopElapsed}",
-        largeImageText: "Using Claude Desktop",
+        state:   "{concurrentLabel} · {desktopElapsed}",
+        largeImageText: "Claude Desktop",
       },
       desktopIdle: {
         details: "{desktopDetailsLabel}",
-        state:   "Idle · {desktopIdleTime}",
-        largeImageText: "Claude Desktop · Idle",
-        rotation: [
-          { details: "Today · {desktopTodayTime}",             state: "{desktopSessionCount} sessions",              requires: ["desktopTodayTime"] },
-          { details: "{desktopTotalTime} on Claude all-time",  state: "{desktopAllSessions} sessions",               requires: ["desktopTotalTime"] },
-        ],
+        state:   "{concurrentLabel} · {desktopElapsed}",
+        largeImageText: "Claude Desktop",
       },
     },
 
