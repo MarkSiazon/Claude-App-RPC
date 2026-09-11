@@ -12,7 +12,7 @@ const { calendarSvg } = await import('../src/calendar.js');
 const { cardSvg } = await import('../src/card.js');
 const { sessionCardSvg } = await import('../src/session-card.js');
 const { postWebhook, desktopNotify, sanitizeLabel } = await import('../src/notify.js');
-const { runDoctor, fixPlan, classifyClientId, ipcStateFromLog, classifyHookCommand } = await import('../src/doctor.js');
+const { runDoctor, fixPlan, classifyClientId, ipcStateFromLog, bridgeFromLog, classifyHookCommand } = await import('../src/doctor.js');
 
 const fakeAgg = {
   activeMs: 100 * 3_600_000,
@@ -143,6 +143,27 @@ test('desktopNotify: spawns the platform notifier with title/body and swallows e
   assert.doesNotThrow(() => desktopNotify('x', 'y', { spawn: () => { throw new Error('boom'); } }));
 });
 
+test('desktopNotify: win32 balloon-tip script outlives ShowBalloonTip before disposing', () => {
+  // ShowBalloonTip returns as soon as the toast is *queued*, not once it's
+  // rendered — a script that exits right after tears down the NotifyIcon
+  // before Windows draws the balloon, so it silently never appears. Assert
+  // the script holds the process open (Start-Sleep) before Dispose().
+  const calls = [];
+  const fakeSpawn = (cmd, args) => {
+    calls.push({ cmd, args });
+    return { on() {}, unref() {} };
+  };
+  const result = desktopNotify('claude-rpc', 'test body', { spawn: fakeSpawn, platform: () => 'win32' });
+  assert.equal(result, true);
+  assert.equal(calls[0].cmd, 'powershell');
+  const script = calls[0].args[calls[0].args.length - 1];
+  assert.match(script, /ShowBalloonTip/);
+  const sleepIdx = script.indexOf('Start-Sleep');
+  const disposeIdx = script.indexOf('.Dispose()');
+  assert.ok(sleepIdx > script.indexOf('ShowBalloonTip'), 'sleeps after queuing the toast');
+  assert.ok(disposeIdx > sleepIdx, 'disposes only after the sleep, not immediately on script end');
+});
+
 test('sanitizeLabel: strips shell/PowerShell metacharacters, keeps readable text', () => {
   // The injection vector: a project dir named to trigger PowerShell evaluation.
   assert.equal(sanitizeLabel('proj$(calc.exe)'), 'projcalc.exe');
@@ -217,4 +238,17 @@ test('ipcStateFromLog: most-recent line wins (up / down / unknown)', () => {
   assert.equal(ipcStateFromLog('Discord disconnected — retry in 5s'), 'down');
   assert.equal(ipcStateFromLog(['login failed', 'Discord RPC connected'].join('\n')), 'up', 'reconnect after drop → up');
   assert.equal(ipcStateFromLog(['Discord RPC connected', 'retry in 10s'].join('\n')), 'down', 'drop after connect → down');
+});
+
+test('bridgeFromLog: identifies arRPC bridges from the connect line, most-recent wins', () => {
+  assert.equal(bridgeFromLog(''), null, 'no connect line yet');
+  assert.equal(bridgeFromLog('Discord RPC connected as rafii'), 'discord');
+  // The daemon's bridge connect line (see daemon.js ready handler).
+  assert.equal(bridgeFromLog('Discord RPC connected as arrpc — arRPC-style bridge (Vesktop/Equibop/web client).'), 'arrpc');
+  assert.equal(
+    bridgeFromLog(['Discord RPC connected as arrpc — arRPC-style bridge', 'Discord RPC connected as rafii'].join('\n')),
+    'discord', 'switching from Vesktop to stock Discord drops the bridge caveat');
+  assert.equal(
+    bridgeFromLog(['Discord RPC connected as rafii', 'Discord RPC connected as arrpc — arRPC-style bridge'].join('\n')),
+    'arrpc');
 });

@@ -24,6 +24,8 @@ const {
   OP_FRAME,
   OP_PING,
   OP_PONG,
+  ARRPC_USER_ID,
+  isBridgeUser,
 } = await import('../src/discord-ipc.js');
 
 // ── Frame encode / decode ────────────────────────────────────────────────
@@ -137,12 +139,24 @@ test('candidatePaths returns the 10 named pipes on win32', () => {
 // A minimal server that speaks the Discord IPC protocol well enough to drive
 // the client through its whole lifecycle. Returns the socket path + a handle
 // to inspect what the client sent and to push frames back.
+// performance.now() floored to whole ms isn't unique enough on its own — two
+// servers started in the same test within the same millisecond collide on
+// path, and the second `listen()` unlinks + steals the first's socket file
+// out from under it. A per-call counter guarantees distinct paths regardless
+// of timing.
+// net.Server.listen() takes a filesystem path on posix but requires a named
+// pipe there on Windows (confirmed live in CI: a plain tmpdir path throws
+// EACCES) — same reason production candidatePaths() branches for win32.
+let fakeDiscordSeq = 0;
 function startFakeDiscord(t, { onHandshake, onFrame } = {}) {
-  const sockPath = path.join(os.tmpdir(), `fake-ipc-${process.pid}-${Math.floor(performance.now())}`);
-  try {
-    fs.unlinkSync(sockPath);
-  } catch {
-    /* fresh path */
+  const id = `fake-ipc-${process.pid}-${Math.floor(performance.now())}-${fakeDiscordSeq++}`;
+  const sockPath = process.platform === 'win32' ? `\\\\.\\pipe\\${id}` : path.join(os.tmpdir(), id);
+  if (process.platform !== 'win32') {
+    try {
+      fs.unlinkSync(sockPath);
+    } catch {
+      /* fresh path */
+    }
   }
   const received = [];
   let conn = null;
@@ -245,6 +259,23 @@ test('a server PING is answered with a PONG echoing the payload', async (t) => {
   assert.deepEqual(pong.data, { token: 'ping-1' });
 });
 
+test('login connects concurrently across candidates, preferring the earliest path when several accept', async (t) => {
+  // Windows probes all 10 named-pipe candidates with no existence pre-check,
+  // so _openSocket races them instead of trying one at a time (worst case:
+  // up to 10× the per-candidate timeout). With two live fakes, the earlier
+  // path must still win — and the loser's socket must be destroyed, not leaked.
+  const first = await startFakeDiscord(t, { onHandshake: (s) => sendReady(s, { username: 'first' }) });
+  const second = await startFakeDiscord(t, { onHandshake: (s) => sendReady(s, { username: 'second' }) });
+  const client = new Client({ clientId: 'c', transport: { pathList: [first.sockPath, second.sockPath] } });
+  t.after(() => client.destroy());
+  await client.login();
+  assert.equal(client.user.username, 'first', 'earlier candidate wins even though both accept');
+  // The client-side destroy() sends a FIN the server observes asynchronously —
+  // give it a tick to propagate before checking the server saw its end close.
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(second.getConn().destroyed, true, 'the losing candidate is closed, not left open');
+});
+
 test('login rejects when no Discord socket can be reached', async (t) => {
   const client = new Client({
     clientId: 'c',
@@ -293,4 +324,20 @@ test('formatActivity omits party when size is one-ended or absent', () => {
   assert.equal('party' in formatActivity({ details: 'x' }).activity, false);
   // size needs both ends; a lone partySize is dropped (no id either → no party)
   assert.equal('party' in formatActivity({ details: 'x', partySize: 2 }).activity, false);
+});
+
+// ── Bridge detection (arRPC / Vesktop / Equibop) ─────────────────────────
+test('isBridgeUser: recognizes arRPC\'s mock READY user by id or username', () => {
+  // The exact shape arRPC's server sends in its READY dispatch.
+  assert.equal(isBridgeUser({ id: ARRPC_USER_ID, username: 'arrpc', discriminator: '0' }), true);
+  assert.equal(isBridgeUser({ id: 'something-else', username: 'arrpc' }), true, 'username alone suffices');
+  assert.equal(isBridgeUser({ id: ARRPC_USER_ID, username: 'renamed' }), true, 'id alone suffices');
+  assert.equal(isBridgeUser({ id: ARRPC_USER_ID }), true);
+});
+
+test('isBridgeUser: real accounts are not bridges', () => {
+  assert.equal(isBridgeUser({ id: '80351110224678912', username: 'rafii' }), false);
+  assert.equal(isBridgeUser({ id: '1', username: 'arrpc-fan' }), false, 'exact username match only');
+  assert.equal(isBridgeUser(null), false);
+  assert.equal(isBridgeUser({}), false);
 });
