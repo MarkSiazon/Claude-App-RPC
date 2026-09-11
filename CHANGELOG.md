@@ -2,6 +2,30 @@
 
 All notable changes to claude-rpc. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.2] - 2026-08-08
+
+**Fixed — Windows**
+
+- **The local dashboard (`serve`) could go stale and stop live-updating on Windows.** Its SSE watcher only used `fs.watch`, which drops events from the atomic-rename writes every state/aggregate write uses — unlike the daemon's own watcher, it had no polling backstop, so a missed event left the page frozen until an unrelated change happened to fire a refresh. It now polls as a fallback, same as the daemon.
+- **Desktop notifications could silently fail to appear on Windows.** The PowerShell toast script exited right after queuing the balloon tip instead of waiting for it to render, which could tear the notification icon down before Windows ever drew it.
+- **Reconnecting to Discord could take up to ~15s longer than necessary on Windows** when the client wasn't running yet — the 10 candidate named pipes were probed one at a time instead of concurrently.
+- **`writeState` could throw on Windows** under a transient rename lock (a watched directory briefly held by `ReadDirectoryChangesW` during an atomic rename) — this is now retried instead of failing the write.
+- Windows now actually runs in CI (a `windows-latest` job in the test matrix) — previously every Windows-only code path here was only ever exercised by a human running the release-built `.exe`, so regressions like the above could ship unnoticed until someone hit them.
+
+## [1.4.1] - 2026-08-01
+
+**Fixed**
+
+- **Presence no longer vanishes for good on Vesktop / Equibop / web clients (arRPC bridges)** ([#37](https://github.com/rar-file/claude-rpc/issues/37)). An unchanged frame was never re-sent — correct against Discord desktop, which holds an activity until told otherwise, but arRPC-style bridges *lose* the activity whenever their web client blips (an unfocused window getting background-throttled — the bspwm report in #37 — or a renderer reload) and never replay it: arRPC keeps no last-activity state. The daemon kept writing into a socket that acked everything, `doctor` read all-green, and the card stayed blank. The daemon now **re-asserts the current frame after a quiet interval**: 60s against Discord desktop (pure insurance), 20s when the handshake identifies a bridge — arRPC answers READY with its mock `arrpc` user, so detection is exact (`isBridgeUser` in `src/discord-ipc.js`). Re-asserts flow through the same gap + sliding-window rate limiting as every other write and never re-send an already-cleared presence. Tune with `presenceKeepaliveSec` (floored at 15; `0` disables). The honest limit: while the bridge's renderer is down, nothing *any* RPC app writes can display — the fix means the card is back within ~20s of the client being able to show it again, instead of whenever the frame next happened to change.
+- **`doctor` now names the client that answered the handshake.** When the daemon log shows an arRPC bridge, doctor adds a `discord client` info line (Vesktop/Equibop/web, not Discord desktop) with the caveat above — previously that setup was indistinguishable from Discord desktop, and every check read green while the profile showed nothing.
+
+## [1.4.0] - 2026-07-30
+
+**Added**
+
+- **`setup` ends with one explicit question: `connect GitHub? [y/N]`.** Answering **y** runs the same opt-in flow that already existed (`profile verify`): handle defaults to your GitHub login (renameable with `profile set --handle`), a first scan runs if needed so real totals land instead of zeros, and the gist dance verifies you via the `gh` CLI — no `gh` login and it prints the two ways to finish (claude-rpc.com/link, or `gh auth login` + `claude-rpc profile verify`). Answering **n** (or Enter, the default) sends nothing and stores only a local `ghConnectAsked` marker so setup never asks again. Non-interactive setups, `setup --link` (already a connect), and already-verified machines are never asked. The prompt says "public" because that's what it is — there is deliberately no private identity tier; both the question and that rule are documented in `SECURITY.md` §3c.
+- `src/gist.js` gains `ghLogin()` (the account the `gh` CLI is authed as), and the gist-verification dance moved from `profileVerify` into a shared `gistVerifyDance` that reports failures instead of exiting — so a verify hiccup during setup ends with "setup itself is done, retry with `claude-rpc profile verify`" rather than a failed-looking install. `profile verify` behaves exactly as before.
+
 ## [1.3.1] - 2026-07-06
 
 Four presence-liveness fixes adopted from a community fork — thanks
