@@ -33,7 +33,15 @@ function sandbox() {
 function runCli(dir, args, { input } = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [join(dir, 'src', 'cli.js'), ...args], {
-      env: { ...process.env, HOME: dir, XDG_CONFIG_HOME: dir, NO_COLOR: '1' },
+      env: {
+        ...process.env,
+        HOME: dir,
+        USERPROFILE: dir,
+        APPDATA: join(dir, 'AppData', 'Roaming'),
+        LOCALAPPDATA: join(dir, 'AppData', 'Local'),
+        XDG_CONFIG_HOME: dir,
+        NO_COLOR: '1',
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let out = '', err = '';
