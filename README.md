@@ -201,14 +201,14 @@ For a complete account of the sensitive things claude-rpc does — startup persi
 ## three pieces, glued by json files
 
 <div align="center">
-  <img src="docs/architecture.svg" width="760" alt="Architecture: Claude Code fires a lifecycle event (stdin JSON) into hook.js, which writes state.json; daemon.js reads it and pushes an IPC frame to the Discord desktop client. scanner.js reads the ~/.claude/projects transcripts and feeds aggregate.json into daemon.js." />
+  <img src="docs/architecture.svg" width="760" alt="Architecture: Claude Code fires a lifecycle event (stdin JSON) into hook.js, which writes state.json; daemon.js reads it and pushes an IPC frame to the Discord desktop client. scanner.js reads the Claude Code project transcripts and feeds aggregate.json into daemon.js." />
 </div>
 
 No database, no message bus, no background polling when Claude Code isn't running. State on disk you can `cat` and `jq`. **Zero runtime dependencies** — even the Discord Rich Presence IPC client is hand-rolled (`src/discord-ipc.js`).
 
 1. **hook** ([`src/hook.js`](src/hook.js)) — Claude Code spawns it on every lifecycle event. Parses the JSON from stdin and mutates the shared state file. Runs in ~20ms.
 2. **daemon** ([`src/daemon.js`](src/daemon.js)) — long-running. Connects to Discord's local IPC, watches the state file, pushes presence frames every few seconds. Exponential backoff with jitter on reconnect; `daemon.log` rotates at 5 MB.
-3. **scanner** ([`src/scanner.js`](src/scanner.js)) — walks `~/.claude/projects/**/*.jsonl` for all-time aggregates (active time, prompts, tools, tokens, streaks, hotspots, lines, languages, cost, bash, web, subagents). Incremental — re-parses only changed files.
+3. **scanner** ([`src/scanner.js`](src/scanner.js)) — walks Claude Code project transcripts (`<claude-dir>/projects/**/*.jsonl`) for all-time aggregates (active time, prompts, tools, tokens, streaks, hotspots, lines, languages, cost, bash, web, subagents). Incremental — re-parses only changed files.
 
 Persistent state, all human-readable JSON:
 
@@ -307,7 +307,7 @@ It's a thin bootstrapper — on the first session it just runs `npx claude-rpc@l
 | `usage`          | Subscription limits — session + weekly %, the same numbers `/usage` shows |
 | `serve`          | Open the local web dashboard (port 47474) |
 | `preview`        | Render every rotation frame against real state |
-| `scan` / `rescan`| Incremental / forced re-parse of `~/.claude/projects` |
+| `scan` / `rescan`| Incremental / forced re-parse of Claude Code projects directory |
 | `backfill <dir>` | Import transcripts from any folder (backup, other machine) |
 | `insights`       | Print 3–5 auto-generated lines about your week |
 | `recap`          | Standup summary — yesterday's work, paste-ready (`today\|week\|date`, `--md`) |
