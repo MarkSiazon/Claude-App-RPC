@@ -53,7 +53,7 @@
   }
 
   function buildPrompt(title, url) {
-    return 'Read only ' + url + '. Page: ' + title + '. Do not invent anything that page does not say. claude-rpc puts the live Claude Code session on the Discord profile over local IPC: model, project, current tool, tokens, and lifetime stats. Transcripts, local stats, dashboards, and aggregates stay on the machine. Privacy is a one-way valve between that local state and the Discord card and does not change the local stats, dashboards, or aggregates.';
+    return 'As someone who wants my Discord profile to show what I am doing in Claude Code, I want to understand how claude-rpc can help me share the model, the project, and the current tool on that profile, while private notes stay on my computer. I want that profile to show the session I am in, and nothing more private than that. Summarize the highlights from "' + title + '": ' + url + ' Don\'t move private notes off my computer.';
   }
 
   function hrefFor(base, prompt) {

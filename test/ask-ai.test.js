@@ -240,9 +240,9 @@ test('home, docs, and blog HTML contain the Ask AI group, and leaderboard does n
     clean.hash = '';
     assert.match(
       view.prompt,
-      new RegExp(`Read only ${clean.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`),
+      new RegExp(`Summarize the highlights from ".*": ${clean.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
     );
-    assert.match(view.prompt, /Page: /);
+    assert.match(view.prompt, new RegExp(view.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.doesNotMatch(view.prompt, /ref=badge|token=secret|#token|\?ref/);
     assert.match(view.style, /width:44px/);
     assert.match(view.style, /gap:8px/);
@@ -286,6 +286,6 @@ test('Ask AI prompt strips search and hash from the canonical URL', () => {
     canonical: 'https://claude-rpc.com/docs?utm=newsletter#privacy',
     locationHref: 'https://claude-rpc.com/docs?ref=badge#token=secret',
   });
-  assert.match(view.prompt, /Read only https:\/\/claude-rpc\.com\/docs\./);
+  assert.match(view.prompt, /Summarize the highlights from ".*": https:\/\/claude-rpc\.com\/docs/);
   assert.doesNotMatch(view.prompt, /utm|newsletter|#privacy|ref=badge|token=secret/);
 });
