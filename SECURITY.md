@@ -12,6 +12,17 @@ Everything below is verifiable against the published source — there is no
 minified bundle, no obfuscation, no `eval`/`new Function`, and no remote code
 fetch-and-execute anywhere in `src/`.
 
+## Website installer integrity
+
+The website installer pins both npm and prebuilt installations to version 1.4.2.
+The Apple Silicon binary is downloaded to a private temporary directory and its
+SHA-256 is checked against the digest published with that upstream GitHub release
+before installing or running setup. A missing verifier or digest mismatch fails
+closed. Update `VERSION` and `MACOS_BINARY_SHA256` in `site/install.sh` together
+from the same release asset metadata; never restore a mutable `releases/latest`
+download or skip verification. This does not change the disclosed setup behavior
+below and does not run the installer during repository verification.
+
 ## TL;DR for reviewers
 
 | Behavior | Where | Scope | Reversible? |
