@@ -108,7 +108,7 @@
       link.href = hrefFor(provider.base, prompt);
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.setAttribute('aria-label', provider.name + ', ' + title);
+      link.setAttribute('aria-label', provider.name + ', ' + title + ', opens in a new tab');
 
       var img = document.createElement('img');
       img.src = ASSET + provider.file;

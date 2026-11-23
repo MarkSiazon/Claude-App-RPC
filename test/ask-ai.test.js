@@ -260,7 +260,7 @@ test('home, docs, and blog HTML contain the Ask AI group, and leaderboard does n
       assert.equal([...url.searchParams.keys()].join(','), 'q', rel);
       assert.equal(link.getAttribute('target'), '_blank', rel);
       assert.equal(link.getAttribute('rel'), 'noopener noreferrer', rel);
-      assert.equal(link.getAttribute('aria-label'), `${NAMES[index]}, ${view.title}`, rel);
+      assert.equal(link.getAttribute('aria-label'), `${NAMES[index]}, ${view.title}, opens in a new tab`, rel);
       assert.equal(link.querySelector('.ask-ai-tip').textContent, `Ask ${NAMES[index]}`, rel);
       assert.doesNotMatch(link.querySelector('.ask-ai-tip').textContent, /Ask AI/);
       assert.equal(
